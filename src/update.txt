@@ -1,0 +1,370 @@
+This is an excellent idea. A structured, custom error system is fundamental for a robust framework. It allows developers to programmatically handle different failure modes instead of relying on parsing error messages.
+
+Introducing a custom `AgentError` class that describes the context of the failure is the right approach. It will provide clarity for debugging, logging, and runtime error handling.
+
+Based on our discussion, I will now generate the code to implement this new error system, along with the other generic components we've designed.
+
+### Summary of Changes:
+
+1.  **New `errors.ts` file:** A new file to define the `AgentErrorType` enum and the `AgentError` class.
+2.  **Generic `BaseParser`:** A new base class for creating custom, type-safe parsers.
+3.  **Updated `types.ts`:** All core types (`ToolDefinition`, `PendingToolCall`, etc.) are now generic and work with the new error system. We will also introduce the "base" interfaces for contracts.
+4.  **Updated `AgentLoop.ts`:** The main loop is refactored to use the new generic types and the `AgentError` class, with `try...catch` blocks for robust error handling.
+5.  **Updated `index.ts`:** Exports all the new components.
+
+Here is the implementation:
+
+<project>
+  <file path="main/agent-library/AgentLoop.ts"><![CDATA[import { AIProvider } from './AIProvider';
+import { Logger } from './Logger';
+import { AgentError, AgentErrorType } from './errors';
+import { BaseParser } from './parsers/BaseParser';
+import { AgentRunResult, ToolDefinition, BaseToolResult, BasePendingToolCall, ToolCallRecord, PromptConstructor, HistoryRecordBuilder } from './types';
+
+export interface AgentLoopOptions<TCall extends BasePendingToolCall, TResult extends BaseToolResult, THistory extends ToolCallRecord> {
+  logger?: Logger;
+  maxIterations?: number;
+  parser: BaseParser<TCall>;
+  promptConstructor?: PromptConstructor<THistory>;
+  historyRecordBuilder?: HistoryRecordBuilder<TResult, THistory>;
+}
+
+export abstract class AgentLoop<
+  TCall extends BasePendingToolCall,
+  TResult extends BaseToolResult,
+  THistory extends ToolCallRecord
+> {
+  protected provider: AIProvider;
+  protected logger: Logger;
+  protected maxIterations: number;
+  protected parser: BaseParser<TCall>;
+  protected promptConstructor: PromptConstructor<THistory>;
+  protected historyRecordBuilder: HistoryRecordBuilder<TResult, THistory>;
+
+  private lastSuccessfulData: any;
+
+  protected abstract systemPrompt: string;
+  protected abstract tools: ToolDefinition<TCall, TResult>[];
+
+  constructor(provider: AIProvider, options: AgentLoopOptions<TCall, TResult, THistory>) {
+    this.provider = provider;
+    this.parser = options.parser;
+    this.logger = options.logger || console;
+    this.maxIterations = options.maxIterations || 10;
+    this.promptConstructor = options.promptConstructor || this._defaultPromptConstructor;
+    this.historyRecordBuilder = options.historyRecordBuilder || this._defaultHistoryRecordBuilder;
+  }
+
+  public async run(
+    userPrompt: string,
+    history: THistory[] = [],
+    context: Record<string, any> = {}
+  ): Promise<AgentRunResult<THistory>> {
+    this.logger.info(`[AgentLoop.run] Starting run for prompt: "${userPrompt}"`);
+    let currentHistory = [...history];
+    this.lastSuccessfulData = null;
+
+    for (let i = 0; i < this.maxIterations; i++) {
+      this.logger.info(`[AgentLoop.run] Iteration ${i + 1}/${this.maxIterations}`);
+
+      try {
+        const prompt = this.promptConstructor(this.systemPrompt, this.tools, currentHistory, context, userPrompt);
+        this.logger.debug('[AgentLoop.run] Generated prompt.', { length: prompt.length });
+        
+        const llmResponse = await this.provider.getCompletion(prompt);
+
+        if (!llmResponse) {
+          throw new AgentError('LLM returned an empty or invalid response.', AgentErrorType.INVALID_RESPONSE);
+        }
+
+        const pendingCalls = this.parser.parse(llmResponse);
+
+        if (pendingCalls.length === 0) {
+          throw new AgentError('Parser did not produce any tool calls from the LLM response.', AgentErrorType.PARSER_ERROR, { llmResponse });
+        }
+
+        let dataFromPrevToolInTurn: any = undefined;
+
+        for (const call of pendingCalls) {
+          this.logger.info(`[AgentLoop.run] Executing tool: ${call.name}`);
+          const tool = this.tools.find(t => t.name === call.name);
+
+          if (!tool) {
+            throw new AgentError(`LLM requested a non-existent tool: '${call.name}'.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.name });
+          }
+          
+          const result = await tool.handler(call, dataFromPrevToolInTurn || this.lastSuccessfulData);
+          const historyRecord = this.historyRecordBuilder(call, result);
+          currentHistory.push(historyRecord);
+
+          if (result.success) {
+              this.lastSuccessfulData = result.dataForNextTool ?? this.lastSuccessfulData;
+              dataFromPrevToolInTurn = result.dataForNextTool;
+          } else {
+              dataFromPrevToolInTurn = undefined;
+          }
+
+          if (tool.name === 'final') {
+            this.logger.info('[AgentLoop.run] "final" tool executed. Run complete.');
+            return { finalResult: result, history: currentHistory };
+          }
+        }
+      } catch (error) {
+        const agentError = error instanceof AgentError ? error : new AgentError(
+          'An unexpected error occurred during tool execution.',
+          AgentErrorType.TOOL_EXECUTION_ERROR,
+          { originalError: error }
+        );
+
+        this.logger.error(`[AgentLoop.run] Failed with error: ${agentError.message}`, agentError);
+        // We cannot use the history builder here as we might not have a result.
+        // We log a simplified error record.
+        const errorRecord = {
+          name: agentError.context?.toolName || 'system_error',
+          value: agentError.message,
+          isError: true
+        } as THistory; // Cast to allow this simplified shape.
+        
+        currentHistory.push(errorRecord);
+        return { finalResult: undefined, history: currentHistory, error: agentError };
+      }
+    }
+
+    const finalError = new AgentError('Agent exceeded maximum iterations.', AgentErrorType.MAX_ITERATIONS_REACHED);
+    this.logger.error(`[AgentLoop.run] ${finalError.message}`);
+    return { finalResult: undefined, history: currentHistory, error: finalError };
+  }
+
+  private _defaultPromptConstructor(
+    systemPrompt: string,
+    tools: ToolDefinition<any, any>[],
+    history: THistory[],
+    context: Record<string, any>,
+    userPrompt: string
+  ): string {
+    const toolDescriptions = tools.map(tool => `### Tool: ${tool.name}\n${tool.description}`).join('\n\n');
+    const historyLog = history.length > 0 ? history.map(record => `TOOL CALL:\n\`\`\`${record.name}\n${record.value}\n\`\`\`\nTOOL RESULT:\n${record.isError ? 'ERROR: ' : ''}${record.resultText}`).join('\n\n') : "No history yet.";
+    const contextLog = Object.entries(context).map(([key, value]) => `**${key}**:\n${value}`).join('\n\n');
+    return `
+${systemPrompt}
+
+# CONTEXT
+${contextLog}
+
+# AVAILABLE TOOLS
+${toolDescriptions}
+
+# CONVERSATION HISTORY
+${historyLog}
+
+# CURRENT TASK
+${userPrompt}
+`;
+  }
+  
+  private _defaultHistoryRecordBuilder(call: TCall, result: TResult): THistory {
+    const stringifiedInput = typeof call.input === 'string' ? call.input : JSON.stringify(call.input, null, 2);
+    return {
+        name: call.name,
+        value: stringifiedInput,
+        resultText: result.message || JSON.stringify(result.output),
+        isError: !result.success,
+        rawCall: call,
+        rawResult: result,
+    } as THistory;
+  }
+}]]></file>
+  <file path="main/agent-library/index.ts"><![CDATA[
+export * from './AgentLoop';
+export * from './AIProvider';
+export * from './Logger';
+export * from './types';
+export * from './errors';
+export * from './parsers/BaseParser';]]></file>
+  <file path="main/agent-library/types.ts"><![CDATA[import { AgentError } from "./errors";
+
+// --- BASE CONTRACTS ---
+
+/**
+ * The base contract that all PendingToolCall types must satisfy.
+ * Guarantees the AgentLoop can get the tool's name.
+ */
+export interface BasePendingToolCall {
+    name: string;
+    [key: string]: any; 
+}
+
+/**
+ * The base contract that all ToolResult types must satisfy.
+ * Guarantees the AgentLoop can determine success and chain data.
+ */
+export interface BaseToolResult {
+  success: boolean;
+  output?: any;
+  message?: string;
+  dataForNextTool?: any;
+}
+
+/**
+ * The base contract for all history records.
+ * Guarantees the default prompt constructor can render the history.
+ */
+export interface ToolCallRecord {
+    name: string;
+    value: string; // A string representation of the input for prompting
+    resultText: string;
+    isError: boolean;
+    rawCall: BasePendingToolCall;
+    rawResult: BaseToolResult;
+}
+
+// --- CORE GENERIC DEFINITIONS ---
+
+/**
+ * Defines a tool that the agent can use.
+ * @template TCustomCall The specific shape of the PendingToolCall this tool's handler expects.
+ * @template TCustomResult The specific shape of the ToolResult this tool's handler will return.
+ */
+export interface ToolDefinition<
+    TCustomCall extends BasePendingToolCall, 
+    TCustomResult extends BaseToolResult
+> {
+    name: string;
+    description: string;
+    handler: (call: TCustomCall, dataFromPrevTool?: any) => Promise<TCustomResult>;
+}
+
+/**
+ * The final result returned by the agent after a run.
+ * @template THistory The developer-defined shape of a history record.
+ */
+export interface AgentRunResult<THistory extends ToolCallRecord> {
+  finalResult: BaseToolResult | undefined;
+  history: THistory[];
+  error?: AgentError;
+}
+
+// --- CUSTOMIZABLE FUNCTION TYPES ---
+
+/**
+ * A function that constructs the full prompt to be sent to the LLM.
+ * @template THistory The developer-defined shape of a history record.
+ */
+export type PromptConstructor<THistory extends ToolCallRecord> = (
+    systemPrompt: string,
+    tools: ToolDefinition<any, any>[],
+    history: THistory[],
+    context: Record<string, any>,
+    userPrompt: string
+) => string;
+
+/**
+ * A function that builds a custom history record from a tool call and its result.
+ * @template TCustomResult The developer-defined shape of a tool's result.
+ * @template THistory The developer-defined shape of a history record.
+ */
+export type HistoryRecordBuilder<TCustomResult extends BaseToolResult, THistory extends ToolCallRecord> = 
+    (call: BasePendingToolCall, result: TCustomResult) => THistory;
+]]></file>
+  <file path="main/agent-library/errors.ts"><![CDATA[
+/**
+ * Defines the types of errors that can occur within the AgentLoop.
+ */
+export enum AgentErrorType {
+    /** An error occurred while parsing the LLM's response. */
+    PARSER_ERROR = 'PARSER_ERROR',
+    /** The LLM returned a response that was empty or otherwise invalid. */
+    INVALID_RESPONSE = 'INVALID_RESPONSE',
+    /** The LLM requested a tool that has not been defined. */
+    TOOL_NOT_FOUND = 'TOOL_NOT_FOUND',
+    /** An unexpected error was thrown during the execution of a tool's handler. */
+    TOOL_EXECUTION_ERROR = 'TOOL_EXECUTION_ERROR',
+    /** The agent exceeded the maximum number of iterations allowed. */
+    MAX_ITERATIONS_REACHED = 'MAX_ITERATIONS_REACHED',
+    /** A generic, unknown error occurred. */
+    UNKNOWN = 'UNKNOWN',
+}
+
+/**
+ * A custom error class for handling failures within the agent framework.
+ * It includes a type and optional context for better programmatic handling and logging.
+ */
+export class AgentError extends Error {
+    /**
+     * A machine-readable type for the error.
+     */
+    public readonly type: AgentErrorType;
+
+    /**
+     * A key-value object containing additional context about the error.
+     */
+    public readonly context?: Record<string, any>;
+
+    constructor(message: string, type: AgentErrorType, context?: Record<string, any>) {
+        super(message);
+        this.name = 'AgentError';
+        this.type = type;
+        this.context = context;
+
+        // This is for V8 environments (like Node.js, Chrome) to capture the stack trace correctly.
+        if (Error.captureStackTrace) {
+            Error.captureStackTrace(this, AgentError);
+        }
+    }
+}
+]]></file>
+  <file path="main/agent-library/parsers/BaseParser.ts"><![CDATA[import { BasePendingToolCall } from '../types';
+
+/**
+ * An abstract base class for all response parsers.
+ * It is generic over the type of the PendingToolCall it produces.
+ * It can provide common helper methods for subclasses to use.
+ * @template TCustomCall The developer-defined shape of a pending tool call.
+ */
+export abstract class BaseParser<TCustomCall extends BasePendingToolCall> {
+    
+    /**
+     * The core abstract method that every parser MUST implement.
+     * This is the contract for turning an LLM response into a list of tool calls.
+     * @param response The raw string response from the Language Model.
+     * @returns An array of pending tool call objects.
+     */
+    public abstract parse(response: string): TCustomCall[];
+
+    /**
+     * A helper to safely parse a JSON string, returning null on error
+     * instead of throwing. This is useful for parsers that expect JSON.
+     * @param jsonString The string to parse.
+     * @returns The parsed object or null if parsing fails.
+     */
+    protected _safeJsonParse<T>(jsonString: string): T | null {
+        try {
+            return JSON.parse(jsonString) as T;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * A helper to extract content from markdown-style fenced code blocks.
+     * Useful for building parsers for models that don't support native function calling.
+     * @param markdownText The text containing markdown code blocks.
+     * @returns An array of objects, each containing the language (type) and content (value) of a block.
+     */
+    protected _extractMarkdownCodeBlocks(markdownText: string): { type: string, value: string }[] {
+        const regex = /```(\w*)\n(.*?)\n```/gs;
+        const matches = markdownText.matchAll(regex);
+        const extractedCode: { type: string, value: string }[] = [];
+
+        for (const match of matches) {
+            const lang = match[1] || 'unknown';
+            const code = match[2];
+            extractedCode.push({ type: lang.trim(), value: code.trim() });
+        }
+        return extractedCode;
+    }
+}
+]]></file>
+  <file path="main/agent-library/utils/parser.ts" delete="true" />
+  <file path="main/agents/DataAnalystAgent.ts" delete="true" />
+</project>

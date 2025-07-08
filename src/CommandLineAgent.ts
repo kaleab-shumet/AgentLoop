@@ -3,6 +3,19 @@ import { AgentLoop, AgentLoopOptions } from './AgentLoop/AgentLoop';
 import { ToolResult, ChatEntry } from './AgentLoop/types';
 import { LLMDataHandler } from './AgentLoop/LLMDataHandler';
 import z from 'zod';
+import { exec } from 'child_process';
+
+function executeCommandLine(command: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        resolve(`Error: ${error.message}\n${stderr}`);
+      } else {
+        resolve(stdout || stderr);
+      }
+    });
+  });
+}
 
 class CommandLineAgent extends AgentLoop {
     private conversationHistory: ChatEntry[] = [];
@@ -15,15 +28,8 @@ Output all tool calls as children under a single <root> XML tag. Do not use attr
 
 Example:
 <root>
-  <tool>
-    <name>commandline</name>
-    <value>notepad</value>
-  </tool>
-  <tool>
-    <name>websearch</name>
-    <query>latest ai news</query>
-    <url>https://techcrunch.com/category/artificial-intelligence/</url>
-  </tool>
+  <tool>...</tool>
+  <tool>...</tool>
 </root>
 
 The output XML must strictly follow this structure.
@@ -39,21 +45,15 @@ The output XML must strictly follow this structure.
           responseSchema: z.object({
             name: z.string().describe("The name of the tool"),
             value: z.string().describe("The command line command to execute"),
-            shell: z.string().optional().describe("The shell or environment used (e.g., bash, powershell)"),
-            description: z.string().optional().describe("A human-readable description of what this command does"),
-            arguments: z.array(z.string()).optional().describe("List of command-line arguments used in the command"),
-            flags: z.record(z.string(), z.boolean()).optional().describe("Flags or options used in the command with boolean presence"),
-            workingDirectory: z.string().optional().describe("The directory from which the command should be executed"),
-            requiresElevation: z.boolean().optional().describe("Whether the command requires elevated (e.g., root or admin) privileges"),
-            os: z.enum(['linux', 'windows', 'macos']).optional().describe("Target operating system for the command"),
-            estimatedRunTime: z.string().optional().describe("Rough estimate of how long the command will take (e.g., '5s', '2m')"),
-            tags: z.array(z.string()).optional().describe("Tags or categories for classifying the command (e.g., 'networking', 'filesystem')"),
-          }),
-          handler: (name: string, args, toolChainData) => ({
-            toolname: name,
-            success: true,
-            output: args.value, // could expand to include metadata if needed
-          }),
+         }),
+          handler: async (name: string, args, toolChainData) => {
+            const output = await executeCommandLine(args.value);
+            return {
+              toolname: name,
+              success: true,
+              output,
+            };
+          },
         });
 
         // Add a web search tool
@@ -61,10 +61,9 @@ The output XML must strictly follow this structure.
           name: 'websearch',
           description: 'Perform a web search and return the top result URL.',
           responseSchema: z.object({
-
             name: z.string().describe("The name of the tool"),
             query: z.string().describe('The search query'),
-            url: z.string().url().optional().describe('If the user give you a url provide it here'),
+            url: z.string().url().optional().describe('If the user give you a url provide it here, it should be regular url with http/https'),
           }),
           handler: (name: string, args, toolChainData) => ({
             toolname: name,
@@ -107,34 +106,33 @@ const agent = new CommandLineAgent(
     }
 );
 
-// Commented out user input prompt for now
-// function prompt() {
-//   rl.question('Enter command (type "exit" to quit): ', async (answer: string) => {
-//     if (answer.trim().toLowerCase() === 'exit') {
-//       console.log('Exiting...');
-//       rl.close();
-//       return;
-//     }
-//     try {
-//       const result = await agent.run(answer);
-//       console.log('Agent output:', result.output || result);
-//     } catch (e) {
-//       console.error('Error:', e);
-//     }
-//     prompt();
-//   });
-// }
+function prompt() {
+  rl.question('Enter command (type "exit" to quit): ', async (answer: string) => {
+    if (answer.trim().toLowerCase() === 'exit') {
+      console.log('Exiting...');
+      rl.close();
+      return;
+    }
+    try {
+      const result = await agent.run(answer);
+      console.log('Agent output:', result.output || result);
+    } catch (e) {
+      console.error('Error:', e);
+    }
+    prompt();
+  });
+}
 
-// prompt();
+prompt();
 
 // Instead, automatically send a 'list directory' command to the agent
-(async () => {
-    try {
-        const result = await agent.run('I want open notepad, then search for latest ai news in https://techcrunch.com/category/artificial-intelligence/');
-        console.log('Agent output:', result.output || result);
-    } catch (e) {
-        console.error('Error:', e);
-    } finally {
-        rl.close();
-    }
-})();
+// (async () => {
+//     try {
+//         const result = await agent.run('I want open notepad, then search for latest ai news in https://techcrunch.com/category/artificial-intelligence/');
+//         console.log('Agent output:', result.output || result);
+//     } catch (e) {
+//         console.error('Error:', e);
+//     } finally {
+//         rl.close();
+//     }
+// })();

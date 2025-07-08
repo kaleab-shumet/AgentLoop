@@ -1,0 +1,9 @@
+.project_ignore
+
+project_to_xml.py
+project_output.txt
+update.txt
+
+
+renderer/public/
+renderer/src/assets/

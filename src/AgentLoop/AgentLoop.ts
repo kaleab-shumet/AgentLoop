@@ -198,6 +198,8 @@ ${toolDescriptions}
 # TOOL CALL HISTORY
 ${historyLog}
 
+## Review the tool call history. If any tools have returned successful results, provide the user with an appropriate answer based on those results. After doing so, you must call the tool named 'final'.
+
 # CURRENT TASK
 Based on all the information above, use your tools to respond to this user request:
 ${userPrompt}
