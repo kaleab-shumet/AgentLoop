@@ -9,7 +9,8 @@ function executeCommandLine(command: string): Promise<string> {
   return new Promise((resolve, reject) => {
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        resolve(`Error: ${error.message}\n${stderr}`);
+        // Resolve with the error message and stderr, as this is often useful output
+        resolve(`Error executing command: ${error.message}\n${stderr}`);
       } else {
         resolve(stdout || stderr);
       }
@@ -17,36 +18,36 @@ function executeCommandLine(command: string): Promise<string> {
   });
 }
 
+/**
+ * An example agent that interacts with the Windows command line.
+ * The developer extends AgentLoop and focuses on the agent's purpose and tools,
+ * not the underlying communication format with the LLM.
+ */
 class CommandLineAgent extends AgentLoop {
     private conversationHistory: ChatEntry[] = [];
 
+    /**
+     * The system prompt is now clean and high-level. It defines the agent's persona
+     * and core objective without any mention of XML, schemas, or output formats.
+     * The framework handles those details automatically.
+     */
     protected systemPrompt: string = `
-You are a command-line interface agent for Windows. You will be provided with a tool schema in XSD format. Your task is to generate Windows commands and web searches that produce output in XML format.
-
-When the user request requires multiple actions, you must call multiple tools.
-Output all tool calls as children under a single <root> XML tag. Do not use attributes on any XML tags; use nested elements for all data.
-
-Example:
-<root>
-  <tool>...</tool>
-  <tool>...</tool>
-</root>
-
-The output XML must strictly follow this structure.
-`;
+You are a helpful and efficient command-line interface agent for Microsoft Windows. 
+Your primary goal is to assist the user by executing commands and performing web searches to accomplish their tasks. 
+When the user's request requires multiple steps, you must call the necessary tools in sequence.
+Do not ask for clarification. Take the most direct action to fulfill the request.`;
 
     constructor(llmDataHandler: LLMDataHandler, options: AgentLoopOptions) {
         super(llmDataHandler, options);
-        
 
         this.defineTool({
           name: 'commandline',
-          description: 'Provide the command line command and related metadata',
+          description: 'Executes a command on the Windows command line and returns the output. Use this for file system operations, running scripts, or any other command-line task.',
           responseSchema: z.object({
-            name: z.string().describe("The name of the tool"),
-            value: z.string().describe("The command line command to execute"),
-         }),
-          handler: async (name: string, args, toolChainData) => {
+            name: z.string().describe("The name of the tool, which is 'commandline'"),
+            value: z.string().describe("The complete Windows command line command to execute"),
+          }),
+          handler: async (name: string, args) => {
             const output = await executeCommandLine(args.value);
             return {
               toolname: name,
@@ -56,43 +57,57 @@ The output XML must strictly follow this structure.
           },
         });
 
-        // Add a web search tool
         this.defineTool({
           name: 'websearch',
-          description: 'Perform a web search and return the top result URL.',
+          description: 'Performs a web search to find information or answer questions. Use this when you need up-to-date information or knowledge beyond your internal capabilities.',
           responseSchema: z.object({
-            name: z.string().describe("The name of the tool"),
-            query: z.string().describe('The search query'),
-            url: z.string().url().optional().describe('If the user give you a url provide it here, it should be regular url with http/https'),
+            name: z.string().describe("The name of the tool, which is 'websearch'"),
+            query: z.string().describe('The specific search query to use for the web search'),
+            url: z.string().url().optional().describe('If the user provides a URL, include it here.'),
           }),
-          handler: (name: string, args, toolChainData) => ({
+          handler: (name: string, args) => ({
             toolname: name,
             success: true,
-            output: `Web search for "${args.query}"${args.url ? ': ' + args.url : ''}`,
+            output: `Simulated web search for "${args.query}" ${args.url ? 'at ' + args.url : ''} was successful.`,
           }),
         });
-        
     }
 
     getConversationHistory(): ChatEntry[] {
         return this.conversationHistory;
     }
 
+    /**
+     * Handles tool call failures. This is where a developer can add custom logic
+     * for logging, retrying, or notifying the user.
+     * @param error The structured AgentError with context about the failure.
+     * @returns A ToolResult object representing the failure.
+     */
     onToolCallFail(error: any): ToolResult {
+        // Log the rich error context for easier debugging
+        this.logger.error(`[CommandLineAgent.onToolCallFail] Tool call failed for tool '${error.toolname || 'unknown'}'.`, error);
         return {
             toolname: error.toolname || 'unknown',
             success: false,
-            error: error.message || 'Unknown error'
+            error: error.message || 'Unknown error',
+            context: error.context || {}
         };
     }
 
+    /**
+     * Handles successful tool calls.
+     * @param toolResult The result from the successful tool execution.
+     * @returns The same toolResult, possibly with added metadata.
+     */
     onToolCallSuccess(toolResult: ToolResult): ToolResult {
+        this.logger.info(`[CommandLineAgent.onToolCallSuccess] Tool '${toolResult.toolname}' executed successfully.`);
         return toolResult;
     }
 }
 
-// CLI logic
-console.log("Command line Agent");
+// --- CLI Application Logic ---
+console.log("Command Line Agent Initialized");
+console.log('Type "exit" to quit.');
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -103,36 +118,36 @@ const agent = new CommandLineAgent(
     new LLMDataHandler(),
     {
         maxIterations: 10,
+        toolTimeoutMs: 5000, // Set a 5-second timeout for each tool
     }
 );
 
-function prompt() {
-  rl.question('Enter command (type "exit" to quit): ', async (answer: string) => {
+function promptUser() {
+  rl.question('User > ', async (answer: string) => {
     if (answer.trim().toLowerCase() === 'exit') {
       console.log('Exiting...');
       rl.close();
       return;
     }
+
     try {
+      // The agent run is now a self-contained, robust process.
       const result = await agent.run(answer);
-      console.log('Agent output:', result.output || result);
-    } catch (e) {
-      console.error('Error:', e);
+      console.log('\n--- Agent Final Output ---');
+      // The final result from the 'final' tool is in the 'value' property.
+      console.log(result.output?.value || 'Agent completed its work.');
+      console.log('--------------------------\n');
+    } catch (e: any) {
+      console.error('\n--- Agent Run Failed ---');
+      console.error(`Error: ${e.message}`);
+      if (e.context) {
+        console.error('Context:', JSON.stringify(e.context, null, 2));
+      }
+      console.error('------------------------\n');
     }
-    prompt();
+
+    promptUser();
   });
 }
 
-prompt();
-
-// Instead, automatically send a 'list directory' command to the agent
-// (async () => {
-//     try {
-//         const result = await agent.run('I want open notepad, then search for latest ai news in https://techcrunch.com/category/artificial-intelligence/');
-//         console.log('Agent output:', result.output || result);
-//     } catch (e) {
-//         console.error('Error:', e);
-//     } finally {
-//         rl.close();
-//     }
-// })();
+promptUser();
