@@ -93,6 +93,8 @@ export abstract class AgentLoop {
       message: userPrompt
     });
 
+    let tempStore: { [key: string]: any } = {};
+
     this.toolCallHistory = [];
     const stagnationTracker: string[] = [];
     let consecutiveInvalidResponses = 0;
@@ -150,7 +152,7 @@ export abstract class AgentLoop {
         lastError = null;
 
         // Execute tool calls with better error handling
-        const results = await this.executeToolCalls(parsedToolCalls, stagnationTracker);
+        const results = await this.executeToolCalls(parsedToolCalls, stagnationTracker, tempStore);
         
         // Check if any tool call was the final tool
         for (const result of results) {
@@ -196,7 +198,8 @@ export abstract class AgentLoop {
    */
   private async executeToolCalls(
     toolCalls: PendingToolCall[],
-    stagnationTracker: string[]
+    stagnationTracker: string[],
+    tempStore: { [key: string]: any }
   ): Promise<ToolResult[]> {
     const results: ToolResult[] = [];
 
@@ -217,7 +220,7 @@ export abstract class AgentLoop {
         continue;
       }
 
-      const result = await this.executeTool(tool, call, {});
+      const result = await this.executeTool(tool, call, tempStore);
       this.toolCallHistory.push(result);
       results.push(result);
     }
@@ -340,7 +343,7 @@ Remember: If you have enough information to provide a complete answer, you MUST 
   /**
    * Enhanced tool execution with better error handling
    */
-  private async executeTool(tool: Tool<ZodTypeAny>, call: PendingToolCall, toolChainData: ToolChainData): Promise<ToolResult> {
+  private async executeTool(tool: Tool<ZodTypeAny>, call: PendingToolCall, tempStore: ToolChainData): Promise<ToolResult> {
     const timeoutPromise = new Promise<ToolResult>((_, reject) =>
       setTimeout(() => reject(new AgentError(
         `Tool '${tool.name}' exceeded timeout of ${this.toolTimeoutMs}ms.`,
@@ -361,7 +364,7 @@ Remember: If you have enough information to provide a complete answer, you MUST 
       }
 
       const result = await Promise.race([
-        tool.handler(tool.name, validation.data, toolChainData),
+        tool.handler(tool.name, validation.data, tempStore),
         timeoutPromise,
       ]);
       
