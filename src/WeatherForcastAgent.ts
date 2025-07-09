@@ -182,7 +182,7 @@ Always be helpful, accurate, and provide detailed weather information when avail
 
 const weatherAgent = new WeatherForcastAgent({
   apiKey: process.env.GEMINI_API_KEY || 'AIzaSyBBvprrxsMRaS7I1RTrX7IhH8-qBWs_S7A',
-  model: 'gemini-1.5-flash',
+  model: 'gemini-2.5-flash',
   service: 'google',
   temperature: 0.7,
 });

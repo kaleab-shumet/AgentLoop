@@ -46,9 +46,13 @@ export class LLMDataHandler implements AIProvider {
       return [];
     }
 
-    let toolCalls = parsedJs?.root?.tool;
+    const root = parsedJs?.root; 
+
+    let toolCalls = Object.keys(root).map(key => root[key]);
+
+
     if (!toolCalls) {
-      console.warn("[LLMDataHandler] Parsed XML but found no <tool> elements under <root>.");
+      console.warn("[LLMDataHandler] Parsed XML but found no tool elements under <root>.");
       return [];
     }
 
@@ -59,7 +63,11 @@ export class LLMDataHandler implements AIProvider {
     const validToolCalls: PendingToolCall[] = [];
 
     for (const call of toolCalls) {
-      if (!call || typeof call.name !== 'string') {
+
+        console.log("TYpe of: ", typeof call)
+        console.log("TYpe of: ", call)
+
+      if (typeof call.name !== 'string') {
         console.warn("[LLMDataHandler] Skipping malformed tool call object:", call);
         continue;
       }

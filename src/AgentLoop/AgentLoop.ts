@@ -1,5 +1,3 @@
-// AgentLoop.ts
-
 import z, { ZodTypeAny, ZodObject } from 'zod';
 import { AgentError, AgentErrorType } from './AgentError';
 import { LLMDataHandler } from './LLMDataHandler';
@@ -9,6 +7,7 @@ import zodToJsonSchema from 'zod-to-json-schema';
 import { convertJsonSchemaToXsd } from './JsonToXsd';
 
 export interface AgentLoopOptions {
+  parallelExecution?: boolean;
   logger?: Logger;
   maxIterations?: number;
   toolTimeoutMs?: number;
@@ -45,42 +44,29 @@ export abstract class AgentLoop {
 
   private readonly FINAL_TOOL_NAME = 'final';
 
+  private parallelExecution = false;
+
   constructor(config: AgentConfig, options: AgentLoopOptions = {}) {
     this.config = config;
     this.llmDataHandler = new LLMDataHandler(config);
     this.logger = options.logger || console;
     this.maxIterations = options.maxIterations || 10;
     this.toolTimeoutMs = options.toolTimeoutMs || 30000;
-    this.retryAttempts = options.retryAttempts || 3;
+    this.retryAttempts = options.retryAttempts || 1;
     this.retryDelay = options.retryDelay || 1000;
-    
+
+    this.parallelExecution = options.parallelExecution || false;
+
     // Initialize conversation history
     this.conversationHistory = [];
   }
 
   /**
-   * Helper method to add tools with better error handling
+   * Protected method to define tools with better error handling
    */
   protected defineTool(fn: (schema: typeof z) => any): void {
     const dfTool = fn(z);
-    this.addTool(dfTool);
-  }
-
-  /**
-   * Helper method to create simple tools with validation
-   */
-  protected createTool<T extends ZodTypeAny>(
-    name: string,
-    description: string,
-    schema: T,
-    handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolResult | Promise<ToolResult>
-  ): Tool<T> {
-    return {
-      name,
-      description,
-      responseSchema: schema,
-      handler
-    };
+    this._addTool(dfTool);
   }
 
   /**
@@ -128,7 +114,7 @@ export abstract class AgentLoop {
         }
 
         const parsedToolCalls = this.llmDataHandler.parseAndValidate(llmResponse, this.tools);
-        
+
         if (parsedToolCalls.length === 0) {
           consecutiveInvalidResponses++;
           if (consecutiveInvalidResponses >= 3) {
@@ -153,7 +139,7 @@ export abstract class AgentLoop {
 
         // Execute tool calls with better error handling
         const results = await this.executeToolCalls(parsedToolCalls, stagnationTracker, tempStore);
-        
+
         // Check if any tool call was the final tool
         for (const result of results) {
           if (result.toolname === this.FINAL_TOOL_NAME) {
@@ -170,17 +156,17 @@ export abstract class AgentLoop {
         if (error instanceof AgentError) {
           // Handle specific agent errors with potential recovery
           this.logger.error(`[AgentLoop.run] Agent error: ${error.message}`);
-          
+
           if (error.type === AgentErrorType.STAGNATION_ERROR) {
             // Try to break stagnation by modifying the prompt
             this.toolCallHistory.push(this.onToolCallFail(error));
             lastError = error;
             continue;
           }
-          
+
           throw error;
         }
-        
+
         // Handle unexpected errors
         throw new AgentError(
           `Unexpected error in agent loop: ${error}`,
@@ -194,7 +180,7 @@ export abstract class AgentLoop {
   }
 
   /**
-   * Execute multiple tool calls with better error handling
+   * Execute multiple tool calls with dependency management and parallel execution
    */
   private async executeToolCalls(
     toolCalls: PendingToolCall[],
@@ -203,11 +189,61 @@ export abstract class AgentLoop {
   ): Promise<ToolResult[]> {
     const results: ToolResult[] = [];
 
-    for (const call of toolCalls) {
-      this.logger.info(`[AgentLoop.run] Executing tool: ${call.name}`);
-      stagnationTracker.push(JSON.stringify(call));
+    // If parallel execution is disabled, execute sequentially
+    if (!this.parallelExecution) {
+      for (const call of toolCalls) {
+        this.logger.info(`[AgentLoop.run] Executing tool: ${call.name}`);
+        stagnationTracker.push(JSON.stringify(call));
 
+        const tool = this.tools.find(t => t.name === call.name);
+        if (!tool) {
+          const error = new AgentError(
+            `Tool '${call.name}' not found.`,
+            AgentErrorType.TOOL_NOT_FOUND,
+            { toolName: call.name }
+          );
+          const result = this.onToolCallFail(error);
+          this.toolCallHistory.push(result);
+          results.push(result);
+          continue;
+        }
+
+        const result = await this._executeTool(tool, call, tempStore);
+        this.toolCallHistory.push(result);
+        results.push(result);
+      }
+      return results;
+    }
+
+    // Parallel execution with dependency management
+    return await this.executeToolCallsWithDependencies(toolCalls, stagnationTracker, tempStore);
+  }
+
+  /**
+   * Execute tool calls with dependency management for parallel execution
+   */
+  private async executeToolCallsWithDependencies(
+    toolCalls: PendingToolCall[],
+    stagnationTracker: string[],
+    tempStore: { [key: string]: any }
+  ): Promise<ToolResult[]> {
+    const results: ToolResult[] = [];
+    const resultStore = new Map<string, ToolResult>();
+    const toolMap = new Map<string, Tool<ZodTypeAny>>();
+    const callMap = new Map<string, PendingToolCall>();
+
+    // Build maps for quick lookup
+    toolCalls.forEach(call => {
+      callMap.set(call.name, call);
       const tool = this.tools.find(t => t.name === call.name);
+      if (tool) {
+        toolMap.set(call.name, tool);
+      }
+    });
+
+    // Validate all tools exist
+    for (const call of toolCalls) {
+      const tool = toolMap.get(call.name);
       if (!tool) {
         const error = new AgentError(
           `Tool '${call.name}' not found.`,
@@ -219,13 +255,165 @@ export abstract class AgentLoop {
         results.push(result);
         continue;
       }
+    }
 
-      const result = await this.executeTool(tool, call, tempStore);
+    // Filter out tools that had validation errors
+    const validToolCalls = toolCalls.filter(call =>
+      toolMap.has(call.name) &&
+      !results.some(r => r.toolname === call.name)
+    );
+
+    if (validToolCalls.length === 0) {
+      return results;
+    }
+
+    // Initialize dependency tracking
+    const pending = new Map<string, Set<string>>();
+    const dependents = new Map<string, string[]>();
+    const running = new Set<string>();
+
+    validToolCalls.forEach(call => {
+      const tool = toolMap.get(call.name)!;
+      const dependencies = tool.dependencies || [];
+
+      // Filter dependencies to only include those that exist in current tool calls
+      // If a dependency doesn't exist in current calls, assume it's already executed
+      const validDependencies = dependencies.filter(dep => callMap.has(dep));
+
+      pending.set(call.name, new Set(validDependencies));
+
+      validDependencies.forEach(dep => {
+        if (!dependents.has(dep)) {
+          dependents.set(dep, []);
+        }
+        dependents.get(dep)!.push(call.name);
+      });
+    });
+
+    // Check for circular dependencies
+    const circularDeps = this.detectCircularDependencies(validToolCalls, toolMap);
+    if (circularDeps.length > 0) {
+      const error = new AgentError(
+        `Circular dependencies detected: ${circularDeps.join(' -> ')}`,
+        AgentErrorType.TOOL_EXECUTION_ERROR,
+        { circularDependencies: circularDeps }
+      );
+      const result = this.onToolCallFail(error);
       this.toolCallHistory.push(result);
       results.push(result);
+      return results;
+    }
+
+    // Find tools that are ready to execute (no pending dependencies)
+    const ready = validToolCalls
+      .filter(call => {
+        const pendingDeps = pending.get(call.name);
+        return !pendingDeps || pendingDeps.size === 0;
+      })
+      .map(call => call.name);
+
+    // Execute a single tool and handle completion
+    const executeTool = async (toolName: string): Promise<void> => {
+      running.add(toolName);
+      this.logger.info(`[AgentLoop.executeToolCallsWithDependencies] Executing tool: ${toolName}`);
+
+      const call = callMap.get(toolName)!;
+      const tool = toolMap.get(toolName)!;
+
+      stagnationTracker.push(JSON.stringify(call));
+
+      try {
+        const result = await this._executeTool(tool, call, tempStore);
+        resultStore.set(toolName, result);
+        this.toolCallHistory.push(result);
+        results.push(result);
+      } catch (error) {
+        const errorResult = this.onToolCallFail(error as AgentError);
+        resultStore.set(toolName, errorResult);
+        this.toolCallHistory.push(errorResult);
+        results.push(errorResult);
+      } finally {
+        running.delete(toolName);
+
+        // Notify dependents that this tool has completed
+        const toolDependents = dependents.get(toolName) || [];
+        for (const dependent of toolDependents) {
+          const dependentPending = pending.get(dependent);
+          if (dependentPending) {
+            dependentPending.delete(toolName);
+
+            // If all dependencies are satisfied, execute the dependent
+            if (dependentPending.size === 0) {
+              executeTool(dependent);
+            }
+          }
+        }
+      }
+    };
+
+    // Start execution of all ready tools
+    const initialPromises = ready.map(toolName => executeTool(toolName));
+    await Promise.all(initialPromises);
+
+    // Wait for all remaining tools to finish
+    while (running.size > 0) {
+      await this.sleep(10);
     }
 
     return results;
+  }
+
+  /**
+   * Detect circular dependencies using DFS (only considers tools in current batch)
+   */
+  private detectCircularDependencies(
+    toolCalls: PendingToolCall[],
+    toolMap: Map<string, Tool<ZodTypeAny>>
+  ): string[] {
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    const path: string[] = [];
+    const callNames = new Set(toolCalls.map(call => call.name));
+
+    const dfs = (toolName: string): boolean => {
+      if (recursionStack.has(toolName)) {
+        // Found a cycle, return the path from where the cycle starts
+        const cycleStart = path.indexOf(toolName);
+        return true;
+      }
+
+      if (visited.has(toolName)) {
+        return false;
+      }
+
+      visited.add(toolName);
+      recursionStack.add(toolName);
+      path.push(toolName);
+
+      const tool = toolMap.get(toolName);
+      if (tool && tool.dependencies) {
+        // Only check dependencies that exist in current tool calls
+        for (const dep of tool.dependencies) {
+          if (callNames.has(dep) && dfs(dep)) {
+            return true;
+          }
+        }
+      }
+
+      recursionStack.delete(toolName);
+      path.pop();
+      return false;
+    };
+
+    for (const call of toolCalls) {
+      if (!visited.has(call.name)) {
+        if (dfs(call.name)) {
+          return [...path];
+        }
+      }
+    }
+
+    return [];
   }
 
   /**
@@ -233,16 +421,16 @@ export abstract class AgentLoop {
    */
   private detectStagnation(stagnationTracker: string[]): boolean {
     if (stagnationTracker.length < 6) return false;
-    
+
     // Check if last 3 calls are identical
     const lastThree = stagnationTracker.slice(-3);
     if (new Set(lastThree).size === 1) return true;
-    
+
     // Check if there's a pattern in the last 6 calls
     const lastSix = stagnationTracker.slice(-6);
     const pattern = lastSix.slice(0, 3).join('|');
     const repeat = lastSix.slice(3).join('|');
-    
+
     return pattern === repeat;
   }
 
@@ -251,7 +439,7 @@ export abstract class AgentLoop {
    */
   private async getLLMResponseWithRetry(prompt: string): Promise<string> {
     let lastError: Error | null = null;
-    
+
     for (let attempt = 0; attempt < this.retryAttempts; attempt++) {
       try {
         const response = await this.llmDataHandler.getCompletion(prompt);
@@ -259,13 +447,13 @@ export abstract class AgentLoop {
       } catch (error) {
         lastError = error as Error;
         this.logger.warn(`[AgentLoop] LLM call attempt ${attempt + 1} failed: ${error}`);
-        
+
         if (attempt < this.retryAttempts - 1) {
           await this.sleep(this.retryDelay * Math.pow(2, attempt)); // Exponential backoff
         }
       }
     }
-    
+
     throw new AgentError(
       `LLM call failed after ${this.retryAttempts} attempts: ${lastError?.message}`,
       AgentErrorType.INVALID_RESPONSE,
@@ -283,13 +471,13 @@ export abstract class AgentLoop {
   ): string {
     const toolSchemas = this.tools
       .map(tool => {
-        const jsonSchema = zodToJsonSchema(tool.responseSchema, "Tool");
+        const jsonSchema = zodToJsonSchema(tool.responseSchema, tool.name);
         const xsdSchema = convertJsonSchemaToXsd(jsonSchema as any, { rootElementName: 'tool' });
         return `<!-- Schema for ${tool.name} -->\n${xsdSchema}`;
       })
       .join('\n\n');
 
-    const historyLog = this.toolCallHistory.length > 0
+    const toolCallHistory = this.toolCallHistory.length > 0
       ? JSON.stringify(this.toolCallHistory.slice(-10), null, 2) // Only show last 10 for brevity
       : 'No tool calls have been made yet.';
 
@@ -311,8 +499,10 @@ export abstract class AgentLoop {
 ${this.getFormattingInstructions()}
 
 # AVAILABLE TOOLS
-You have the following tools. You must use the provided XML schemas to construct your tool calls.
+You have the following tools available. You can and SHOULD call multiple tools in parallel in a single turn if the user's request requires multiple actions.
 ${toolSchemas}
+- note: You should always call the ${this.FINAL_TOOL_NAME} tool alone
+
 
 # CONTEXT
 Here is some background information for your task:
@@ -320,13 +510,13 @@ ${contextLog}
 ${conversationSection}
 # TOOL CALL HISTORY
 This is the history of the tools you have called so far and their results.
-${historyLog}
+${toolCallHistory}
 ${errorRecoverySection}
 # CURRENT TASK
 Based on all the information above, use your tools to respond to this user request:
 "${userPrompt}"
 
-Remember: If you have enough information to provide a complete answer, you MUST call the 'final' tool.
+Remember: Think step-by-step. If the task requires gathering different pieces of information (e.g., getting a user's profile AND their recent orders), call the necessary tools in one go. If you have enough information to provide a complete answer, you MUST call the '${this.FINAL_TOOL_NAME}' tool by itself.
 `;
 
     this.logger.debug('[AgentLoop.constructPrompt] Generated prompt.', { length: template.length });
@@ -341,15 +531,18 @@ Remember: If you have enough information to provide a complete answer, you MUST 
   }
 
   /**
-   * Enhanced tool execution with better error handling
+   * Enhanced tool execution with better error handling and individual timeout support
    */
-  private async executeTool(tool: Tool<ZodTypeAny>, call: PendingToolCall, tempStore: ToolChainData): Promise<ToolResult> {
+  private async _executeTool(tool: Tool<ZodTypeAny>, call: PendingToolCall, tempStore: ToolChainData): Promise<ToolResult> {
+    // Use tool-specific timeout if defined, otherwise use global timeout
+    const toolTimeout = tool.timeout || this.toolTimeoutMs;
+
     const timeoutPromise = new Promise<ToolResult>((_, reject) =>
       setTimeout(() => reject(new AgentError(
-        `Tool '${tool.name}' exceeded timeout of ${this.toolTimeoutMs}ms.`,
+        `Tool '${tool.name}' exceeded timeout of ${toolTimeout}ms.`,
         AgentErrorType.TOOL_TIMEOUT_ERROR,
-        { toolName: tool.name }
-      )), this.toolTimeoutMs)
+        { toolName: tool.name, timeout: toolTimeout }
+      )), toolTimeout)
     );
 
     try {
@@ -367,7 +560,7 @@ Remember: If you have enough information to provide a complete answer, you MUST 
         tool.handler(tool.name, validation.data, tempStore),
         timeoutPromise,
       ]);
-      
+
       return this.onToolCallSuccess(result);
     } catch (error: any) {
       if (error instanceof AgentError) {
@@ -386,45 +579,59 @@ Remember: If you have enough information to provide a complete answer, you MUST 
    * Enhanced formatting instructions
    */
   private getFormattingInstructions(): string {
+
     return `
-You must respond by calling one or more tools. Your entire output must be a single, valid XML block enclosed in \`\`\`xml ... \`\`\`.
-All tool calls must be children under a single <root> XML tag. Do not use attributes on any XML tags; use nested elements for all data.
-
-Example of a valid response:
-\`\`\`xml
-<root>
-  <tool>
-    <name>commandline</name>
-    <value>echo "hello world"</value>
-  </tool>
-  <tool>
-    <name>websearch</name>
-    <query>latest AI news</query>
-  </tool>
-</root>
-\`\`\`
-
-IMPORTANT RULES:
-1. Always review the tool call history before making new calls
-2. If you have gathered enough information to provide a complete answer, you MUST call the '${this.FINAL_TOOL_NAME}' tool
-3. Don't repeat the same tool call with the same parameters
-4. If a tool call fails, try a different approach or different parameters
-5. Be strategic about which tools to use and in what order
-`;
+    You MUST respond by calling one or more tools. To solve complex tasks, you should call multiple tools in a single turn. Your entire output must be a single, valid XML block enclosed in \`\`\`xml ... \`\`\`.
+    
+    All tool calls must be children under a single <root> XML tag.
+    
+    **IMPORTANT RULES FOR TOOL CALLING:**
+    
+    1.  **CALL MULTIPLE TOOLS:** For any request that requires more than one piece of information, you MUST call all the necessary tools in parallel in a single response. Do not call them one by one in separate turns.
+    2.  **THE '{${this.FINAL_TOOL_NAME}}' TOOL IS EXCLUSIVE:** If you have gathered enough information to provide a complete answer, you MUST call the '${this.FINAL_TOOL_NAME}' tool. When you call '${this.FINAL_TOOL_NAME}', it MUST be the ONLY tool inside the <root> tag.
+    3.  **REVIEW HISTORY:** Always review the tool call history before making new calls to avoid repeating work.
+    4.  **BE STRATEGIC:** If a tool fails, try a different approach or different parameters.
+    
+    **Example of a good, parallel response for "What is the weather in Paris and what is the latest news about AI?":**
+    
+    \`\`\`xml
+    <root>
+      <get_weather>
+        <name>get_weather</name>
+        <city>Paris</city>
+      </get_weather>
+      <web_search>
+        <name>web_search</name>
+        <query>latest news about AI</query>
+      </web_search>
+    </root>
+    \`\`\`
+    
+    **Example of a final answer:**
+    
+    \`\`\`xml
+    <root>
+      <${this.FINAL_TOOL_NAME}>
+        <name>${this.FINAL_TOOL_NAME}</name>
+        <value>The weather in Paris is sunny, and the latest AI news is about a new model release from OpenAI.</value>
+      </${this.FINAL_TOOL_NAME}>
+    </root>
+    \`\`\`
+    `;
   }
 
   /**
-   * Enhanced tool definition with validation and automatic 'name' property injection.
+   * Private method for tool definition with validation and automatic 'name' property injection.
    */
-  public addTool<T extends ZodTypeAny>(tool: Tool<T>): void {
-    if (tool.name === this.FINAL_TOOL_NAME) {
-      throw new AgentError(
-        `Tool name '${this.FINAL_TOOL_NAME}' is reserved.`,
-        AgentErrorType.RESERVED_TOOL_NAME,
-        { toolName: tool.name }
-      );
-    }
-    
+  private _addTool<T extends ZodTypeAny>(tool: Tool<T>): void {
+    // if (tool.name === this.FINAL_TOOL_NAME) {
+    //   throw new AgentError(
+    //     `Tool name '${this.FINAL_TOOL_NAME}' is reserved.`,
+    //     AgentErrorType.RESERVED_TOOL_NAME,
+    //     { toolName: tool.name }
+    //   );
+    // }
+
     if (this.tools.some(t => t.name === tool.name)) {
       throw new AgentError(
         `A tool with the name '${tool.name}' is already defined.`,
@@ -432,7 +639,7 @@ IMPORTANT RULES:
         { toolName: tool.name }
       );
     }
-    
+
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(tool.name)) {
       throw new AgentError(
         `Tool name '${tool.name}' must start with a letter and contain only letters, numbers, and underscores.`,
@@ -440,31 +647,53 @@ IMPORTANT RULES:
         { toolName: tool.name }
       );
     }
-    
+
+    // Validate dependencies exist (if any)
+    if (tool.dependencies && tool.dependencies.length > 0) {
+      for (const dep of tool.dependencies) {
+        if (!this.tools.some(t => t.name === dep)) {
+          throw new AgentError(
+            `Tool '${tool.name}' depends on '${dep}' which is not defined. Define dependencies before dependent tools.`,
+            AgentErrorType.TOOL_EXECUTION_ERROR,
+            { toolName: tool.name, missingDependency: dep }
+          );
+        }
+      }
+    }
+
+    // Validate timeout if provided
+    if (tool.timeout !== undefined && (tool.timeout <= 0 || !Number.isInteger(tool.timeout))) {
+      throw new AgentError(
+        `Tool '${tool.name}' timeout must be a positive integer (milliseconds).`,
+        AgentErrorType.TOOL_EXECUTION_ERROR,
+        { toolName: tool.name, timeout: tool.timeout }
+      );
+    }
+
     // --- FIX START ---
     // Ensure the schema is an object to allow for property injection.
     if (!(tool.responseSchema instanceof ZodObject)) {
-        throw new AgentError(
-            `The responseSchema for tool '${tool.name}' must be a Zod object (created with z.object({})).`,
-            AgentErrorType.TOOL_EXECUTION_ERROR, // Re-using an existing error type
-            { toolName: tool.name }
-        );
+      throw new AgentError(
+        `The responseSchema for tool '${tool.name}' must be a Zod object (created with z.object({})).`,
+        AgentErrorType.TOOL_EXECUTION_ERROR, // Re-using an existing error type
+        { toolName: tool.name }
+      );
     }
 
     // Automatically add/overwrite the 'name' property to the schema for consistency.
     const enhancedSchema = tool.responseSchema.extend({
-        name: z.string().describe("The name of the tool."),
+      name: z.string().describe("The name of the tool."),
     });
 
     const enhancedTool = {
-        ...tool,
-        responseSchema: enhancedSchema,
+      ...tool,
+      responseSchema: enhancedSchema,
     };
-    
+
     this.tools.push(enhancedTool as unknown as Tool<ZodTypeAny>);
     // --- FIX END ---
 
-    this.logger.debug(`[AgentLoop.addTool] Tool '${tool.name}' defined successfully.`);
+    this.logger.debug(`[AgentLoop._addTool] Tool '${tool.name}' defined successfully.`);
   }
   /**
    * Get available tool names
@@ -493,19 +722,22 @@ IMPORTANT RULES:
    */
   private addFinalTool(): void {
     if (!this.tools.some(t => t.name === this.FINAL_TOOL_NAME)) {
-      this.tools.push({
+
+      this.defineTool((z) => ({
         name: this.FINAL_TOOL_NAME,
         description: `Call this tool ONLY when you have the complete answer for the user's request. The input should be a concluding, natural language response.`,
         responseSchema: z.object({
           name: z.string().describe("The name of the tool."),
           value: z.string().describe("The final, complete answer to the user's request."),
         }),
-        handler: (name, args) => ({
+        handler: (name: string, args: any) => ({
           toolname: name,
           success: true,
           output: args,
         }),
-      });
+        dependencies: []
+      }))
+
     }
   }
 

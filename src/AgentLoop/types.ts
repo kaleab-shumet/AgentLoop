@@ -43,6 +43,7 @@ export interface ToolResult {
    * Defines the structure for a tool that can be used by the agent.
    */
   export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
+    timeout: number;
     /** The unique name of the tool. Must not contain spaces or special characters. */
     name: string;
     /** A clear, detailed description of what the tool does, for the LLM. */
@@ -50,5 +51,6 @@ export interface ToolResult {
     /** A Zod schema defining the arguments the tool expects. */
     responseSchema: T;
     /** The handler function that executes the tool's logic. */
+    dependencies: [];
     handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolResult | Promise<ToolResult>;
   };
