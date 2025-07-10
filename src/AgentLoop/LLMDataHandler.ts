@@ -34,8 +34,7 @@ export class LLMDataHandler implements AIProvider {
     parseAndValidate(llmResponse: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
         const xmlContent = this.extractCode(llmResponse, 'xml');
         if (!xmlContent) {
-            console.error("[LLMDataHandler] No XML code block found in LLM response.");
-            return [];
+            throw new AgentError("[LLMDataHandler] No XML code block found in LLM response. Possible reasons: missing or invalid XML code block, or incorrect response format. Hint: Ensure your prompt requests XML output wrapped in triple backticks.", AgentErrorType.INVALID_RESPONSE)
         }
 
         let parsedJs;
@@ -43,7 +42,7 @@ export class LLMDataHandler implements AIProvider {
             parsedJs = this.parseXmlToJs(xmlContent);
         } catch (error: any) {
             console.error("[LLMDataHandler] Failed to parse XML.", { error: error.message });
-            return [];
+            throw new AgentError(`[LLMDataHandler] Failed to parse XML. Details: ${error.message}. Possible causes: malformed XML syntax or unexpected structure. Hint: Check the LLM's XML output for errors.`, AgentErrorType.INVALID_RESPONSE)
         }
 
         const root = parsedJs?.root;
@@ -57,48 +56,30 @@ export class LLMDataHandler implements AIProvider {
                 toolCalls.push(value);
             }
         }
-        
-        console.log("toolcalls: ", toolCalls)
 
 
         if (!toolCalls) {
-            console.warn("[LLMDataHandler] Parsed XML but found no tool elements under <root>.");
-            return [];
+            throw new AgentError(`[LLMDataHandler] No tool calls found in the parsed XML. The <root> element may be empty or missing tool definitions. Hint: Ensure the LLM response includes at least one valid tool call inside <root>.`, AgentErrorType.TOOL_NOT_FOUND)    
         }
 
-        if (!Array.isArray(toolCalls)) {
-            toolCalls = [toolCalls];
-        }
 
         const validToolCalls: PendingToolCall[] = [];
 
-        console.log("toolCalls: ", toolCalls);
-
         for (const call of toolCalls) {
 
-            console.log("TYpe of: ", typeof call)
-            console.log("TYpe of: ", call)
 
             if (typeof call.name !== 'string') {
-                console.warn("[LLMDataHandler] Skipping malformed tool call object:", call);
-                continue;
+                throw new AgentError(`[LLMDataHandler] Tool call is missing a valid 'name' property or is malformed. Offending tool: ${JSON.stringify(call)}. Hint: Each tool call must have a 'name' property matching a known tool.`, AgentErrorType.MALFORMED_TOOL_FOUND)    
             }
 
             const toolDef = tools.find(t => t.name === call.name);
             if (!toolDef) {
-                console.warn(`[LLMDataHandler] LLM requested a non-existent tool: '${call.name}'.`);
-                // Still add it so the loop can handle the error properly
-                validToolCalls.push(call);
-                continue;
+                throw new AgentError(`[LLMDataHandler] Tool "${call.name}" does not exist. Available tools: ${tools.map(t => t.name).join(", ")}. Hint: Check for typos or update your tool definitions.`, AgentErrorType.TOOL_NOT_FOUND)    
             }
 
             const validation = toolDef.responseSchema.safeParse(call);
             if (!validation.success) {
-                console.error(`[LLMDataHandler] Schema validation failed for tool '${call.name}'.`, {
-                    errors: validation.error.flatten(),
-                    data: call,
-                });
-                continue;
+                throw new AgentError(`[LLMDataHandler] Tool "${call.name}" has an invalid schema. Validation errors: ${JSON.stringify(validation.error?.issues)}. Hint: Ensure the tool call matches the expected schema for "${call.name}".`, AgentErrorType.TOOL_NOT_FOUND)   
             }
 
             validToolCalls.push(validation.data as PendingToolCall);
@@ -142,12 +123,8 @@ export class LLMDataHandler implements AIProvider {
 
             return res;
         } catch (error: any) {
-            console.error("Error calling LLM provider:", error.message);
-            throw new AgentError(
-                `Error communicating with LLM: ${error.message}`,
-                AgentErrorType.INVALID_RESPONSE,
-                { originalError: error }
-            );
+
+            throw error;
         }
     }
 

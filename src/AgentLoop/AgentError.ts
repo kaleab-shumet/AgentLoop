@@ -12,6 +12,8 @@ export enum AgentErrorType {
     INVALID_TOOL_NAME = 'INVALID_TOOL_NAME',
     CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
     INVALID_SCHEMA = "INVALID_SCHEMA",
+    UNKNOWN = "UNKNOWN",
+    MALFORMED_TOOL_FOUND = "MALFORMED_TOOL_FOUND",
   }
   
   export class AgentError extends Error {

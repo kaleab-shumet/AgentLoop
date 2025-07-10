@@ -25,7 +25,7 @@ Users may ask about the weather, the news, or both in a single request. Always r
     super(config, {
       maxIterations: 15,
       toolTimeoutMs: 30000,
-      retryAttempts: 3,
+      retryAttempts: 5,
       parallelExecution: false,
     });
 
