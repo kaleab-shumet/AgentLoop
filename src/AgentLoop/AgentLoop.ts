@@ -92,6 +92,9 @@ export abstract class AgentLoop {
     for (let i = 0; i < this.maxIterations; i++) {
       this.logger.info(`[AgentLoop.run] Iteration ${i + 1}/${this.maxIterations}`);
 
+      console.log("this.toolCallHistory: ", this.toolCallHistory)
+      console.log("this.toolCallHistory.length: ", this.toolCallHistory.length)
+
       try {
         // Stagnation detection with better logic
         if (this.detectStagnation(stagnationTracker)) {
@@ -211,6 +214,7 @@ export abstract class AgentLoop {
         const result = await this._executeTool(tool, call, tempStore);
         this.toolCallHistory.push(result);
         results.push(result);
+        if (!result.success) break;
       }
       return results;
     }
@@ -485,6 +489,11 @@ export abstract class AgentLoop {
       ? `\n# ERROR RECOVERY\nThe last operation failed with: ${lastError.message}. Please try a different approach or use available tools more effectively.\n`
       : '';
 
+    const promptExecutionStrategy = this.parallelExecution? (
+      "Your tools can execute concurrently"):(
+        "Your tools execute sequentially then If one tool fails, you must retry and fix it before continuing with the other tools."
+    )
+
     const conversationSection = this.conversationHistory.length > 0
       ? `\n# CONVERSATION HISTORY\n${JSON.stringify(this.conversationHistory, null, 2)}\n`
       : '';
@@ -498,6 +507,7 @@ ${this.getFormattingInstructions()}
 You have the following tools available. You can and SHOULD call multiple tools in parallel in a single turn if the user's request requires multiple actions.
 ${toolSchemas}
 - note: You should always call the ${this.FINAL_TOOL_NAME} tool alone
+- note: ${promptExecutionStrategy}
 
 
 # CONTEXT
@@ -557,6 +567,10 @@ Remember: Think step-by-step. If the task requires gathering different pieces of
         timeoutPromise,
       ]);
 
+      if (!result.success) {
+        throw result?.error || new AgentError(`Error on execution of the tool ${tool.name}`, AgentErrorType.TOOL_EXECUTION_ERROR)
+      }
+
       return this.onToolCallSuccess(result);
     } catch (error: any) {
       if (error instanceof AgentError) {
@@ -565,7 +579,7 @@ Remember: Think step-by-step. If the task requires gathering different pieces of
       const executionError = new AgentError(
         `An unexpected error occurred in tool '${tool.name}': ${error.message}`,
         AgentErrorType.TOOL_EXECUTION_ERROR,
-        { toolName: tool.name, originalError: error }
+        { toolname: tool.name, originalError: error }
       );
       return this.onToolCallFail(executionError);
     }

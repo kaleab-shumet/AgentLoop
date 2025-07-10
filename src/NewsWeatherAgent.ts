@@ -18,6 +18,9 @@ Your capabilities include:
 Users may ask about the weather, the news, or both in a single request. Always respond helpfully, accurately, and provide detailed information when available. If a request involves both weather and news, handle both parts in your response.
 `;
 
+
+  private failcount: number = 0;
+
   constructor(config: AgentConfig) {
     super(config, {
       maxIterations: 15,
@@ -78,6 +81,11 @@ Users may ask about the weather, the news, or both in a single request. Always r
 
   private async getWeatherHandler(name: string, args: any): Promise<ToolResult> {
     try {
+
+      if(this.failcount < 5){
+        throw new Error("Error Occured, unable to get weather");
+      }
+
       // Simulate API call to weather service
       await this.sleep(1000);
 
@@ -186,6 +194,14 @@ Users may ask about the weather, the news, or both in a single request. Always r
           },
         ];
       } else if (args.query.toLowerCase().includes('iceland')) {
+
+
+        if (this.failcount < 3) {
+          this.failcount++
+          throw new Error("Unable to fetch")
+        }
+
+
         mockNews = [
           {
             headline: "Iceland Launches Ambitious Renewable Energy Project",
