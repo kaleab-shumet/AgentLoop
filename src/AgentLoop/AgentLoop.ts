@@ -228,40 +228,30 @@ export abstract class AgentLoop {
     tempStore: { [key: string]: any }
   ): Promise<ToolResult[]> {
     const results: ToolResult[] = [];
-    const resultStore = new Map<string, ToolResult>();
-    const toolMap = new Map<string, Tool<ZodTypeAny>>();
-    const callMap = new Map<string, PendingToolCall>();
+    const resultStore: ToolResult[] = [];
 
-    // Build maps for quick lookup
-    toolCalls.forEach(call => {
-      callMap.set(call.name, call);
-      const tool = this.tools.find(t => t.name === call.name);
-      if (tool) {
-        toolMap.set(call.name, tool);
-      }
-    });
 
-    // Validate all tools exist
-    for (const call of toolCalls) {
-      const tool = toolMap.get(call.name);
-      if (!tool) {
+    const validToolCalls: PendingToolCall[] = []
+
+    for (const tCall of toolCalls) {
+      const foundCall = this.tools.find(t => t.name == tCall.name);
+      if (!foundCall) {
         const error = new AgentError(
-          `Tool '${call.name}' not found.`,
+          `Tool '${tCall.name}' not found.`,
           AgentErrorType.TOOL_NOT_FOUND,
-          { toolName: call.name }
+          { toolname: tCall.name }
         );
         const result = this.onToolCallFail(error);
         this.toolCallHistory.push(result);
         results.push(result);
         continue;
       }
+
+      validToolCalls.push(tCall)
     }
 
-    // Filter out tools that had validation errors
-    const validToolCalls = toolCalls.filter(call =>
-      toolMap.has(call.name) &&
-      !results.some(r => r.toolname === call.name)
-    );
+
+
 
     if (validToolCalls.length === 0) {
       return results;
@@ -273,12 +263,15 @@ export abstract class AgentLoop {
     const running = new Set<string>();
 
     validToolCalls.forEach(call => {
-      const tool = toolMap.get(call.name)!;
-      const dependencies = tool.dependencies || [];
+      const tool = this.tools.find(t => t.name == call.name);
+      const dependencies: string[] = tool?.dependencies || [];
 
       // Filter dependencies to only include those that exist in current tool calls
       // If a dependency doesn't exist in current calls, assume it's already executed
-      const validDependencies = dependencies.filter(dep => callMap.has(dep));
+
+      const currentCallNames = new Set(validToolCalls.map(call => call.name));
+      const validDependencies = dependencies.filter(dep => currentCallNames.has(dep));
+
 
       pending.set(call.name, new Set(validDependencies));
 
@@ -291,7 +284,7 @@ export abstract class AgentLoop {
     });
 
     // Check for circular dependencies
-    const circularDeps = this.detectCircularDependencies(validToolCalls, toolMap);
+    const circularDeps = this.detectCircularDependencies(validToolCalls, this.tools);
     if (circularDeps.length > 0) {
       const error = new AgentError(
         `Circular dependencies detected: ${circularDeps.join(' -> ')}`,
@@ -317,19 +310,21 @@ export abstract class AgentLoop {
       running.add(toolName);
       this.logger.info(`[AgentLoop.executeToolCallsWithDependencies] Executing tool: ${toolName}`);
 
-      const call = callMap.get(toolName)!;
-      const tool = toolMap.get(toolName)!;
+      const calls = validToolCalls.filter(t => t.name === toolName)!;
+      const tool = this.tools.find(t => t.name === toolName)!;
 
-      stagnationTracker.push(JSON.stringify(call));
+      calls.forEach(call => stagnationTracker.push(JSON.stringify(call)))
+
 
       try {
-        const result = await this._executeTool(tool, call, tempStore);
-        resultStore.set(toolName, result);
-        this.toolCallHistory.push(result);
-        results.push(result);
+        const resultsPromises = calls.map(call => this._executeTool(tool, call, tempStore));
+        const result = await Promise.all(resultsPromises);
+        resultStore.push(...result);
+        this.toolCallHistory.push(...result);
+        results.push(...result);
       } catch (error) {
         const errorResult = this.onToolCallFail(error as AgentError);
-        resultStore.set(toolName, errorResult);
+        resultStore.push(errorResult);
         this.toolCallHistory.push(errorResult);
         results.push(errorResult);
       } finally {
@@ -368,7 +363,7 @@ export abstract class AgentLoop {
    */
   private detectCircularDependencies(
     toolCalls: PendingToolCall[],
-    toolMap: Map<string, Tool<ZodTypeAny>>
+    toolList: Tool<ZodTypeAny>[]
   ): string[] {
     const visited = new Set<string>();
     const recursionStack = new Set<string>();
@@ -390,12 +385,13 @@ export abstract class AgentLoop {
       recursionStack.add(toolName);
       path.push(toolName);
 
-      const tool = toolMap.get(toolName);
-      if (tool && tool.dependencies) {
-        // Only check dependencies that exist in current tool calls
-        for (const dep of tool.dependencies) {
-          if (callNames.has(dep) && dfs(dep)) {
-            return true;
+      for (const tool of toolList) {
+        if (tool && tool.dependencies) {
+          // Only check dependencies that exist in current tool calls
+          for (const dep of tool.dependencies) {
+            if (callNames.has(dep) && dfs(dep)) {
+              return true;
+            }
           }
         }
       }

@@ -23,6 +23,7 @@ Users may ask about the weather, the news, or both in a single request. Always r
       maxIterations: 15,
       toolTimeoutMs: 30000,
       retryAttempts: 3,
+      parallelExecution: false,
     });
 
     this.initializeTools();
@@ -259,7 +260,7 @@ const newsWeatherAgent = new NewsWeatherAgent({
 async function runNewsWeatherAgent() {
   try {
     const result = await newsWeatherAgent.run(
-      "Can you tell me news about AI, and news about the country Iceland"
+      "Can you tell me news about AI, and news about the country Iceland, also tell me about weather of newyork"
     );
 
     console.log('Agent Result:', result);
