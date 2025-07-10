@@ -14,6 +14,7 @@ export enum AgentErrorType {
     INVALID_SCHEMA = "INVALID_SCHEMA",
     UNKNOWN = "UNKNOWN",
     MALFORMED_TOOL_FOUND = "MALFORMED_TOOL_FOUND",
+    INVALID_USER_INPUT = "INVALID_USER_INPUT",
   }
   
   export class AgentError extends Error {

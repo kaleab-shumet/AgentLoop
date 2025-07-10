@@ -83,6 +83,7 @@ Users may ask about the weather, the news, or both in a single request. Always r
     try {
 
       if(this.failcount < 5){
+        this.failcount++;
         throw new Error("Error Occured, unable to get weather");
       }
 

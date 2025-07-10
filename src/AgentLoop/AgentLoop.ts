@@ -118,17 +118,15 @@ export abstract class AgentLoop {
           // Execute tool calls with better error handling
           const results = await this.executeToolCalls(parsedToolCalls, tempStore);
 
+
           const failedTools = results.filter(r => r.success === false);
 
           if (failedTools.length > 0) {
-
-            stagnationTracker.push(JSON.stringify(parsedToolCalls))
-
             const errorMessage = failedTools
               .map(f => `Tool: ${f.toolname}\n  Error: ${f.error ?? 'Unknown error'}`)
               .join('\n\n');
 
-            throw new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR);
+            throw new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR, { userPrompt, failedTools });
 
           }
 
@@ -151,22 +149,29 @@ export abstract class AgentLoop {
           if (error instanceof AgentError) {
             lastError = error
             this.logger.error(`[AgentLoop.run] Agent error: ${error.message}`);
-            this.toolCallHistory.push(this.onToolCallFail(error));
 
             if (error.type === AgentErrorType.TOOL_EXECUTION_ERROR) {
-              const toolRetryAmount = this._maxErrorRepetition(stagnationTracker)
+              
+              stagnationTracker.push(error.message)
+
+
+
+              const toolRetryAmount = stagnationTracker.filter(st => st == error.message).length
+              
               if (toolRetryAmount > this.retryAttempts - 1) {
                 this._keepRetry = false;
               }
 
               if (toolRetryAmount > this.retryAttempts) {
-                throw new AgentError("Maximum retry attempted for error: " + error.getUserMessage, AgentErrorType.MAX_ITERATIONS_REACHED)
+                throw new AgentError("Maximum retry attempted for error: " + error.getUserMessage, AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt, error });
               }
             }
 
             else {
+              this.toolCallHistory.push(this.onToolCallFail(error));
+
               if (numRetries >= this.retryAttempts) {
-                throw new AgentError("Maximum retry attempted for error: " + error.getUserMessage, AgentErrorType.MAX_ITERATIONS_REACHED)
+                throw new AgentError("Maximum retry attempted for error: " + error.getUserMessage, AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt, error });
               }
 
               numRetries++;
@@ -177,7 +182,7 @@ export abstract class AgentLoop {
         }
       }
 
-      throw new AgentError("Maximum iteration reached", AgentErrorType.MAX_ITERATIONS_REACHED)
+      throw new AgentError("Maximum iteration reached", AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt });
 
     } catch (error) {
       if (error instanceof AgentError) {
@@ -187,30 +192,13 @@ export abstract class AgentLoop {
         const agentError = new AgentError(
           error instanceof Error ? error.message : String(error),
           AgentErrorType.UNKNOWN,
-          { originalError: error }
+          { originalError: error, userPrompt }
         );
         return this.onToolCallFail(agentError);
       }
     }
   }
 
-  private _maxErrorRepetition(stagnationTracker: string[]): number {
-    const errorMap: Map<string, number> = new Map();
-
-    for (const entry of stagnationTracker) {
-      const count = errorMap.get(entry) ?? 0;
-      errorMap.set(entry, count + 1);
-    }
-
-    let maxCount = 0;
-    for (const count of errorMap.values()) {
-      if (count > maxCount) {
-        maxCount = count;
-      }
-    }
-
-    return maxCount;
-  }
 
 
   /**
@@ -317,7 +305,7 @@ export abstract class AgentLoop {
       const error = new AgentError(
         `Circular dependencies detected: ${circularDeps.join(' -> ')}`,
         AgentErrorType.TOOL_EXECUTION_ERROR,
-        { circularDependencies: circularDeps }
+        { circularDependencies: circularDeps, toolCalls: validToolCalls }
       );
       const result = this.onToolCallFail(error);
       this.toolCallHistory.push(result);
@@ -573,27 +561,29 @@ Remember: Think step-by-step. If the task requires gathering different pieces of
       }
 
       const result = await Promise.race([
-        tool.handler(tool.name, validation.data, tempStore),
+        Promise.resolve(tool.handler(tool.name, validation.data, tempStore)).catch(err => {
+          const errorMsg = `Error on execution of the tool ${tool.name}: ${err instanceof Error ? err.message : String(err)}`;
+          throw new AgentError(errorMsg, AgentErrorType.TOOL_EXECUTION_ERROR, { toolname: tool.name, call });
+        }),
         timeoutPromise,
       ]);
 
-      if (!result.success) {
+      const toolcallResult = this.onToolCallSuccess(result)
 
-        const errorMsg = result.error || `Error on execution of the tool ${tool.name}`
-        throw new AgentError(errorMsg, AgentErrorType.TOOL_EXECUTION_ERROR)
-      }
-
-      return this.onToolCallSuccess(result);
+      this.toolCallHistory.push(toolcallResult)
+      return toolcallResult;
     } catch (error: any) {
-      if (error instanceof AgentError) {
-        return this.onToolCallFail(error);
+      if (!(error instanceof AgentError)) {
+        throw new AgentError(
+          `An unexpected error occurred in tool '${tool.name}': ${error.message}`,
+          AgentErrorType.TOOL_EXECUTION_ERROR,
+          { toolname: tool.name, originalError: error, call }
+        );
       }
-      const executionError = new AgentError(
-        `An unexpected error occurred in tool '${tool.name}': ${error.message}`,
-        AgentErrorType.TOOL_EXECUTION_ERROR,
-        { toolname: tool.name, originalError: error }
-      );
-      return this.onToolCallFail(executionError);
+
+      const toolcallError = this.onToolCallFail(error)
+      this.toolCallHistory.push(toolcallError)
+      throw error
     }
   }
 
