@@ -1,7 +1,7 @@
 import readline from 'readline';
 import { AgentLoop, AgentLoopOptions } from './AgentLoop/AgentLoop';
 import { ToolResult, ChatEntry } from './AgentLoop/types';
-import { LLMDataHandler } from './AgentLoop/LLMDataHandler';
+import { AIProvider } from './AgentLoop/AIProvider';
 import z from 'zod';
 import { exec } from 'child_process';
 
@@ -37,17 +37,16 @@ Your primary goal is to assist the user by executing commands and performing web
 When the user's request requires multiple steps, you must call the necessary tools in sequence.
 Do not ask for clarification. Take the most direct action to fulfill the request.`;
 
-    constructor(llmDataHandler: LLMDataHandler, options: AgentLoopOptions) {
-        super(llmDataHandler, options);
+    constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
+        super(provider, options);
 
-        this.defineTool({
+        this.defineTool((z) => ({
           name: 'commandline',
           description: 'Executes a command on the Windows command line and returns the output. Use this for file system operations, running scripts, or any other command-line task.',
           responseSchema: z.object({
-            name: z.string().describe("The name of the tool, which is 'commandline'"),
             value: z.string().describe("The complete Windows command line command to execute"),
           }),
-          handler: async (name: string, args) => {
+          handler: async (name: string, args: any) => {
             const output = await executeCommandLine(args.value);
             return {
               toolname: name,
@@ -55,22 +54,21 @@ Do not ask for clarification. Take the most direct action to fulfill the request
               output,
             };
           },
-        });
+        }));
 
-        this.defineTool({
+        this.defineTool((z) => ({
           name: 'websearch',
           description: 'Performs a web search to find information or answer questions. Use this when you need up-to-date information or knowledge beyond your internal capabilities.',
           responseSchema: z.object({
-            name: z.string().describe("The name of the tool, which is 'websearch'"),
             query: z.string().describe('The specific search query to use for the web search'),
             url: z.string().url().optional().describe('If the user provides a URL, include it here.'),
           }),
-          handler: (name: string, args) => ({
+          handler: (name: string, args: any) => ({
             toolname: name,
             success: true,
             output: `Simulated web search for "${args.query}" ${args.url ? 'at ' + args.url : ''} was successful.`,
           }),
-        });
+        }));
     }
 
     getConversationHistory(): ChatEntry[] {
@@ -114,11 +112,18 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
+// Mock AI Provider for demo - replace with actual provider
+class MockAIProvider implements AIProvider {
+    async getCompletion(prompt: string): Promise<string> {
+        return `Mock response for prompt: ${prompt.slice(0, 50)}...`;
+    }
+}
+
 const agent = new CommandLineAgent(
-    new LLMDataHandler(),
+    new MockAIProvider(),
     {
         maxIterations: 10,
-        toolTimeoutMs: 5000, // Set a 5-second timeout for each tool
+        toolTimeoutMs: 5000,
     }
 );
 
@@ -132,10 +137,14 @@ function promptUser() {
 
     try {
       // The agent run is now a self-contained, robust process.
-      const result = await agent.run(answer);
+      const result = await agent.run({
+        userPrompt: answer,
+        conversationHistory: agent.getConversationHistory(),
+        toolCallHistory: []
+      });
       console.log('\n--- Agent Final Output ---');
       // The final result from the 'final' tool is in the 'value' property.
-      console.log(result.output?.value || 'Agent completed its work.');
+      console.log(result.finalAnswer?.output?.value || 'Agent completed its work.');
       console.log('--------------------------\n');
     } catch (e: any) {
       console.error('\n--- Agent Run Failed ---');

@@ -5,10 +5,8 @@ import { LLMDataHandler } from './LLMDataHandler';
 import { Logger } from './Logger';
 import {
   ChatEntry, ToolResult, Tool, PendingToolCall,
-  AgentRunInput, AgentRunOutput
+  AgentRunInput, AgentRunOutput, ExecutionMode
 } from './types';
-import zodToJsonSchema from 'zod-to-json-schema';
-import { convertJsonSchemaToXsd } from './JsonToXsd';
 import { AIProvider } from './AIProvider';
 import { TurnState } from './TurnState';
 
@@ -40,7 +38,8 @@ export interface AgentLoopOptions {
   toolTimeoutMs?: number;
   retryAttempts?: number;
   retryDelay?: number;
-  hooks?: AgentLifecycleHooks; // Add hooks to options
+  hooks?: AgentLifecycleHooks;
+  executionMode?: ExecutionMode; // Add execution mode option
 }
 
 /**
@@ -71,14 +70,14 @@ export abstract class AgentLoop {
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.llmDataHandler = new LLMDataHandler();
+    this.llmDataHandler = new LLMDataHandler(options.executionMode || ExecutionMode.XML);
     this.logger = options.logger || console;
     this.maxIterations = options.maxIterations || 10;
     this.toolTimeoutMs = options.toolTimeoutMs || 30000;
     this.retryAttempts = options.retryAttempts || 3;
     this.retryDelay = options.retryDelay || 1000;
     this.parallelExecution = options.parallelExecution ?? false;
-    this.hooks = options.hooks || {}; // Initialize hooks
+    this.hooks = options.hooks || {};
   }
 
   /**
@@ -88,6 +87,20 @@ export abstract class AgentLoop {
   protected defineTool(fn: (schema: typeof z) => any): void {
     const dfTool = fn(z);
     this._addTool(dfTool);
+  }
+
+  /**
+   * Set the execution mode for the agent
+   */
+  public setExecutionMode(mode: ExecutionMode): void {
+    this.llmDataHandler.setExecutionMode(mode);
+  }
+
+  /**
+   * Get the current execution mode
+   */
+  public getExecutionMode(): ExecutionMode {
+    return this.llmDataHandler.getExecutionMode();
   }
 
   /**
@@ -371,24 +384,20 @@ export abstract class AgentLoop {
   }
 
   private constructPrompt(userPrompt: string, context: Record<string, any>, lastError: AgentError | null, conversationHistory: ChatEntry[], toolCallHistory: ToolResult[], keepRetry: boolean): string {
-    const toolSchemas = this.tools.map(tool => {
-      const jsonSchema = zodToJsonSchema(tool.responseSchema, tool.name);
-      const xsdSchema = convertJsonSchemaToXsd(jsonSchema as any, { rootElementName: 'tool' });
-      return `\n${xsdSchema}`;
-    }).join('\n\n');
-    // toolCallHistory is now always the latest
+    const toolDefinitions = this.llmDataHandler.formatToolDefinitions(this.tools);
+    const formatInstructions = this.llmDataHandler.getFormatInstructions(this.tools, this.FINAL_TOOL_NAME, this.parallelExecution);
+    
     const historyLog = toolCallHistory.length > 0 ? JSON.stringify(toolCallHistory.slice(-10), null, 2) : 'No tool calls have been made yet.';
     const contextLog = Object.keys(context).length > 0 ? Object.entries(context).map(([key, value]) => `**${key}**:\n${JSON.stringify(value)}`).join('\n\n') : 'No background context provided.';
     const retryInstruction = keepRetry ? "You have more attempts. Analyze the error and history, then retry with a corrected approach." : "You have reached the maximum retry limit. You MUST stop and use the 'final' tool to report what you have accomplished and explain the failure.";
     const errorRecoverySection = lastError ? `\n# ERROR RECOVERY\n- **Error:** ${lastError.message}\n- **Instruction:** ${retryInstruction}` : "";
-    const executionStrategyPrompt = this.parallelExecution ? "Your tools can execute concurrently. You should call all necessary tools for a task in a single turn." : "Your tools execute sequentially. If one tool fails, you must retry and fix it before continuing.";
     const conversationSection = conversationHistory.length > 0 ? `\n# CONVERSATION HISTORY\n${JSON.stringify(conversationHistory, null, 2)}\n` : '';
+    
     const template = `${this.systemPrompt}
 # OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS
-${this.getFormattingInstructions()}
+${formatInstructions}
 # AVAILABLE TOOLS
-${toolSchemas}
-- **Execution Strategy:** ${executionStrategyPrompt}
+${toolDefinitions}
 # CONTEXT
 ${contextLog}
 ${conversationSection}
@@ -433,32 +442,21 @@ Remember: Think step-by-step. If you have enough information to provide a comple
     return result;
   }
 
-  private getFormattingInstructions(): string {
-    return `You MUST respond by calling one or more tools. Your entire output must be a single, valid XML block enclosed in \`\`\`xml ... \`\`\`. All tool calls must be children under a single <root> XML tag. **IMPORTANT RULES:**
-1.  **CALL MULTIPLE TOOLS:** If a request requires multiple actions, you MUST call all necessary tools in a single response.
-2.  **USE THE '${this.FINAL_TOOL_NAME}' TOOL TO FINISH:** When you have a complete and final answer, you MUST call the '${this.FINAL_TOOL_NAME}' tool. This tool MUST be the ONLY one in your response.
-3.  **REVIEW HISTORY:** Always review the tool call history to avoid repeating work.
-**Example of a parallel tool call:**
-\`\`\`xml
-<root>
-  <get_weather><name>get_weather</name><city>Paris</city></get_weather>
-  <web_search><name>web_search</name><query>latest news about AI</query></web_search>
-</root>
-\`\`\`
-**Example of a final answer:**
-\`\`\`xml
-<root>
-  <${this.FINAL_TOOL_NAME}><name>${this.FINAL_TOOL_NAME}</name><value>The weather in Paris is sunny, and the latest AI news is about a new model release from OpenAI.</value></${this.FINAL_TOOL_NAME}>
-</root>
-\`\`\``;
-  }
 
   private _addTool<T extends ZodTypeAny>(tool: Tool<T>): void {
     if (this.tools.some(t => t.name === tool.name)) throw new AgentError(`A tool with the name '${tool.name}' is already defined.`, AgentErrorType.DUPLICATE_TOOL_NAME, { toolname: tool.name });
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tool.name)) throw new AgentError(`Tool name '${tool.name}' must start with a letter or underscore and contain only letters, numbers, and underscores.`, AgentErrorType.INVALID_TOOL_NAME, { toolname: tool.name });
     if (!(tool.responseSchema instanceof ZodObject)) throw new AgentError(`The responseSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolname: tool.name });
+    
+    // Set default timeout if not provided
+    const toolWithDefaults = {
+      ...tool,
+      timeout: tool.timeout || this.toolTimeoutMs,
+      dependencies: tool.dependencies || []
+    };
+    
     const enhancedSchema = tool.responseSchema.extend({ name: z.string().describe("The name of the tool, which must match the tool's key.") });
-    this.tools.push({ ...tool, responseSchema: enhancedSchema } as unknown as Tool<ZodTypeAny>);
+    this.tools.push({ ...toolWithDefaults, responseSchema: enhancedSchema } as unknown as Tool<ZodTypeAny>);
     this.logger.debug(`[AgentLoop._addTool] Tool '${tool.name}' defined successfully.`);
   }
 

@@ -2,6 +2,35 @@ import z, { ZodTypeAny } from "zod";
 import { TurnState } from "./TurnState";
 
 /**
+ * Execution mode for the agent - determines how tool calls are formatted and parsed
+ */
+export enum ExecutionMode {
+  XML = "xml",
+  FUNCTION_CALLING = "function_calling"
+}
+
+/**
+ * OpenAI-style function call structure
+ */
+export interface FunctionCall {
+  name: string;
+  arguments: string; // JSON string
+}
+
+/**
+ * OpenAI-style function definition for tool schema
+ */
+export interface FunctionDefinition {
+  name: string;
+  description: string;
+  parameters: {
+    type: "object";
+    properties: Record<string, any>;
+    required?: string[];
+  };
+}
+
+/**
  * Represents the result of a single tool execution.
  * This is stored in the agent's history.
  */
@@ -64,7 +93,7 @@ export interface ChatEntry {
  * Defines the structure for a tool that can be used by the agent.
  */
 export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
-  timeout: number;
+  timeout?: number;
   /** The unique name of the tool. Must not contain spaces or special characters. */
   name: string;
   /** A clear, detailed description of what the tool does, for the LLM. */
@@ -72,7 +101,19 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   /** A Zod schema defining the arguments the tool expects. */
   responseSchema: T;
   /** The handler function that executes the tool's logic. */
-  dependencies: [];
+  dependencies?: string[];
   handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolResult | Promise<ToolResult>;
 };
+
+/**
+ * Interface for handling different response formats (XML vs Function Calling)
+ */
+export interface ResponseHandler {
+  /** Parse LLM response and extract tool calls */
+  parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[];
+  /** Generate prompt instructions for the specific format */
+  getFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string;
+  /** Convert tool definitions to the required format for the LLM */
+  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string;
+}
 

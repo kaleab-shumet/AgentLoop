@@ -1,7 +1,6 @@
 // NewsWeatherAgent.ts
 
 import { AgentLoop } from './AgentLoop/AgentLoop';
-import { AgentError } from './AgentLoop/AgentError';
 import { ToolResult } from './AgentLoop/types';
 import { GeminiAIProvider } from './AgentLoop/GeminiAIProvider';
 
