@@ -1,4 +1,5 @@
 import z, { ZodTypeAny } from "zod";
+import { TurnState } from "./TurnState";
 
 /**
  * Represents the result of a single tool execution.
@@ -37,10 +38,6 @@ export interface AgentRunInput {
  * This entire object should be persisted by the developer to continue the conversation.
  */
 export interface AgentRunOutput {
-  /** The result of the tools that were executed in this turn. */
-  results: ToolResult[];
-  /** The final conversation history after this turn. */
-  conversationHistory: ChatEntry[];
   /** The final tool call history after this turn. */
   toolCallHistory: ToolResult[];
   /** The final answer from the 'final' tool, if it was called. */
@@ -78,3 +75,4 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   dependencies: [];
   handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolResult | Promise<ToolResult>;
 };
+
