@@ -268,7 +268,7 @@ Users may ask about the weather, the news, or both in a single request. Always r
 
 const newsWeatherAgent = new NewsWeatherAgent({
   apiKey: process.env.GEMINI_API_KEY || 'AIzaSyBBvprrxsMRaS7I1RTrX7IhH8-qBWs_S7A',
-  model: 'gemini-2.5-flash',
+  model: 'gemini-2.0-flash',
   service: 'google',
   temperature: 0.7,
 });

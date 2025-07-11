@@ -118,13 +118,15 @@ export abstract class AgentLoop {
           // Execute tool calls with better error handling
           const results = await this.executeToolCalls(parsedToolCalls, tempStore);
 
+          this.toolCallHistory.push(...results)
+
 
           const failedTools = results.filter(r => r.success === false);
 
           if (failedTools.length > 0) {
             const errorMessage = failedTools
               .map(f => `Tool: ${f.toolname}\n  Error: ${f.error ?? 'Unknown error'}`)
-              .join('\n\n');
+              .join('\n');
 
             throw new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR, { userPrompt, failedTools });
 
@@ -151,18 +153,16 @@ export abstract class AgentLoop {
             this.logger.error(`[AgentLoop.run] Agent error: ${error.message}`);
 
             if (error.type === AgentErrorType.TOOL_EXECUTION_ERROR) {
-              
+
               stagnationTracker.push(error.message)
 
-
-
               const toolRetryAmount = stagnationTracker.filter(st => st == error.message).length
-              
+
               if (toolRetryAmount > this.retryAttempts - 1) {
                 this._keepRetry = false;
               }
 
-              if (toolRetryAmount > this.retryAttempts) {
+              if (toolRetryAmount >= this.retryAttempts) {
                 throw new AgentError("Maximum retry attempted for error: " + error.getUserMessage, AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt, error });
               }
             }
@@ -185,20 +185,18 @@ export abstract class AgentLoop {
       throw new AgentError("Maximum iteration reached", AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt });
 
     } catch (error) {
-      if (error instanceof AgentError) {
-        return this.onToolCallFail(error);
-      } else {
+      let agentError = error
+      if (!(error instanceof AgentError)) {
         // Wrap unknown errors in an AgentError before handling
-        const agentError = new AgentError(
+        agentError = new AgentError(
           error instanceof Error ? error.message : String(error),
           AgentErrorType.UNKNOWN,
           { originalError: error, userPrompt }
         );
-        return this.onToolCallFail(agentError);
       }
+      return this.onToolCallFail(agentError as AgentError);
     }
   }
-
 
 
   /**
@@ -569,21 +567,20 @@ Remember: Think step-by-step. If the task requires gathering different pieces of
       ]);
 
       const toolcallResult = this.onToolCallSuccess(result)
-
-      this.toolCallHistory.push(toolcallResult)
       return toolcallResult;
     } catch (error: any) {
-      if (!(error instanceof AgentError)) {
-        throw new AgentError(
+
+      let err = error
+      if (!(err instanceof AgentError)) {
+        err = new AgentError(
           `An unexpected error occurred in tool '${tool.name}': ${error.message}`,
           AgentErrorType.TOOL_EXECUTION_ERROR,
           { toolname: tool.name, originalError: error, call }
         );
       }
 
-      const toolcallError = this.onToolCallFail(error)
-      this.toolCallHistory.push(toolcallError)
-      throw error
+      const toolcallError = this.onToolCallFail(err)
+      return toolcallError
     }
   }
 
