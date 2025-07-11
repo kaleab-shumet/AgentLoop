@@ -90,7 +90,7 @@ Do not ask for clarification. Take the most direct action to fulfill the request
             toolname: error.toolname || 'unknown',
             success: false,
             error: error.message || 'Unknown error',
-            context: error.context || {}
+            errorContext: error.context || {}
         };
     }
 

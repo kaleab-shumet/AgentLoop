@@ -1,8 +1,9 @@
 // NewsWeatherAgent.ts
 
-import { AgentLoop, AgentConfig } from './AgentLoop/AgentLoop';
+import { AgentLoop } from './AgentLoop/AgentLoop';
 import { AgentError } from './AgentLoop/AgentError';
 import { ToolResult } from './AgentLoop/types';
+import { GeminiAIProvider } from './AgentLoop/GeminiAIProvider';
 
 export class NewsWeatherAgent extends AgentLoop {
   protected systemPrompt = `
@@ -21,13 +22,10 @@ Users may ask about the weather, the news, or both in a single request. Always r
 
   private failcount: number = 0;
 
-  constructor(config: AgentConfig) {
-    super(config, {
-      maxIterations: 15,
-      toolTimeoutMs: 30000,
-      retryAttempts: 5,
-      parallelExecution: false,
-    });
+
+  constructor(config: any, agentLoopOptions = {}) {
+    const geminiAIProvider = new GeminiAIProvider(config);
+    super(geminiAIProvider, agentLoopOptions);
 
     this.initializeTools();
   }
@@ -255,14 +253,16 @@ const newsWeatherAgent = new NewsWeatherAgent({
   model: 'gemini-2.0-flash',
   service: 'google',
   temperature: 0.7,
-});
+}, { retryAttempts: 5 });
 
 // Run the agent
 async function runNewsWeatherAgent() {
   try {
-    const result = await newsWeatherAgent.run(
-      "Can you tell me news about AI, and news about the country Iceland, also tell me about weather of newyork"
-    );
+    const result = await newsWeatherAgent.run({
+      userPrompt: "Can you tell me news about AI, and news about the country Iceland, also tell me about weather of newyork",
+      conversationHistory: [],
+      toolCallHistory: []
+    });
 
     console.log('Agent Result:', result);
   } catch (error) {

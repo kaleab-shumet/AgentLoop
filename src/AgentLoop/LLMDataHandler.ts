@@ -1,32 +1,15 @@
 // Enhanced LLMDataHandler.ts
 
-import LLM from "@themaximalist/llm.js"
-import { AIProvider } from "./AIProvider";
+
 import { ZodTypeAny } from "zod";
 import { Tool, PendingToolCall } from "./types";
 import { XMLParser } from 'fast-xml-parser';
 import { AgentError, AgentErrorType } from "./AgentError";
 
-export interface LLMConfig {
-    apiKey: string;
-    model?: string;
-    service?: string;
-    temperature?: number;
-    maxTokens?: number;
-}
 
-export class LLMDataHandler implements AIProvider {
-    private config: LLMConfig;
 
-    constructor(config: LLMConfig) {
-        this.config = {
-            model: "gemini-1.5-flash",
-            service: "google",
-            temperature: 0.7,
-            maxTokens: 4000,
-            ...config
-        };
-    }
+export class LLMDataHandler {
+   
 
     /**
      * Enhanced parsing and validation with better error handling
@@ -88,46 +71,7 @@ export class LLMDataHandler implements AIProvider {
         return validToolCalls;
     }
 
-    /**
-     * Enhanced completion with better error handling and configuration
-     */
-    async getCompletion(prompt: string): Promise<string> {
-        console.log("\n[LLMDataHandler] Sending prompt to LLM... (showing first 500 chars)");
-        console.log(prompt.substring(0, 500) + '...');
-        console.log("----------------------------------\n");
-
-        try {
-            if (!this.config.apiKey || this.config.apiKey === "YOUR_API_KEY_HERE") {
-                throw new AgentError(
-                    "API key not configured. Please set the apiKey in your agent configuration.",
-                    AgentErrorType.INVALID_RESPONSE
-                );
-            }
-
-            let res = "";
-            const response = await LLM(prompt, {
-                model: this.config.model,
-                service: this.config.service,
-                apiKey: this.config.apiKey,
-                temperature: this.config.temperature,
-                max_tokens: this.config.maxTokens,
-            });
-
-            for await (const message of response) {
-                res += message;
-            }
-
-            console.log("\n[LLMDataHandler] Received response from LLM:");
-            console.log(res);
-            console.log("----------------------------------\n");
-
-            return res;
-        } catch (error: any) {
-
-            throw error;
-        }
-    }
-
+   
     /**
      * Extract code block from markdown
      */
