@@ -82,7 +82,7 @@ Users may ask about the weather, the news, or both in a single request. Always r
   private async getWeatherHandler(name: string, args: any): Promise<ToolResult> {
     try {
 
-      if(this.failcount < 5){
+      if (this.failcount < 5) {
         this.failcount++;
         throw new Error("Error Occured, unable to get weather");
       }
@@ -246,22 +246,6 @@ Users may ask about the weather, the news, or both in a single request. Always r
   // Change from private to protected
   protected sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  // Required abstract method implementations
-  public onToolCallFail(error: AgentError): ToolResult {
-    this.logger.error(`[NewsWeatherAgent] Tool call failed: ${error.message}`, error.context);
-    return {
-      toolname: error.context.toolName || 'unknown',
-      success: false,
-      error: error.getUserMessage(),
-      context: error.context,
-    };
-  }
-
-  public onToolCallSuccess(toolResult: ToolResult): ToolResult {
-    this.logger.info(`[NewsWeatherAgent] Tool call succeeded: ${toolResult.toolname}`);
-    return toolResult;
   }
 }
 

@@ -750,7 +750,29 @@ Remember: Think step-by-step. If the task requires gathering different pieces of
     }
   }
 
-  // Abstract methods for subclasses to implement
-  public abstract onToolCallFail(error: AgentError): ToolResult;
-  public abstract onToolCallSuccess(toolResult: ToolResult): ToolResult;
+  // Default implementations for tool call success/failure handling
+  public onToolCallSuccess(toolResult: ToolResult): ToolResult {
+    // Default implementation: log success and return the result as-is
+    this.logger.info(`[AgentLoop.onToolCallSuccess] Tool '${toolResult.toolname}' executed successfully`);
+    return toolResult;
+  }
+
+  public onToolCallFail(error: AgentError): ToolResult {
+    // Default implementation: log error and return a failure result
+    this.logger.error(`[AgentLoop.onToolCallFail] Tool execution failed: ${error.message}`, {
+      errorType: error.type,
+      context: error.context
+    });
+
+    return {
+      toolname: error.context?.toolname || 'unknown',
+      success: false,
+      error: error.getUserMessage(),
+      context: {
+        errorType: error.type,
+        originalError: error.message,
+        ...error.context
+      }
+    };
+  }
 }
