@@ -22,7 +22,6 @@ export class XmlResponseHandler implements ResponseHandler {
     try {
       parsedJs = this.parseXmlToJs(xmlContent);
     } catch (error: any) {
-      console.error("[XmlResponseHandler] Failed to parse XML.", { error: error.message });
       throw new AgentError(
         `[XmlResponseHandler] Failed to parse XML. Details: ${error.message}. Possible causes: malformed XML syntax or unexpected structure. Hint: Check the LLM's XML output for errors.`,
         AgentErrorType.INVALID_RESPONSE
@@ -92,23 +91,27 @@ export class XmlResponseHandler implements ResponseHandler {
       "Your tools can execute concurrently. You should call all necessary tools for a task in a single turn." : 
       "Your tools execute sequentially. If one tool fails, you must retry and fix it before continuing.";
 
-    return `You MUST respond by calling one or more tools. Your entire output must be a single, valid XML block enclosed in \`\`\`xml ... \`\`\`. All tool calls must be children under a single <root> XML tag. **IMPORTANT RULES:**
-1.  **CALL MULTIPLE TOOLS:** If a request requires multiple actions, you MUST call all necessary tools in a single response.
-2.  **USE THE '${finalToolName}' TOOL TO FINISH:** When you have a complete and final answer, you MUST call the '${finalToolName}' tool. This tool MUST be the ONLY one in your response.
-3.  **REVIEW HISTORY:** Always review the tool call history to avoid repeating work.
-**Example of a parallel tool call:**
+    return `You MUST respond by calling one or more tools. Your entire output must be a single, valid XML block enclosed in \`\`\`xml ... \`\`\`. All tool calls must be children under a single <root> XML tag. 
+
+**CRITICAL TERMINATION RULES:**
+1. **NEVER REPEAT SUCCESSFUL OPERATIONS:** Before making any tool call, check the tool call history. If a tool has already succeeded for the same purpose, DO NOT call it again.
+2. **MANDATORY TERMINATION:** You MUST call the '${finalToolName}' tool when:
+   - You have successfully completed the user's request
+   - All required information has been gathered or operations completed
+   - You can provide a complete answer to the user
+3. **SINGLE FINAL TOOL:** When using '${finalToolName}', it must be the ONLY tool in your response.
+4. **NO REDUNDANT WORK:** If the history shows a task is complete, immediately use '${finalToolName}' with the results.
+
+**WORKFLOW DECISION PROCESS:**
+- Check history → Identify what's been done → Determine what's still needed → Either do remaining work OR use '${finalToolName}' if complete
+
+**Example of completing after successful operations:**
 \`\`\`xml
 <root>
-  <get_weather><name>get_weather</name><city>Paris</city></get_weather>
-  <web_search><name>web_search</name><query>latest news about AI</query></web_search>
+  <${finalToolName}><name>${finalToolName}</name><value>I have successfully completed your request. [Summarize what was accomplished based on the history]</value></${finalToolName}>
 </root>
 \`\`\`
-**Example of a final answer:**
-\`\`\`xml
-<root>
-  <${finalToolName}><name>${finalToolName}</name><value>The weather in Paris is sunny, and the latest AI news is about a new model release from OpenAI.</value></${finalToolName}>
-</root>
-\`\`\`
+
 - **Execution Strategy:** ${executionStrategyPrompt}`;
   }
 

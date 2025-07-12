@@ -154,7 +154,6 @@ export class XsdConversionError extends Error {
       } else if (jsonSchema.title && this.globalDefinitions[jsonSchema.title] && this.globalDefinitions[jsonSchema.title] !== jsonSchema) {
           // If the root schema has a title that clashes with a global definition, but they are different objects,
           // prioritize the definition for the type, and give the root element a generic name.
-          console.warn(`[Warning] Root schema title '${jsonSchema.title}' clashes with a global definition. Root element will be named '${finalRootElementName}' and its type will be the definition '${jsonSchema.title}'.`);
           rootSchemaForElement = this.globalDefinitions[jsonSchema.title]; // Use the definition object for type resolution
       } else {
           // Standard case: root element name from options or provided.
@@ -323,7 +322,6 @@ export class XsdConversionError extends Error {
           } else if (subSchema.type && subSchema.type !== 'object') {
             // Handle cases where allOf might combine a ref with a primitive type (uncommon for XSD extension)
             // For now, we'll prioritize object merging.
-            console.warn(`[Warning] 'allOf' in type '${typeName}' contains a non-object sub-schema without properties. This might not be fully represented in XSD.`);
           }
         }
   
@@ -363,7 +361,6 @@ export class XsdConversionError extends Error {
       if (schema.additionalProperties === true) {
         content += `  <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>\n`;
       } else if (typeof schema.additionalProperties === 'object') {
-        console.warn(`[Warning] 'additionalProperties' with a schema in type '${typeName}' is not fully supported in XSD 1.0 and will be ignored.`);
       }
   
       return `\n<xs:complexType name="${typeName}">${doc}\n${content}</xs:complexType>\n`;
@@ -424,7 +421,6 @@ export class XsdConversionError extends Error {
       if (typeof schema.items !== 'object' || schema.items === null) {
         // If items is boolean (e.g., items: true), XSD cannot strictly represent it.
         // If items is missing, it implies any type, which is handled by processContents="lax" on xs:any.
-        console.warn(`[Warning] Array 'items' in schema '${schema.title || 'anonymous array'}' is not an object schema and might not be fully represented in XSD.`);
         return '';
       }
   
@@ -548,7 +544,6 @@ ${restrictions}
         if (nonNullTypes.length > 1) {
           // XSD 1.0 doesn't directly support union types like ["string", "number"].
           // We'll default to 'string' or 'anyType' and warn.
-          console.warn(`[Warning] Union type '${schema.type.join(', ')}' is not fully supported in XSD 1.0. Mapping to 'xs:anyType'.`);
           return { primaryType: 'any', nillable: schema.type.includes('null') };
         }
         return {

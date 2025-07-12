@@ -73,28 +73,50 @@ ${tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}`;
     }
     
     const entries = maxEntries ? toolCallHistory.slice(-maxEntries) : toolCallHistory;
-    const historyLog = entries.length > 0 
-      ? JSON.stringify(entries, null, 2) 
-      : 'No tool calls have been made yet.';
     
-    return `# TOOL CALL HISTORY\n${historyLog}`;
+    if (entries.length === 0) {
+      return '# TOOL CALL HISTORY\nNo tool calls have been made yet.';
+    }
+    
+    // Analyze completion status
+    const successfulTools = entries.filter(entry => entry.success);
+    const failedTools = entries.filter(entry => !entry.success);
+    
+    let statusSummary = '';
+    if (successfulTools.length > 0) {
+      statusSummary += `\n**SUCCESSFUL OPERATIONS (${successfulTools.length}):** ${successfulTools.map(t => t.toolname).join(', ')}`;
+    }
+    if (failedTools.length > 0) {
+      statusSummary += `\n**FAILED OPERATIONS (${failedTools.length}):** ${failedTools.map(t => t.toolname).join(', ')}`;
+    }
+    
+    const historyLog = JSON.stringify(entries, null, 2);
+    
+    return `# TOOL CALL HISTORY${statusSummary}\n\n${historyLog}`;
   }
 
   buildErrorRecoverySection(error: AgentError | null, keepRetry: boolean): string {
     if (!error) return '';
     
     const retryInstruction = keepRetry 
-      ? (this.config.errorRecoveryInstructions || "You have more attempts. Analyze the error and history, then retry with a corrected approach.")
-      : "You have reached the maximum retry limit. You MUST stop and use the 'final' tool to report what you have accomplished and explain the failure.";
+      ? (this.config.errorRecoveryInstructions || "You have more attempts. Analyze the error and history, then retry with a corrected approach. If the same error persists, try alternative approaches or use the 'final' tool to report the issue.")
+      : "⚠️ You have reached the maximum retry limit. You MUST IMMEDIATELY use the 'final' tool to report what you accomplished and explain what went wrong. DO NOT attempt more tool calls.";
     
-    return `\n# ERROR RECOVERY\n- **Error:** ${error.message}\n- **Instruction:** ${retryInstruction}`;
+    return `\n# ERROR RECOVERY\n- **Last Error:** ${error.message}\n- **Recovery Instruction:** ${retryInstruction}`;
   }
 
   buildTaskSection(userPrompt: string, finalToolName: string): string {
     return `# CURRENT TASK
 Based on all the information above, use your tools to respond to this user request:
 "${userPrompt}"
-Remember: Think step-by-step. If you have enough information to provide a complete answer, you MUST call the '${finalToolName}' tool by itself.`;
+
+**CRITICAL DECISION POINT:**
+Before proceeding, analyze the tool call history above:
+1. **If the task is already complete** (all required operations succeeded): Call ONLY the '${finalToolName}' tool with a summary of what was accomplished.
+2. **If work remains**: Call only the tools needed to complete the remaining work.
+3. **Never repeat successful operations** - this wastes iterations and delays completion.
+
+Remember: Your goal is efficient task completion, not tool repetition.`;
   }
 }
 

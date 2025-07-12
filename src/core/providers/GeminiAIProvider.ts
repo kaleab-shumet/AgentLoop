@@ -24,9 +24,6 @@ export class GeminiAIProvider implements AIProvider{
      * Enhanced completion with better error handling and configuration
      */
      async getCompletion(prompt: string, options?: { model?: string; temperature?: number; maxTokens?: number }): Promise<string> {
-        console.log("\n[LLMDataHandler] Sending prompt to LLM... (showing first 500 chars)");
-        console.log(prompt.substring(0, 500) + '...');
-        console.log("----------------------------------\n");
 
         try {
             if (!this.config.apiKey || this.config.apiKey === "YOUR_API_KEY_HERE") {
@@ -49,9 +46,6 @@ export class GeminiAIProvider implements AIProvider{
                 res += message;
             }
 
-            console.log("\n[LLMDataHandler] Received response from LLM:");
-            console.log(res);
-            console.log("----------------------------------\n");
 
             return res;
         } catch (error: any) {

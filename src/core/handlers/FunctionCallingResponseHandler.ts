@@ -128,10 +128,19 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
       "You can call multiple functions concurrently in a single response." : 
       "You should call functions sequentially. If one function fails, retry and fix it before continuing.";
 
-    return `You MUST respond by calling one or more functions. Use the following JSON format enclosed in \`\`\`json ... \`\`\`. **IMPORTANT RULES:**
-1. **CALL MULTIPLE FUNCTIONS:** If a request requires multiple actions, call all necessary functions in a single response.
-2. **USE THE '${finalToolName}' FUNCTION TO FINISH:** When you have a complete final answer, call the '${finalToolName}' function. This function should be the ONLY one in your response.
-3. **REVIEW HISTORY:** Always review the function call history to avoid repeating work.
+    return `You MUST respond by calling one or more functions. Use the following JSON format enclosed in \`\`\`json ... \`\`\`. 
+
+**CRITICAL TERMINATION RULES:**
+1. **NEVER REPEAT SUCCESSFUL OPERATIONS:** Before making any function call, check the function call history. If a function has already succeeded for the same purpose, DO NOT call it again.
+2. **MANDATORY TERMINATION:** You MUST call the '${finalToolName}' function when:
+   - You have successfully completed the user's request
+   - All required information has been gathered or operations completed
+   - You can provide a complete answer to the user
+3. **SINGLE FINAL FUNCTION:** When using '${finalToolName}', it must be the ONLY function in your response.
+4. **NO REDUNDANT WORK:** If the history shows a task is complete, immediately use '${finalToolName}' with the results.
+
+**WORKFLOW DECISION PROCESS:**
+- Check history → Identify what's been done → Determine what's still needed → Either do remaining work OR use '${finalToolName}' if complete
 
 **Format for single function call:**
 \`\`\`json
@@ -143,28 +152,12 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
 }
 \`\`\`
 
-**Format for multiple function calls:**
-\`\`\`json
-{
-  "function_calls": [
-    {
-      "name": "get_weather",
-      "arguments": "{\"city\": \"Paris\"}"
-    },
-    {
-      "name": "web_search",
-      "arguments": "{\"query\": \"latest AI news\"}"
-    }
-  ]
-}
-\`\`\`
-
-**Example of final answer:**
+**Example of completing after successful operations:**
 \`\`\`json
 {
   "function_call": {
     "name": "${finalToolName}",
-    "arguments": "{\"value\": \"The weather in Paris is sunny, and the latest AI news is about a new model release from OpenAI.\"}"
+    "arguments": "{\"value\": \"I have successfully completed your request. [Summarize what was accomplished based on the history]\"}"
   }
 }
 \`\`\`
