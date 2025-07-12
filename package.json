@@ -9,7 +9,7 @@
     "build": "tsc",
     "dev": "ts-node src/index.ts",
     "test": "jest",
-    "clean": "rm -rf dist",
+    "clean": "rmdir -rf dist",
     "prepublish": "npm run clean && npm run build",
     "test:robustness": "npm run build && node dist/examples/test-master-suite.js",
     "test:robustness:quick": "npm run build && node dist/examples/test-master-suite.js --quick",
