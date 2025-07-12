@@ -13,7 +13,7 @@ export class StressTestSuite {
 
   constructor() {
     const config = {
-      apiKey: process.env.GEMINI_API_KEY || 'AIzaSyBBvprrxsMRaS7I1RTrX7IhH8-qBWs_S7A',
+      apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key',
       model: 'gemini-2.0-flash'
     };
     

@@ -24,7 +24,7 @@ async function debugTest(): Promise<void> {
   console.log(`📁 WSL directory exists: ${fs.existsSync(wslPath)}`);
 
   const config = {
-    apiKey: process.env.GEMINI_API_KEY || 'AIzaSyCUJwUBXdjfJuW0OGy5e68zAMWK_MEu8D4',
+    apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key',
     model: 'gemini-2.0-flash'
   };
 
