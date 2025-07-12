@@ -1,0 +1,49 @@
+{
+  "name": "agentloop",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "test": "jest",
+    "clean": "rm -rf dist",
+    "prepublish": "npm run clean && npm run build",
+    "test:robustness": "npm run build && node dist/examples/test-master-suite.js",
+    "test:robustness:quick": "npm run build && node dist/examples/test-master-suite.js --quick",
+    "test:basic": "npm run build && node dist/examples/test-termination-fix.js",
+    "test:complex": "npm run build && node dist/examples/test-complex-termination.js",
+    "test:edge": "npm run build && node dist/examples/test-edge-cases.js",
+    "test:edge:safe": "npm run build && node dist/examples/test-edge-cases-safe.js",
+    "test:rate-limited": "npm run build && node dist/examples/test-rate-limited.js",
+    "test:stress": "npm run build && node dist/examples/test-stress-workflows.js",
+    "test:recovery": "npm run build && node dist/examples/test-failure-recovery.js",
+    "demo:file": "npm run build && node dist/examples/FileManagementAgent.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.10",
+    "@types/xmldom": "^0.1.34",
+    "jest": "^30.0.4",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@themaximalist/llm.js": "^1.0.1",
+    "fast-xml-parser": "^5.2.5",
+    "generate-schema": "^2.6.0",
+    "json-schema-generator": "^2.0.6",
+    "nanoid": "^5.1.5",
+    "xml-js": "^1.6.11",
+    "xmldom": "^0.6.0",
+    "xpath": "^0.0.34",
+    "zod": "^3.25.75",
+    "zod-to-json-schema": "^3.24.6"
+  }
+}
