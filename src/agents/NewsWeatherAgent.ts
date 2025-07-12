@@ -1,8 +1,8 @@
 // NewsWeatherAgent.ts
 
-import { AgentLoop } from './AgentLoop/AgentLoop';
-import { ToolResult } from './AgentLoop/types';
-import { GeminiAIProvider } from './AgentLoop/GeminiAIProvider';
+import { AgentLoop } from '../core/agents/AgentLoop';
+import { ToolResult } from '../core/types/types';
+import { GeminiAIProvider } from '../core/providers/GeminiAIProvider';
 
 export class NewsWeatherAgent extends AgentLoop {
   protected systemPrompt = `

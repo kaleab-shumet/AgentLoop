@@ -1,5 +1,5 @@
-import { AgentLoop, ExecutionMode, AgentRunInput, AgentRunOutput } from '../AgentLoop';
-import { AIProvider } from '../AgentLoop/AIProvider';
+import { AgentLoop, ExecutionMode, AgentRunInput, AgentRunOutput } from '../core';
+import { AIProvider } from '../core/providers/AIProvider';
 import z from 'zod';
 
 // Example AI Provider implementation

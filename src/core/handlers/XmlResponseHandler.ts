@@ -1,9 +1,9 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, ResponseHandler } from "./types";
+import { Tool, PendingToolCall, ResponseHandler } from "../types/types";
 import { XMLParser } from 'fast-xml-parser';
-import { AgentError, AgentErrorType } from "./AgentError";
+import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from 'zod-to-json-schema';
-import { convertJsonSchemaToXsd } from './JsonToXsd';
+import { convertJsonSchemaToXsd } from '../utils/JsonToXsd';
 
 /**
  * Handles XML-based tool calling (original AgentLoop format)

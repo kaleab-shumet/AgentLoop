@@ -1,7 +1,7 @@
 import readline from 'readline';
-import { AgentLoop, AgentLoopOptions } from './AgentLoop/AgentLoop';
-import { ToolResult, ChatEntry } from './AgentLoop/types';
-import { AIProvider } from './AgentLoop/AIProvider';
+import { AgentLoop, AgentLoopOptions } from '../core/agents/AgentLoop';
+import { ToolResult, ChatEntry } from '../core/types/types';
+import { AIProvider } from '../core/providers/AIProvider';
 import z from 'zod';
 import { exec } from 'child_process';
 

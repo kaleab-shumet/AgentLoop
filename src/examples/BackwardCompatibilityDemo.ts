@@ -1,5 +1,5 @@
-import { NewsWeatherAgent } from '../NewsWeatherAgent';
-import { ExecutionMode } from '../AgentLoop/types';
+import { NewsWeatherAgent } from '../agents/NewsWeatherAgent';
+import { ExecutionMode } from '../core/types/types';
 
 /**
  * Demonstrates backward compatibility and new multi-mode functionality

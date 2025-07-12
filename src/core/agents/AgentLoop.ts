@@ -1,14 +1,15 @@
 // AgentLoop.ts
 import z, { ZodTypeAny, ZodObject } from 'zod';
-import { AgentError, AgentErrorType } from './AgentError';
-import { LLMDataHandler } from './LLMDataHandler';
-import { Logger } from './Logger';
+import { AgentError, AgentErrorType } from '../utils/AgentError';
+import { LLMDataHandler } from '../handlers/LLMDataHandler';
+import { Logger } from '../utils/Logger';
 import {
   ChatEntry, ToolResult, Tool, PendingToolCall,
   AgentRunInput, AgentRunOutput, ExecutionMode
-} from './types';
-import { AIProvider } from './AIProvider';
+} from '../types/types';
+import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
+import { PromptManager, PromptTemplateBuilder, PromptConfig } from '../prompt/PromptManager';
 
 
 
@@ -39,7 +40,10 @@ export interface AgentLoopOptions {
   retryAttempts?: number;
   retryDelay?: number;
   hooks?: AgentLifecycleHooks;
-  executionMode?: ExecutionMode; // Add execution mode option
+  executionMode?: ExecutionMode;
+  promptManager?: PromptManager;
+  promptTemplateBuilder?: PromptTemplateBuilder;
+  promptConfig?: PromptConfig;
 }
 
 /**
@@ -61,6 +65,7 @@ export abstract class AgentLoop {
   public tools: Tool<ZodTypeAny>[] = [];
   protected aiProvider: AIProvider;
   protected llmDataHandler: LLMDataHandler;
+  protected promptManager: PromptManager;
 
   protected temperature?: number;
   protected maxTokens?: number;
@@ -78,6 +83,13 @@ export abstract class AgentLoop {
     this.retryDelay = options.retryDelay || 1000;
     this.parallelExecution = options.parallelExecution ?? false;
     this.hooks = options.hooks || {};
+    
+    // Initialize prompt manager - will be properly set up in initializePromptManager
+    this.promptManager = options.promptManager || new PromptManager(
+      '', 
+      options.promptTemplateBuilder, 
+      options.promptConfig
+    );
   }
 
   /**
@@ -104,6 +116,30 @@ export abstract class AgentLoop {
   }
 
   /**
+   * Set a custom prompt manager
+   */
+  public setPromptManager(promptManager: PromptManager): void {
+    this.promptManager = promptManager;
+  }
+
+  /**
+   * Get the current prompt manager
+   */
+  public getPromptManager(): PromptManager {
+    return this.promptManager;
+  }
+
+  /**
+   * Initialize the prompt manager with the system prompt if not already set
+   */
+  protected initializePromptManager(): void {
+    // If promptManager was not provided in options or has empty system prompt, create new one
+    if (!this.promptManager.buildSystemPrompt() || this.promptManager.buildSystemPrompt().trim() === '') {
+      this.promptManager = new PromptManager(this.systemPrompt);
+    }
+  }
+
+  /**
    * Runs a single turn of the agent's reasoning loop.
    * This method is stateless. It accepts the current state and returns the new state.
    */
@@ -125,7 +161,7 @@ export abstract class AgentLoop {
     let keepRetry = true;
 
     try {
-
+      this.initializePromptManager();
       this.addFinalTool();
       this.logger.info(`[AgentLoop.run] Starting run for prompt: "${userPrompt}"`);
 
@@ -387,27 +423,19 @@ export abstract class AgentLoop {
     const toolDefinitions = this.llmDataHandler.formatToolDefinitions(this.tools);
     const formatInstructions = this.llmDataHandler.getFormatInstructions(this.tools, this.FINAL_TOOL_NAME, this.parallelExecution);
     
-    const historyLog = toolCallHistory.length > 0 ? JSON.stringify(toolCallHistory.slice(-10), null, 2) : 'No tool calls have been made yet.';
-    const contextLog = Object.keys(context).length > 0 ? Object.entries(context).map(([key, value]) => `**${key}**:\n${JSON.stringify(value)}`).join('\n\n') : 'No background context provided.';
-    const retryInstruction = keepRetry ? "You have more attempts. Analyze the error and history, then retry with a corrected approach." : "You have reached the maximum retry limit. You MUST stop and use the 'final' tool to report what you have accomplished and explain the failure.";
-    const errorRecoverySection = lastError ? `\n# ERROR RECOVERY\n- **Error:** ${lastError.message}\n- **Instruction:** ${retryInstruction}` : "";
-    const conversationSection = conversationHistory.length > 0 ? `\n# CONVERSATION HISTORY\n${JSON.stringify(conversationHistory, null, 2)}\n` : '';
+    const template = this.promptManager.constructPrompt(
+      userPrompt,
+      context,
+      lastError,
+      conversationHistory,
+      toolCallHistory,
+      keepRetry,
+      this.tools,
+      this.FINAL_TOOL_NAME,
+      formatInstructions,
+      toolDefinitions
+    );
     
-    const template = `${this.systemPrompt}
-# OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS
-${formatInstructions}
-# AVAILABLE TOOLS
-${toolDefinitions}
-# CONTEXT
-${contextLog}
-${conversationSection}
-# TOOL CALL HISTORY
-${historyLog}
-${errorRecoverySection}
-# CURRENT TASK
-Based on all the information above, use your tools to respond to this user request:
-"${userPrompt}"
-Remember: Think step-by-step. If you have enough information to provide a complete answer, you MUST call the '${this.FINAL_TOOL_NAME}' tool by itself.`;
     this.logger.debug('[AgentLoop.constructPrompt] Generated prompt.', { length: template.length });
     return template;
   }

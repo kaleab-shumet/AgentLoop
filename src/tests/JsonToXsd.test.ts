@@ -1,4 +1,4 @@
-import { convertJsonSchemaToXsd } from './JsonToXsd';
+import { convertJsonSchemaToXsd } from '../core/utils/JsonToXsd';
 
 const testCases = [
   {

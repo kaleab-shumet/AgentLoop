@@ -1,5 +1,5 @@
 import z, { ZodTypeAny } from "zod";
-import { TurnState } from "./TurnState";
+import { TurnState } from "../agents/TurnState";
 
 /**
  * Execution mode for the agent - determines how tool calls are formatted and parsed

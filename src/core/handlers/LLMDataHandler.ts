@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, ExecutionMode, ResponseHandler } from "./types";
+import { Tool, PendingToolCall, ExecutionMode, ResponseHandler } from "../types/types";
 import { ResponseHandlerFactory } from "./ResponseHandlerFactory";
 
 /**

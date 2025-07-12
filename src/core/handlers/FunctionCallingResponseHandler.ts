@@ -1,6 +1,6 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, ResponseHandler, FunctionCall, FunctionDefinition } from "./types";
-import { AgentError, AgentErrorType } from "./AgentError";
+import { Tool, PendingToolCall, ResponseHandler, FunctionCall, FunctionDefinition } from "../types/types";
+import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from 'zod-to-json-schema';
 
 /**

@@ -1,7 +1,7 @@
-import { ExecutionMode, ResponseHandler } from "./types";
+import { ExecutionMode, ResponseHandler } from "../types/types";
 import { XmlResponseHandler } from "./XmlResponseHandler";
 import { FunctionCallingResponseHandler } from "./FunctionCallingResponseHandler";
-import { AgentError, AgentErrorType } from "./AgentError";
+import { AgentError, AgentErrorType } from "../utils/AgentError";
 
 /**
  * Factory for creating response handlers based on execution mode

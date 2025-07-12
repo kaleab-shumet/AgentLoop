@@ -1,4 +1,4 @@
-import { AgentError, AgentErrorType } from "./AgentError";
+import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { AIProvider, LLMConfig } from "./AIProvider";
 import LLM from "@themaximalist/llm.js"
 
