@@ -361,7 +361,7 @@ export class FileManagerConsole {
 export async function startFileManagerConsole(): Promise<void> {
   // Configuration for the Gemini AI provider
   const config = {
-    apiKey: process.env.GEMINI_API_KEY || 'AIzaSyCUJwUBXdjfJuW0OGy5e68zAMWK_MEu8D4', // Default key from examples
+    apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key', // Default key from examples
     model: 'gemini-2.0-flash'
   };
 

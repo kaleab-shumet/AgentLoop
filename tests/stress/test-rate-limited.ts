@@ -14,7 +14,7 @@ export async function testWithRateLimiting(): Promise<void> {
   console.log(`🔧 Using rate limits: ${rateLimitConfig.testDelay/1000}s between tests`);
 
   const config = {
-    apiKey: process.env.GEMINI_API_KEY || 'AIzaSyBBvprrxsMRaS7I1RTrX7IhH8-qBWs_S7A',
+    apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key',
     model: 'gemini-2.0-flash'
   };
 
