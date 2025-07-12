@@ -1,4 +1,4 @@
-import { FileManagementAgent } from './FileManagementAgent';
+import { FileManagementAgent } from '../../examples/FileManagementAgent';
 
 /**
  * Test complex scenarios that historically caused termination issues

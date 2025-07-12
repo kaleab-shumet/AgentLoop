@@ -1,4 +1,4 @@
-import { FileManagementAgent } from './FileManagementAgent';
+import { FileManagementAgent } from '../../examples/FileManagementAgent';
 
 /**
  * Test script to verify the agent termination fixes

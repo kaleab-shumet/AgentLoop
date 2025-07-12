@@ -1,6 +1,6 @@
-import { runRobustnessTests } from './test-robustness-suite';
-import { runEdgeCaseTests } from './test-edge-cases';
-import { runStressTests } from './test-stress-workflows';
+import { runRobustnessTests } from '../stress/test-robustness-suite';
+import { runEdgeCaseTests } from '../edge-cases/test-edge-cases';
+import { runStressTests } from '../stress/test-stress-workflows';
 import { runFailureRecoveryTests } from './test-failure-recovery';
 import { testTerminationFix } from './test-termination-fix';
 import { testComplexTermination } from './test-complex-termination';

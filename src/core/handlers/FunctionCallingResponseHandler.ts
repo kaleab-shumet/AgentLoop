@@ -124,44 +124,9 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
   }
 
   getFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string {
-    const executionStrategyPrompt = parallelExecution ? 
-      "You can call multiple functions concurrently in a single response." : 
-      "You should call functions sequentially. If one function fails, retry and fix it before continuing.";
-
-    return `You MUST respond by calling one or more functions. Use the following JSON format enclosed in \`\`\`json ... \`\`\`. 
-
-**CRITICAL TERMINATION RULES:**
-1. **NEVER REPEAT SUCCESSFUL OPERATIONS:** Before making any function call, check the function call history. If a function has already succeeded for the same purpose, DO NOT call it again.
-2. **MANDATORY TERMINATION:** You MUST call the '${finalToolName}' function when:
-   - You have successfully completed the user's request
-   - All required information has been gathered or operations completed
-   - You can provide a complete answer to the user
-3. **SINGLE FINAL FUNCTION:** When using '${finalToolName}', it must be the ONLY function in your response.
-4. **NO REDUNDANT WORK:** If the history shows a task is complete, immediately use '${finalToolName}' with the results.
-
-**WORKFLOW DECISION PROCESS:**
-- Check history → Identify what's been done → Determine what's still needed → Either do remaining work OR use '${finalToolName}' if complete
-
-**Format for single function call:**
-\`\`\`json
-{
-  "function_call": {
-    "name": "function_name",
-    "arguments": "{\"param1\": \"value1\", \"param2\": \"value2\"}"
-  }
-}
-\`\`\`
-
-**Example of completing after successful operations:**
-\`\`\`json
-{
-  "function_call": {
-    "name": "${finalToolName}",
-    "arguments": "{\"value\": \"I have successfully completed your request. [Summarize what was accomplished based on the history]\"}"
-  }
-}
-\`\`\`
-
-- **Execution Strategy:** ${executionStrategyPrompt}`;
+    // Format instructions are now centralized in PromptTemplates
+    // This handler just needs to specify that it uses function calling format
+    // The actual instructions are provided by PromptManager
+    return 'FUNCTION_FORMAT'; // Marker for prompt manager to use function format instructions
   }
 }

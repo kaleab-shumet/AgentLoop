@@ -1,220 +1,241 @@
 import { Tool, ChatEntry, ToolResult } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
+import { PromptTemplateInterface, PromptOptions } from './PromptTemplateInterface';
+import { DefaultPromptTemplate, ResponseFormat } from './DefaultPromptTemplate';
 
-export interface PromptTemplate {
-  systemPrompt?: string;
-  formatInstructions?: string;
-  toolDefinitions?: string;
-  contextSection?: string;
-  conversationSection?: string;
-  historySection?: string;
-  errorRecoverySection?: string;
-  taskSection?: string;
-}
-
-export interface PromptConfig {
-  includeContext?: boolean;
-  includeConversationHistory?: boolean;
-  includeToolHistory?: boolean;
-  maxHistoryEntries?: number;
+/**
+ * Configuration for PromptManager
+ */
+export interface PromptManagerConfig {
+  responseFormat?: ResponseFormat;
+  customTemplate?: PromptTemplateInterface;
+  promptOptions?: PromptOptions;
   errorRecoveryInstructions?: string;
-  customSections?: Record<string, string>;
 }
 
-export interface PromptTemplateBuilder {
-  buildSystemPrompt(): string;
-  buildFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string;
-  buildToolDefinitions(tools: Tool<ZodTypeAny>[]): string;
-  buildContextSection(context: Record<string, any>): string;
-  buildConversationSection(conversationHistory: ChatEntry[]): string;
-  buildHistorySection(toolCallHistory: ToolResult[], maxEntries?: number): string;
-  buildErrorRecoverySection(error: AgentError | null, keepRetry: boolean): string;
-  buildTaskSection(userPrompt: string, finalToolName: string): string;
-}
-
-export class DefaultPromptTemplateBuilder implements PromptTemplateBuilder {
-  constructor(private systemPrompt: string, private config: PromptConfig = {}) {}
-
-  buildSystemPrompt(): string {
-    return this.systemPrompt;
-  }
-
-  buildFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string {
-    return `# OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS
-Please follow the specified format for tool calling as defined by your response handler.`;
-  }
-
-  buildToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
-    return `# AVAILABLE TOOLS
-${tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}`;
-  }
-
-  buildContextSection(context: Record<string, any>): string {
-    if (!this.config.includeContext || Object.keys(context).length === 0) {
-      return '# CONTEXT\nNo background context provided.';
-    }
-    const contextLog = Object.entries(context)
-      .map(([key, value]) => `**${key}**:\n${JSON.stringify(value)}`)
-      .join('\n\n');
-    return `# CONTEXT\n${contextLog}`;
-  }
-
-  buildConversationSection(conversationHistory: ChatEntry[]): string {
-    if (!this.config.includeConversationHistory || conversationHistory.length === 0) {
-      return '';
-    }
-    return `\n# CONVERSATION HISTORY\n${JSON.stringify(conversationHistory, null, 2)}\n`;
-  }
-
-  buildHistorySection(toolCallHistory: ToolResult[], maxEntries?: number): string {
-    if (!this.config.includeToolHistory) {
-      return '# TOOL CALL HISTORY\nNo tool calls have been made yet.';
-    }
-    
-    const entries = maxEntries ? toolCallHistory.slice(-maxEntries) : toolCallHistory;
-    
-    if (entries.length === 0) {
-      return '# TOOL CALL HISTORY\nNo tool calls have been made yet.';
-    }
-    
-    // Analyze completion status
-    const successfulTools = entries.filter(entry => entry.success);
-    const failedTools = entries.filter(entry => !entry.success);
-    
-    let statusSummary = '';
-    if (successfulTools.length > 0) {
-      statusSummary += `\n**SUCCESSFUL OPERATIONS (${successfulTools.length}):** ${successfulTools.map(t => t.toolname).join(', ')}`;
-    }
-    if (failedTools.length > 0) {
-      statusSummary += `\n**FAILED OPERATIONS (${failedTools.length}):** ${failedTools.map(t => t.toolname).join(', ')}`;
-    }
-    
-    const historyLog = JSON.stringify(entries, null, 2);
-    
-    return `# TOOL CALL HISTORY${statusSummary}\n\n${historyLog}`;
-  }
-
-  buildErrorRecoverySection(error: AgentError | null, keepRetry: boolean): string {
-    if (!error) return '';
-    
-    const retryInstruction = keepRetry 
-      ? (this.config.errorRecoveryInstructions || "You have more attempts. Analyze the error and history, then retry with a corrected approach. If the same error persists, try alternative approaches or use the 'final' tool to report the issue.")
-      : "⚠️ You have reached the maximum retry limit. You MUST IMMEDIATELY use the 'final' tool to report what you accomplished and explain what went wrong. DO NOT attempt more tool calls.";
-    
-    return `\n# ERROR RECOVERY\n- **Last Error:** ${error.message}\n- **Recovery Instruction:** ${retryInstruction}`;
-  }
-
-  buildTaskSection(userPrompt: string, finalToolName: string): string {
-    return `# CURRENT TASK
-Based on all the information above, use your tools to respond to this user request:
-"${userPrompt}"
-
-**CRITICAL DECISION POINT:**
-Before proceeding, analyze the tool call history above:
-1. **If the task is already complete** (all required operations succeeded): Call ONLY the '${finalToolName}' tool with a summary of what was accomplished.
-2. **If work remains**: Call only the tools needed to complete the remaining work.
-3. **Never repeat successful operations** - this wastes iterations and delays completion.
-
-Remember: Your goal is efficient task completion, not tool repetition.`;
-  }
-}
-
+/**
+ * Simple, developer-friendly prompt manager with template system
+ * 
+ * Usage examples:
+ * 
+ * // Use default template with XML format
+ * const manager = new PromptManager(systemPrompt, { responseFormat: ResponseFormat.XML });
+ * 
+ * // Use default template with function calling format  
+ * const manager = new PromptManager(systemPrompt, { responseFormat: ResponseFormat.FUNCTION_CALLING });
+ * 
+ * // Use custom template
+ * class MyTemplate implements PromptTemplateInterface { ... }
+ * const manager = new PromptManager(systemPrompt, { customTemplate: new MyTemplate() });
+ */
 export class PromptManager {
-  private templateBuilder: PromptTemplateBuilder;
-  private config: PromptConfig;
+  private systemPrompt: string;
+  private template: PromptTemplateInterface;
+  private isCustomTemplate: boolean;
+  private promptOptions: PromptOptions;
+  private errorRecoveryInstructions?: string;
 
-  constructor(
-    systemPrompt: string, 
-    templateBuilder?: PromptTemplateBuilder,
-    config: PromptConfig = {}
-  ) {
-    this.config = {
+  constructor(systemPrompt: string, config: PromptManagerConfig = {}) {
+    this.systemPrompt = systemPrompt;
+    this.promptOptions = {
       includeContext: true,
       includeConversationHistory: true,
       includeToolHistory: true,
       maxHistoryEntries: 10,
-      ...config
+      parallelExecution: false,
+      ...config.promptOptions
     };
-    
-    this.templateBuilder = templateBuilder || new DefaultPromptTemplateBuilder(systemPrompt, this.config);
+    this.errorRecoveryInstructions = config.errorRecoveryInstructions;
+
+    // Determine which template to use
+    if (config.customTemplate) {
+      this.template = config.customTemplate;
+      this.isCustomTemplate = true;
+    } else {
+      // Use default template with specified response format
+      const responseFormat = config.responseFormat || ResponseFormat.XML;
+      this.template = new DefaultPromptTemplate(responseFormat);
+      this.isCustomTemplate = false;
+    }
   }
 
-  setTemplateBuilder(builder: PromptTemplateBuilder): void {
-    this.templateBuilder = builder;
+  /**
+   * Check if using a custom template
+   */
+  isUsingCustomTemplate(): boolean {
+    return this.isCustomTemplate;
   }
 
-  setConfig(config: Partial<PromptConfig>): void {
-    this.config = { ...this.config, ...config };
+  /**
+   * Get the current response format (only applies to default template)
+   */
+  getResponseFormat(): ResponseFormat | null {
+    if (this.isCustomTemplate) {
+      return null; // Custom templates manage their own format
+    }
+    return (this.template as DefaultPromptTemplate).getResponseFormat();
   }
 
-  getConfig(): PromptConfig {
-    return { ...this.config };
+  /**
+   * Switch response format (only applies to default template)
+   */
+  setResponseFormat(format: ResponseFormat): PromptManager {
+    if (this.isCustomTemplate) {
+      throw new Error('Cannot set response format when using a custom template. Custom templates manage their own format.');
+    }
+    (this.template as DefaultPromptTemplate).setResponseFormat(format);
+    return this;
   }
 
-  constructPrompt(
+  /**
+   * Set a custom template (developer implements PromptTemplateInterface)
+   */
+  setCustomTemplate(template: PromptTemplateInterface): PromptManager {
+    this.template = template;
+    this.isCustomTemplate = true;
+    return this;
+  }
+
+  /**
+   * Switch back to default template with specified format
+   */
+  setDefaultTemplate(format: ResponseFormat = ResponseFormat.XML): PromptManager {
+    this.template = new DefaultPromptTemplate(format);
+    this.isCustomTemplate = false;
+    return this;
+  }
+
+  /**
+   * Configure prompt options
+   */
+  configure(options: Partial<PromptOptions>): PromptManager {
+    this.promptOptions = { ...this.promptOptions, ...options };
+    return this;
+  }
+
+  /**
+   * Set custom error recovery instructions
+   */
+  setErrorRecoveryInstructions(instructions: string): PromptManager {
+    this.errorRecoveryInstructions = instructions;
+    return this;
+  }
+
+  /**
+   * Get current prompt options
+   */
+  getPromptOptions(): PromptOptions {
+    return { ...this.promptOptions };
+  }
+
+  /**
+   * Build the complete prompt for the agent
+   */
+  buildPrompt(
     userPrompt: string,
     context: Record<string, any>,
     lastError: AgentError | null,
     conversationHistory: ChatEntry[],
     toolCallHistory: ToolResult[],
     keepRetry: boolean,
-    tools: Tool<ZodTypeAny>[],
     finalToolName: string,
-    formatInstructions: string,
     toolDefinitions: string
   ): string {
-    const sections: string[] = [];
-
-    // System prompt
-    sections.push(this.templateBuilder.buildSystemPrompt());
-
-    // Format instructions
-    sections.push(`# OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS\n${formatInstructions}`);
-
-    // Tool definitions
-    sections.push(`# AVAILABLE TOOLS\n${toolDefinitions}`);
-
-    // Context
-    sections.push(this.templateBuilder.buildContextSection(context));
-
-    // Conversation history
-    const conversationSection = this.templateBuilder.buildConversationSection(conversationHistory);
-    if (conversationSection) {
-      sections.push(conversationSection);
-    }
-
-    // Tool call history
-    sections.push(this.templateBuilder.buildHistorySection(toolCallHistory, this.config.maxHistoryEntries));
-
-    // Error recovery
-    const errorSection = this.templateBuilder.buildErrorRecoverySection(lastError, keepRetry);
-    if (errorSection) {
-      sections.push(errorSection);
-    }
-
-    // Custom sections
-    if (this.config.customSections) {
-      Object.entries(this.config.customSections).forEach(([name, content]) => {
-        sections.push(`# ${name.toUpperCase()}\n${content}`);
-      });
-    }
-
-    // Current task
-    sections.push(this.templateBuilder.buildTaskSection(userPrompt, finalToolName));
-
-    return sections.join('\n');
+    return this.template.buildPrompt(
+      this.systemPrompt,
+      userPrompt,
+      context,
+      lastError,
+      conversationHistory,
+      toolCallHistory,
+      keepRetry,
+      finalToolName,
+      toolDefinitions,
+      this.promptOptions,
+      this.errorRecoveryInstructions
+    );
   }
 
-  buildSystemPrompt(): string {
-    return this.templateBuilder.buildSystemPrompt();
+  /**
+   * Get format instructions from the current template
+   */
+  getFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
+    return this.template.getFormatInstructions(finalToolName, parallelExecution);
   }
+
+  /**
+   * Get the response format as a string for compatibility with handlers
+   */
+  getResponseFormatString(): 'xml' | 'function' {
+    if (this.isCustomTemplate) {
+      return 'xml'; // Default fallback for custom templates
+    }
+    
+    const format = (this.template as DefaultPromptTemplate).getResponseFormat();
+    return format === ResponseFormat.FUNCTION_CALLING ? 'function' : 'xml';
+  }
+
 
   buildFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string {
-    return this.templateBuilder.buildFormatInstructions(tools, finalToolName, parallelExecution);
+    return this.getFormatInstructions(finalToolName, parallelExecution);
   }
 
   buildToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
-    return this.templateBuilder.buildToolDefinitions(tools);
+    return tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n');
+  }
+
+  setConfig(config: any): void {
+    // Convert legacy config to new options format
+    if (config.includeContext !== undefined) this.promptOptions.includeContext = config.includeContext;
+    if (config.includeConversationHistory !== undefined) this.promptOptions.includeConversationHistory = config.includeConversationHistory;
+    if (config.includeToolHistory !== undefined) this.promptOptions.includeToolHistory = config.includeToolHistory;
+    if (config.maxHistoryEntries !== undefined) this.promptOptions.maxHistoryEntries = config.maxHistoryEntries;
+    if (config.customSections !== undefined) this.promptOptions.customSections = config.customSections;
+    if (config.errorRecoveryInstructions !== undefined) this.setErrorRecoveryInstructions(config.errorRecoveryInstructions);
+  }
+
+  getConfig(): any {
+    return {
+      includeContext: this.promptOptions.includeContext,
+      includeConversationHistory: this.promptOptions.includeConversationHistory,
+      includeToolHistory: this.promptOptions.includeToolHistory,
+      maxHistoryEntries: this.promptOptions.maxHistoryEntries
+    };
+  }
+
+  // Legacy template type methods (for backward compatibility)
+  getTemplateType(): string {
+    if (this.isCustomTemplate) {
+      return 'custom';
+    }
+    const format = (this.template as DefaultPromptTemplate).getResponseFormat();
+    return format === ResponseFormat.FUNCTION_CALLING ? 'function_calling' : 'xml';
+  }
+
+  getTemplateTypeString(): 'xml' | 'function' {
+    return this.getResponseFormatString();
+  }
+
+  setTemplateType(type: string): PromptManager {
+    if (type === 'custom') {
+      throw new Error('Use setCustomTemplate() to set a custom template');
+    }
+    
+    if (this.isCustomTemplate) {
+      // Switch back to default template
+      const format = type === 'function_calling' ? ResponseFormat.FUNCTION_CALLING : ResponseFormat.XML;
+      this.setDefaultTemplate(format);
+    } else {
+      // Update existing default template
+      const format = type === 'function_calling' ? ResponseFormat.FUNCTION_CALLING : ResponseFormat.XML;
+      this.setResponseFormat(format);
+    }
+    
+    return this;
   }
 }
+
+// Re-export types for convenience
+export { PromptTemplateInterface, PromptOptions } from './PromptTemplateInterface';
+export { DefaultPromptTemplate, ResponseFormat } from './DefaultPromptTemplate';

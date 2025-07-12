@@ -38,9 +38,18 @@ export class LLMDataHandler {
 
   /**
    * Get formatting instructions for the current execution mode
+   * Note: This is now handled by PromptManager with templates
    */
   getFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string {
-    return this.responseHandler.getFormatInstructions(tools, finalToolName, parallelExecution);
+    // Return execution mode type so PromptManager can use the appropriate template
+    if (this.executionMode === ExecutionMode.XML) {
+      return 'XML_FORMAT';
+    } else if (this.executionMode === ExecutionMode.FUNCTION_CALLING) {
+      return 'FUNCTION_FORMAT';
+    }
+    
+    // Fallback
+    return 'XML_FORMAT';
   }
 
   /**

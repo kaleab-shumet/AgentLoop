@@ -1,0 +1,382 @@
+// StagnationDetector.ts
+import { ToolResult, PendingToolCall } from '../types/types';
+import crypto from 'crypto';
+
+interface StagnationPattern {
+  pattern: string;
+  count: number;
+  firstSeen: number;
+}
+
+interface ToolCallSignature {
+  toolName: string;
+  argsHash: string;
+  timestamp: number;
+}
+
+export interface StagnationDetectorConfig {
+  windowSize?: number;
+  similarityThreshold?: number;
+  enableTimeBasedDetection?: boolean;
+}
+
+export class StagnationDetector {
+  private windowSize: number;
+  private similarityThreshold: number;
+  private enableTimeBasedDetection: boolean;
+  
+  // Configurable thresholds
+  private readonly PATTERN_REPEAT_THRESHOLD = 2;
+  private readonly SEQUENCE_LENGTH_CHECK = 3;
+  private readonly TIME_WINDOW_MS = 60000; // 1 minute
+  
+  constructor(config: StagnationDetectorConfig = {}) {
+    this.windowSize = config.windowSize || 10;
+    this.similarityThreshold = config.similarityThreshold || 0.85;
+    this.enableTimeBasedDetection = config.enableTimeBasedDetection ?? true;
+  }
+  
+  /**
+   * Main method to check if the agent is in a stagnation state (stateless)
+   */
+  isStagnant(
+    currentCall: PendingToolCall,
+    toolCallHistory: ToolResult[],
+    currentIteration: number
+  ): {
+    isStagnant: boolean;
+    reason?: string;
+    confidence: number;
+  } {
+    // Build call signature history from tool call history + current call
+    const callHistory = this.buildCallHistoryFromResults(toolCallHistory, currentCall);
+    
+    // Run multiple detection strategies (order matters - more critical checks first)
+    const checks = [
+      this.checkErrorLoops(toolCallHistory), // Errors are most critical
+      this.checkRepeatedCalls(callHistory),
+      this.checkCyclicPatterns(callHistory),
+      this.checkNoProgress(toolCallHistory),
+      ...(this.enableTimeBasedDetection ? [this.checkTimeBasedStagnation(callHistory)] : [])
+    ];
+    
+    // Aggregate results
+    const stagnantChecks = checks.filter(c => c.isStagnant);
+    if (stagnantChecks.length === 0) {
+      return { isStagnant: false, confidence: 0 };
+    }
+    
+    // Return the highest confidence stagnation
+    const mostConfident = stagnantChecks.reduce((prev, curr) => 
+      curr.confidence > prev.confidence ? curr : prev
+    );
+    
+    return mostConfident;
+  }
+  
+  /**
+   * Build call signature history from tool results and current call (stateless)
+   */
+  private buildCallHistoryFromResults(toolCallHistory: ToolResult[], currentCall: PendingToolCall): ToolCallSignature[] {
+    const callHistory: ToolCallSignature[] = [];
+    
+    // Convert tool results to call signatures (approximate timestamps)
+    let baseTime = Date.now() - (toolCallHistory.length * 10000); // Assume 10s between calls
+    for (const result of toolCallHistory) {
+      if (result.toolname !== 'final' && result.toolname !== 'run-failure') {
+        callHistory.push({
+          toolName: result.toolname,
+          argsHash: this.hashResultAsCall(result),
+          timestamp: baseTime
+        });
+        baseTime += 10000;
+      }
+    }
+    
+    // Add current call
+    callHistory.push({
+      toolName: currentCall.name,
+      argsHash: this.hashArgs(currentCall),
+      timestamp: Date.now()
+    });
+    
+    // Keep only recent history within window
+    return callHistory.slice(-this.windowSize);
+  }
+  
+  /**
+   * Check for repeated identical calls
+   */
+  private checkRepeatedCalls(callHistory: ToolCallSignature[]): { isStagnant: boolean; reason?: string; confidence: number } {
+    if (callHistory.length < 3) {
+      return { isStagnant: false, confidence: 0 };
+    }
+    
+    const recentCalls = callHistory.slice(-5);
+    const callCounts = new Map<string, number>();
+    
+    for (const call of recentCalls) {
+      const key = `${call.toolName}:${call.argsHash}`;
+      callCounts.set(key, (callCounts.get(key) || 0) + 1);
+    }
+    
+    for (const [key, count] of callCounts) {
+      if (count >= 2) {
+        // Lower threshold but graduated confidence
+        const confidence = count === 2 ? 0.75 : Math.min(count / 3, 1);
+        return {
+          isStagnant: true,
+          reason: `Tool call ${key.split(':')[0]} repeated ${count} times with same arguments`,
+          confidence
+        };
+      }
+    }
+    
+    return { isStagnant: false, confidence: 0 };
+  }
+  
+  /**
+   * Check for cyclic patterns (e.g., A→B→C→A→B→C)
+   */
+  private checkCyclicPatterns(callHistory: ToolCallSignature[]): { isStagnant: boolean; reason?: string; confidence: number } {
+    if (callHistory.length < 6) {
+      return { isStagnant: false, confidence: 0 };
+    }
+    
+    const recent = callHistory.slice(-this.windowSize);
+    
+    // Check for patterns of length 2-4
+    for (let patternLength = 2; patternLength <= 4; patternLength++) {
+      const pattern = this.detectPattern(recent, patternLength);
+      if (pattern) {
+        return {
+          isStagnant: true,
+          reason: `Cyclic pattern detected: ${pattern.pattern}`,
+          confidence: Math.min(pattern.count / 2, 1)
+        };
+      }
+    }
+    
+    return { isStagnant: false, confidence: 0 };
+  }
+  
+  /**
+   * Check if the agent is making no meaningful progress
+   */
+  private checkNoProgress(toolCallHistory: ToolResult[]): { isStagnant: boolean; reason?: string; confidence: number } {
+    if (toolCallHistory.length < 5) {
+      return { isStagnant: false, confidence: 0 };
+    }
+    
+    const recentResults = toolCallHistory.slice(-5);
+    const successRate = recentResults.filter(r => r.success).length / recentResults.length;
+    
+    // If mostly failures and similar outputs
+    if (successRate < 0.4) {
+      const outputs = recentResults
+        .filter(r => r.output)
+        .map(r => JSON.stringify(r.output));
+      
+      const uniqueOutputs = new Set(outputs).size;
+      const outputDiversity = uniqueOutputs / Math.max(outputs.length, 1);
+      
+      if (outputDiversity < 0.3) {
+        return {
+          isStagnant: true,
+          reason: 'Low success rate with repetitive outputs',
+          confidence: 0.8
+        };
+      }
+    }
+    
+    return { isStagnant: false, confidence: 0 };
+  }
+  
+  /**
+   * Check for error loops
+   */
+  private checkErrorLoops(toolCallHistory: ToolResult[]): { isStagnant: boolean; reason?: string; confidence: number } {
+    const recentErrors = toolCallHistory
+      .slice(-8)
+      .filter(r => !r.success && r.error);
+    
+    if (recentErrors.length < 3) {
+      return { isStagnant: false, confidence: 0 };
+    }
+    
+    // Group similar errors
+    const errorGroups = this.groupSimilarErrors(recentErrors);
+    
+    for (const group of errorGroups) {
+      if (group.length >= 2) {
+        // Lower threshold for error loops - they're more critical
+        const confidence = group.length === 2 ? 0.85 : Math.min(group.length / 2, 1);
+        return {
+          isStagnant: true,
+          reason: `Repeated error pattern: ${group[0].error?.substring(0, 50)}...`,
+          confidence
+        };
+      }
+    }
+    
+    return { isStagnant: false, confidence: 0 };
+  }
+  
+  /**
+   * Check if calls are happening too rapidly (panic mode)
+   */
+  private checkTimeBasedStagnation(callHistory: ToolCallSignature[]): { isStagnant: boolean; reason?: string; confidence: number } {
+    if (callHistory.length < 5) {
+      return { isStagnant: false, confidence: 0 };
+    }
+    
+    const recentCalls = callHistory.slice(-5);
+    const timeSpan = recentCalls[recentCalls.length - 1].timestamp - recentCalls[0].timestamp;
+    
+    // If 5 calls in less than 5 seconds, might be in a tight loop
+    if (timeSpan < 5000) {
+      return {
+        isStagnant: true,
+        reason: 'Rapid-fire tool calls detected',
+        confidence: 0.7
+      };
+    }
+    
+    return { isStagnant: false, confidence: 0 };
+  }
+  
+  /**
+   * Helper: Hash arguments for comparison
+   */
+  private hashArgs(call: PendingToolCall): string {
+    const args = { ...call };
+    delete (args as any).name; // Remove name from args
+    const normalized = JSON.stringify(args, Object.keys(args).sort());
+    return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 8);
+  }
+  
+  /**
+   * Helper: Hash tool result as if it were a call (for comparing patterns)
+   */
+  private hashResultAsCall(result: ToolResult): string {
+    // Use output or context as basis for hash, fallback to error
+    const content = result.output || result.context || result.error || '{}';
+    const normalized = JSON.stringify(content, Object.keys(content as any).sort());
+    return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 8);
+  }
+  
+  /**
+   * Helper: Detect repeating patterns
+   */
+  private detectPattern(calls: ToolCallSignature[], patternLength: number): StagnationPattern | null {
+    if (calls.length < patternLength * 2) return null;
+    
+    for (let i = 0; i <= calls.length - patternLength * 2; i++) {
+      const pattern = calls.slice(i, i + patternLength)
+        .map(c => c.toolName)
+        .join('→');
+      
+      let matches = 1;
+      for (let j = i + patternLength; j <= calls.length - patternLength; j += patternLength) {
+        const nextPattern = calls.slice(j, j + patternLength)
+          .map(c => c.toolName)
+          .join('→');
+        
+        if (pattern === nextPattern) {
+          matches++;
+        } else {
+          break;
+        }
+      }
+      
+      if (matches >= 2) {
+        return {
+          pattern,
+          count: matches,
+          firstSeen: i
+        };
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Helper: Group similar errors using string similarity
+   */
+  private groupSimilarErrors(errors: ToolResult[]): ToolResult[][] {
+    const groups: ToolResult[][] = [];
+    
+    for (const error of errors) {
+      let addedToGroup = false;
+      
+      for (const group of groups) {
+        if (this.areSimilarErrors(error, group[0])) {
+          group.push(error);
+          addedToGroup = true;
+          break;
+        }
+      }
+      
+      if (!addedToGroup) {
+        groups.push([error]);
+      }
+    }
+    
+    return groups;
+  }
+  
+  /**
+   * Helper: Check if two errors are similar
+   */
+  private areSimilarErrors(a: ToolResult, b: ToolResult): boolean {
+    if (!a.error || !b.error) return false;
+    if (a.toolname !== b.toolname) return false;
+    
+    // Simple similarity check - you could use more sophisticated algorithms
+    const similarity = this.calculateStringSimilarity(a.error, b.error);
+    return similarity > this.similarityThreshold;
+  }
+  
+  /**
+   * Helper: Calculate string similarity (Jaccard similarity)
+   */
+  private calculateStringSimilarity(a: string, b: string): number {
+    const wordsA = new Set(a.toLowerCase().split(/\s+/));
+    const wordsB = new Set(b.toLowerCase().split(/\s+/));
+    
+    const intersection = new Set([...wordsA].filter(x => wordsB.has(x)));
+    const union = new Set([...wordsA, ...wordsB]);
+    
+    return intersection.size / union.size;
+  }
+  
+  /**
+   * Get diagnostic information from tool call history (stateless)
+   */
+  getDiagnostics(toolCallHistory: ToolResult[]): {
+    recentCalls: string[];
+    callFrequency: Map<string, number>;
+    successRate: number;
+  } {
+    const recentCalls = toolCallHistory.slice(-10).map(r => 
+      `${r.toolname}(${r.success ? '✓' : '✗'})`
+    );
+    
+    const callFrequency = new Map<string, number>();
+    for (const result of toolCallHistory) {
+      if (result.toolname !== 'final' && result.toolname !== 'run-failure') {
+        callFrequency.set(result.toolname, (callFrequency.get(result.toolname) || 0) + 1);
+      }
+    }
+    
+    const successCount = toolCallHistory.filter(r => r.success).length;
+    const successRate = toolCallHistory.length > 0 ? successCount / toolCallHistory.length : 1;
+    
+    return {
+      recentCalls,
+      callFrequency,
+      successRate
+    };
+  }
+}

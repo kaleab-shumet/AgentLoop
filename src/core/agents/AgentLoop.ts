@@ -9,7 +9,8 @@ import {
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
-import { PromptManager, PromptTemplateBuilder, PromptConfig } from '../prompt/PromptManager';
+import { PromptManager, PromptManagerConfig, ResponseFormat } from '../prompt/PromptManager';
+import { StagnationDetector, StagnationDetectorConfig } from '../utils/StagnationDetector';
 
 
 
@@ -42,8 +43,8 @@ export interface AgentLoopOptions {
   hooks?: AgentLifecycleHooks;
   executionMode?: ExecutionMode;
   promptManager?: PromptManager;
-  promptTemplateBuilder?: PromptTemplateBuilder;
-  promptConfig?: PromptConfig;
+  promptManagerConfig?: PromptManagerConfig;
+  stagnationDetector?: StagnationDetectorConfig;
 }
 
 /**
@@ -66,6 +67,7 @@ export abstract class AgentLoop {
   protected aiProvider: AIProvider;
   protected llmDataHandler: LLMDataHandler;
   protected promptManager: PromptManager;
+  protected stagnationDetector: StagnationDetector;
 
   protected temperature?: number;
   protected maxTokens?: number;
@@ -87,9 +89,31 @@ export abstract class AgentLoop {
     // Initialize prompt manager - will be properly set up in initializePromptManager
     this.promptManager = options.promptManager || new PromptManager(
       '', 
-      options.promptTemplateBuilder, 
-      options.promptConfig
+      options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.executionMode)
     );
+    
+    // Initialize stagnation detector
+    this.stagnationDetector = new StagnationDetector(options.stagnationDetector);
+  }
+
+  /**
+   * Get default prompt manager configuration based on execution mode
+   */
+  private getDefaultPromptManagerConfig(executionMode?: ExecutionMode): PromptManagerConfig {
+    const responseFormat = executionMode === ExecutionMode.FUNCTION_CALLING 
+      ? ResponseFormat.FUNCTION_CALLING 
+      : ResponseFormat.XML;
+    
+    return {
+      responseFormat,
+      promptOptions: {
+        includeContext: true,
+        includeConversationHistory: true,
+        includeToolHistory: true,
+        maxHistoryEntries: 10,
+        parallelExecution: this.parallelExecution
+      }
+    };
   }
 
   /**
@@ -133,9 +157,12 @@ export abstract class AgentLoop {
    * Initialize the prompt manager with the system prompt if not already set
    */
   protected initializePromptManager(): void {
-    // If promptManager was not provided in options or has empty system prompt, create new one
-    if (!this.promptManager.buildSystemPrompt() || this.promptManager.buildSystemPrompt().trim() === '') {
-      this.promptManager = new PromptManager(this.systemPrompt);
+    // If promptManager was not provided in options or needs system prompt, create new one
+    if (!this.promptManager || this.systemPrompt) {
+      // Get the execution mode from the LLM data handler
+      const executionMode = this.llmDataHandler.getExecutionMode();
+      const config = this.getDefaultPromptManagerConfig(executionMode);
+      this.promptManager = new PromptManager(this.systemPrompt, config);
     }
   }
 
@@ -178,7 +205,57 @@ export abstract class AgentLoop {
 
           numRetries = 0; // Reset retries on successful LLM response
 
-
+          // Check for stagnation before executing tools
+          if (parsedToolCalls.length > 0) {
+            for (const call of parsedToolCalls) {
+              const stagnationResult = this.stagnationDetector.isStagnant(call, toolCallHistory, i + 1);
+              if (stagnationResult.isStagnant && stagnationResult.confidence > 0.7) {
+                this.logger.warn(`[AgentLoop] Stagnation detected (${stagnationResult.confidence.toFixed(2)}): ${stagnationResult.reason}`);
+                
+                // Create stagnation warning result
+                const stagnationWarning: ToolResult = {
+                  toolname: 'stagnation-detector',
+                  success: false,
+                  error: `Stagnation detected: ${stagnationResult.reason}. ${stagnationResult.confidence >= 0.90 ? 'Forcing termination.' : 'Consider using the final tool.'}`,
+                  context: { 
+                    stagnationReason: stagnationResult.reason,
+                    confidence: stagnationResult.confidence,
+                    iteration: i + 1,
+                    diagnostics: this.stagnationDetector.getDiagnostics(toolCallHistory)
+                  }
+                };
+                toolCallHistory.push(stagnationWarning);
+                
+                // For very high confidence stagnation (>=90%), force termination
+                if (stagnationResult.confidence >= 0.90) {
+                  this.logger.error(`[AgentLoop] Critical stagnation detected. Forcing termination with final tool.`);
+                  
+                  const forcedTermination: ToolResult = {
+                    toolname: this.FINAL_TOOL_NAME,
+                    success: true,
+                    output: { 
+                      value: `Task terminated due to critical stagnation: ${stagnationResult.reason}. The agent was repeating the same actions without making progress. Based on the work completed so far: ${this.summarizeProgress(toolCallHistory)}`
+                    }
+                  };
+                  
+                  toolCallHistory.push(forcedTermination);
+                  await this.hooks.onFinalAnswer?.(forcedTermination);
+                  
+                  const output: AgentRunOutput = { toolCallHistory, finalAnswer: forcedTermination };
+                  await this.hooks.onRunEnd?.(output);
+                  return output;
+                }
+                
+                // For high confidence stagnation (70-89%), set error context but continue
+                lastError = new AgentError(
+                  `Stagnation detected: ${stagnationResult.reason}. Consider completing the task to avoid loops.`,
+                  AgentErrorType.TOOL_EXECUTION_ERROR,
+                  { stagnation: stagnationResult }
+                );
+                break; // Only warn once per iteration
+              }
+            }
+          }
 
           // executeToolCalls now directly adds results to toolCallHistory
           const iterationResults = await this.executeToolCalls(parsedToolCalls, turnState);
@@ -432,30 +509,50 @@ export abstract class AgentLoop {
 
   private constructPrompt(userPrompt: string, context: Record<string, any>, lastError: AgentError | null, conversationHistory: ChatEntry[], toolCallHistory: ToolResult[], keepRetry: boolean): string {
     const toolDefinitions = this.llmDataHandler.formatToolDefinitions(this.tools);
-    const formatInstructions = this.llmDataHandler.getFormatInstructions(this.tools, this.FINAL_TOOL_NAME, this.parallelExecution);
     
-    // Add termination hint if we detect potential completion
-    const shouldSuggestTermination = this.detectPotentialCompletion(toolCallHistory, userPrompt);
-    let enhancedFormatInstructions = formatInstructions;
-    
-    if (shouldSuggestTermination) {
-      enhancedFormatInstructions += `\n\n⚠️  **TERMINATION ALERT:** The history shows successful operations that may have completed the user's request. Carefully evaluate if you should use the '${this.FINAL_TOOL_NAME}' tool instead of continuing.`;
-    }
-    
-    const template = this.promptManager.constructPrompt(
+    // Build the prompt using the clean PromptManager API
+    let prompt = this.promptManager.buildPrompt(
       userPrompt,
       context,
       lastError,
       conversationHistory,
       toolCallHistory,
       keepRetry,
-      this.tools,
       this.FINAL_TOOL_NAME,
-      enhancedFormatInstructions,
       toolDefinitions
     );
     
-    return template;
+    return prompt;
+  }
+
+  /**
+   * Summarizes the progress made so far for forced termination scenarios
+   */
+  private summarizeProgress(toolCallHistory: ToolResult[]): string {
+    const successfulCalls = toolCallHistory.filter(r => r.success && r.toolname !== this.FINAL_TOOL_NAME && r.toolname !== 'stagnation-detector');
+    const failedCalls = toolCallHistory.filter(r => !r.success && r.toolname !== 'stagnation-detector' && r.toolname !== 'run-failure');
+    
+    if (successfulCalls.length === 0 && failedCalls.length === 0) {
+      return "No significant progress was made.";
+    }
+    
+    const summary = [];
+    if (successfulCalls.length > 0) {
+      const toolCounts = new Map<string, number>();
+      successfulCalls.forEach(call => {
+        toolCounts.set(call.toolname, (toolCounts.get(call.toolname) || 0) + 1);
+      });
+      const toolSummary = Array.from(toolCounts.entries())
+        .map(([tool, count]) => `${tool}(${count}x)`)
+        .join(', ');
+      summary.push(`Successfully executed: ${toolSummary}`);
+    }
+    
+    if (failedCalls.length > 0) {
+      summary.push(`Encountered ${failedCalls.length} failed operation(s)`);
+    }
+    
+    return summary.join('. ') + '.';
   }
 
   /**
@@ -550,7 +647,7 @@ export abstract class AgentLoop {
     if (!this.tools.some(t => t.name === this.FINAL_TOOL_NAME)) {
       this.defineTool((z) => ({
         name: this.FINAL_TOOL_NAME,
-        description: `⚠️ CRITICAL: Call this tool to TERMINATE the execution and provide your final answer. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response. This tool ENDS the conversation - only call it when finished. NEVER call other tools after this one.`,
+        description: `⚠️ CRITICAL: Call this tool to TERMINATE the execution and provide your final answer. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response. (4) When something is beyond your capacity or unclear, seek additional clarification but do so carefully to avoid making the user feel burdened or frustrated. This tool ENDS the conversation - only call it when finished. NEVER call other tools after this one.`,
         responseSchema: z.object({ 
           value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.") 
         }),

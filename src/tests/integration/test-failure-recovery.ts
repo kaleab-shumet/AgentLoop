@@ -1,4 +1,4 @@
-import { FileManagementAgent } from './FileManagementAgent';
+import { FileManagementAgent } from '../../examples/FileManagementAgent';
 import * as fs from 'fs';
 import * as path from 'path';
 

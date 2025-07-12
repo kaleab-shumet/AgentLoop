@@ -1,4 +1,4 @@
-import { RealFileManagerAgent } from './RealFileManagerAgent';
+import { RealFileManagerAgent } from '../../examples/RealFileManagerAgent/RealFileManagerAgent';
 import * as path from 'path';
 import * as fs from 'fs';
 

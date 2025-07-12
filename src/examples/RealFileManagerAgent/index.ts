@@ -17,7 +17,7 @@ export {
   runPerformanceTest, 
   runErrorHandlingTest 
 } from './demo';
-export { runSimpleTest } from './test-simple';
+// Note: test-simple.ts was removed - simple tests are now part of demo.ts
 
 // Re-export types for convenience
 export type { AgentRunInput, AgentRunOutput } from '../../core';

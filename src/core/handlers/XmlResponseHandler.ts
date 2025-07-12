@@ -87,32 +87,10 @@ export class XmlResponseHandler implements ResponseHandler {
   }
 
   getFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string {
-    const executionStrategyPrompt = parallelExecution ? 
-      "Your tools can execute concurrently. You should call all necessary tools for a task in a single turn." : 
-      "Your tools execute sequentially. If one tool fails, you must retry and fix it before continuing.";
-
-    return `You MUST respond by calling one or more tools. Your entire output must be a single, valid XML block enclosed in \`\`\`xml ... \`\`\`. All tool calls must be children under a single <root> XML tag. 
-
-**CRITICAL TERMINATION RULES:**
-1. **NEVER REPEAT SUCCESSFUL OPERATIONS:** Before making any tool call, check the tool call history. If a tool has already succeeded for the same purpose, DO NOT call it again.
-2. **MANDATORY TERMINATION:** You MUST call the '${finalToolName}' tool when:
-   - You have successfully completed the user's request
-   - All required information has been gathered or operations completed
-   - You can provide a complete answer to the user
-3. **SINGLE FINAL TOOL:** When using '${finalToolName}', it must be the ONLY tool in your response.
-4. **NO REDUNDANT WORK:** If the history shows a task is complete, immediately use '${finalToolName}' with the results.
-
-**WORKFLOW DECISION PROCESS:**
-- Check history → Identify what's been done → Determine what's still needed → Either do remaining work OR use '${finalToolName}' if complete
-
-**Example of completing after successful operations:**
-\`\`\`xml
-<root>
-  <${finalToolName}><name>${finalToolName}</name><value>I have successfully completed your request. [Summarize what was accomplished based on the history]</value></${finalToolName}>
-</root>
-\`\`\`
-
-- **Execution Strategy:** ${executionStrategyPrompt}`;
+    // Format instructions are now centralized in PromptTemplates
+    // This handler just needs to specify that it uses XML format
+    // The actual instructions are provided by PromptManager
+    return 'XML_FORMAT'; // Marker for prompt manager to use XML format instructions
   }
 
   private extractCode(content: string, language: string = 'xml'): string | null {

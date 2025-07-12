@@ -1,5 +1,5 @@
-import { FileManagementAgent } from './FileManagementAgent';
-import { getRateLimitConfig, rateLimitedSleep } from './rate-limit-config';
+import { FileManagementAgent } from '../../examples/FileManagementAgent';
+import { getRateLimitConfig, rateLimitedSleep } from '../../examples/rate-limit-config';
 
 /**
  * Rate-limited test version to prevent API blocking
