@@ -1,1 +1,0 @@
-This is a demo project for testing the file manager agent capabilities.
