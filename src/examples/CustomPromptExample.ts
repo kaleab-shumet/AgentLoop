@@ -204,7 +204,7 @@ class WeatherAgentWithXmlFormat extends AgentLoop {
     this.defineTool((z) => ({
       name: 'get_weather',
       description: 'Get current weather conditions for a specific location',
-      responseSchema: z.object({
+      argsSchema: z.object({
         name: z.literal('get_weather'),
         location: z.string().describe('City and country/state'),
         units: z.enum(['celsius', 'fahrenheit']).optional().default('celsius'),
@@ -270,7 +270,7 @@ class WeatherAgentWithCustomTemplate extends AgentLoop {
     this.defineTool((z) => ({
       name: 'get_weather',
       description: 'Get current weather conditions for a specific location',
-      responseSchema: z.object({
+      argsSchema: z.object({
         name: z.literal('get_weather'),
         location: z.string().describe('City and country/state'),
         units: z.enum(['celsius', 'fahrenheit']).optional().default('celsius'),
@@ -329,7 +329,7 @@ class WeatherAgentWithFunctionCalling extends AgentLoop {
     this.defineTool((z) => ({
       name: 'get_weather',
       description: 'Get current weather conditions for a specific location',
-      responseSchema: z.object({
+      argsSchema: z.object({
         name: z.literal('get_weather'),
         location: z.string().describe('City and country/state'),
         units: z.enum(['celsius', 'fahrenheit']).optional().default('celsius'),

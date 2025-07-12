@@ -99,7 +99,7 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   /** A clear, detailed description of what the tool does, for the LLM. */
   description: string;
   /** A Zod schema defining the arguments the tool expects. */
-  responseSchema: T;
+  argsSchema: T;
   /** The handler function that executes the tool's logic. */
   dependencies?: string[];
   handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolResult | Promise<ToolResult>;

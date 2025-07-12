@@ -45,7 +45,7 @@ class WeatherAgent extends AgentLoop {
     this.defineTool((z) => ({
       name: 'get_weather',
       description: 'Get weather information for a specific city',
-      responseSchema: z.object({
+      argsSchema: z.object({
         city: z.string().describe('The city to get weather for'),
       }),
       handler: async (name: string, args: any) => {

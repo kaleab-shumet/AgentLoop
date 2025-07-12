@@ -82,7 +82,7 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
       // Add the name to the parsed arguments to match Tool interface expectations
       const toolCallData = { name: call.name, ...parsedArgs };
 
-      const validation = toolDef.responseSchema.safeParse(toolCallData);
+      const validation = toolDef.argsSchema.safeParse(toolCallData);
       if (!validation.success) {
         throw new AgentError(
           `[FunctionCallingResponseHandler] Function "${call.name}" has invalid arguments. Validation errors: ${JSON.stringify(validation.error?.issues)}`,
@@ -98,7 +98,7 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     const functionDefinitions: FunctionDefinition[] = tools.map(tool => {
-      const jsonSchema = zodToJsonSchema(tool.responseSchema, tool.name) as any;
+      const jsonSchema = zodToJsonSchema(tool.argsSchema, tool.name) as any;
       
       // Remove the 'name' property from parameters since it's handled separately
       const parameters = { ...jsonSchema };

@@ -1,0 +1,12 @@
+{
+  "name": "file-manager-demo",
+  "version": "1.0.0",
+  "description": "Demo project for file manager agent",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "jest"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

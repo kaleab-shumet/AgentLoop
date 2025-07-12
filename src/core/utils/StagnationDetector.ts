@@ -18,15 +18,20 @@ export interface StagnationDetectorConfig {
   windowSize?: number;
   similarityThreshold?: number;
   enableTimeBasedDetection?: boolean;
+  repeatedCallThreshold?: number;
+  errorLoopThreshold?: number;
+  cyclicPatternThreshold?: number;
 }
 
 export class StagnationDetector {
   private windowSize: number;
   private similarityThreshold: number;
   private enableTimeBasedDetection: boolean;
+  private repeatedCallThreshold: number;
+  private errorLoopThreshold: number;
+  private cyclicPatternThreshold: number;
   
-  // Configurable thresholds
-  private readonly PATTERN_REPEAT_THRESHOLD = 2;
+  // Fixed thresholds
   private readonly SEQUENCE_LENGTH_CHECK = 3;
   private readonly TIME_WINDOW_MS = 60000; // 1 minute
   
@@ -34,6 +39,9 @@ export class StagnationDetector {
     this.windowSize = config.windowSize || 10;
     this.similarityThreshold = config.similarityThreshold || 0.85;
     this.enableTimeBasedDetection = config.enableTimeBasedDetection ?? true;
+    this.repeatedCallThreshold = config.repeatedCallThreshold || 3;
+    this.errorLoopThreshold = config.errorLoopThreshold || 3;
+    this.cyclicPatternThreshold = config.cyclicPatternThreshold || 3;
   }
   
   /**
@@ -121,9 +129,9 @@ export class StagnationDetector {
     }
     
     for (const [key, count] of callCounts) {
-      if (count >= 2) {
-        // Lower threshold but graduated confidence
-        const confidence = count === 2 ? 0.75 : Math.min(count / 3, 1);
+      if (count >= this.repeatedCallThreshold) {
+        // Graduated confidence based on threshold
+        const confidence = count === this.repeatedCallThreshold ? 0.75 : Math.min(count / (this.repeatedCallThreshold + 1), 1);
         return {
           isStagnant: true,
           reason: `Tool call ${key.split(':')[0]} repeated ${count} times with same arguments`,
@@ -152,7 +160,7 @@ export class StagnationDetector {
         return {
           isStagnant: true,
           reason: `Cyclic pattern detected: ${pattern.pattern}`,
-          confidence: Math.min(pattern.count / 2, 1)
+          confidence: Math.min(pattern.count / this.cyclicPatternThreshold, 1)
         };
       }
     }
@@ -208,9 +216,9 @@ export class StagnationDetector {
     const errorGroups = this.groupSimilarErrors(recentErrors);
     
     for (const group of errorGroups) {
-      if (group.length >= 2) {
+      if (group.length >= this.errorLoopThreshold) {
         // Lower threshold for error loops - they're more critical
-        const confidence = group.length === 2 ? 0.85 : Math.min(group.length / 2, 1);
+        const confidence = group.length === this.errorLoopThreshold ? 0.85 : Math.min(group.length / this.errorLoopThreshold, 1);
         return {
           isStagnant: true,
           reason: `Repeated error pattern: ${group[0].error?.substring(0, 50)}...`,
@@ -289,7 +297,7 @@ export class StagnationDetector {
         }
       }
       
-      if (matches >= 2) {
+      if (matches >= this.cyclicPatternThreshold) {
         return {
           pattern,
           count: matches,

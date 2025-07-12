@@ -71,7 +71,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'list_directory',
       description: 'List contents of a directory with detailed file information including size, type, and modification dates.',
-      responseSchema: z.object({
+      argsSchema: z.object({
         dirPath: z.string().optional().default('.').describe('Directory path to list (relative to working directory or absolute, defaults to current directory)'),
         showHidden: z.boolean().optional().default(false).describe('Whether to show hidden files and directories'),
         recursive: z.boolean().optional().default(false).describe('Whether to list subdirectories recursively'),
@@ -128,7 +128,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'read_file',
       description: 'Read the contents of a text file. Supports various text formats and provides encoding detection.',
-      responseSchema: z.object({
+      argsSchema: z.object({
         filePath: z.string().describe('Path to the file to read'),
         encoding: z.string().optional().default('utf8').describe('File encoding (utf8, ascii, etc.)'),
         startLine: z.number().optional().describe('Start reading from this line number (1-based)'),
@@ -227,7 +227,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'write_file',
       description: 'Write content to a file. Supports creating new files or overwriting existing ones with backup options.',
-      responseSchema: z.object({
+      argsSchema: z.object({
         filePath: z.string().describe('Path where to write the file'),
         content: z.string().describe('Content to write to the file'),
         createDirs: z.boolean().optional().default(false).describe('Create parent directories if they don\'t exist'),
@@ -292,7 +292,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'create_directory',
       description: 'Create a new directory or nested directory structure.',
-      responseSchema: z.object({
+      argsSchema: z.object({
         dirPath: z.string().describe('Path of the directory to create'),
         recursive: z.boolean().optional().default(true).describe('Create parent directories if needed')
       }),
@@ -347,7 +347,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'search_files',
       description: 'Search for files by name pattern and optionally search within file contents.',
-      responseSchema: z.object({
+      argsSchema: z.object({
         searchPath: z.string().optional().default('.').describe('Directory to search in'),
         namePattern: z.string().optional().describe('File name pattern to search for (supports wildcards like *.txt)'),
         contentPattern: z.string().optional().describe('Text pattern to search for within files'),
@@ -484,7 +484,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'get_file_info',
       description: 'Get comprehensive information about a file or directory including permissions, size, dates, and type.',
-      responseSchema: z.object({
+      argsSchema: z.object({
         itemPath: z.string().describe('Path to the file or directory to examine')
       }),
       handler: async (name: string, args: any) => {
@@ -566,7 +566,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'change_directory',
       description: 'Change the current working directory for file operations.',
-      responseSchema: z.object({
+      argsSchema: z.object({
         newPath: z.string().describe('New working directory path')
       }),
       handler: async (name: string, args: any) => {
@@ -611,7 +611,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'delete_item',
       description: 'Delete a file or directory. Use with caution - this operation cannot be undone!',
-      responseSchema: z.object({
+      argsSchema: z.object({
         itemPath: z.string().describe('Path to the file or directory to delete'),
         recursive: z.boolean().optional().default(false).describe('For directories: delete recursively including all contents'),
         confirm: z.boolean().describe('Must be true to confirm deletion - this is a safety measure')
@@ -669,7 +669,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.defineTool((z) => ({
       name: 'final',
       description: `⚠️ CRITICAL: Call this tool to TERMINATE the execution and provide your final answer. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response. This tool ENDS the conversation - only call it when finished. NEVER call other tools after this one.`,
-      responseSchema: z.object({ 
+      argsSchema: z.object({ 
         value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.") 
       }),
       handler: async (name: string, args: { value: string; }, turnState: TurnState): Promise<ToolResult> => {

@@ -64,7 +64,7 @@ export class XmlResponseHandler implements ResponseHandler {
         );
       }
 
-      const validation = toolDef.responseSchema.safeParse(call);
+      const validation = toolDef.argsSchema.safeParse(call);
       if (!validation.success) {
         throw new AgentError(
           `[XmlResponseHandler] Tool "${call.name}" has an invalid schema. Validation errors: ${JSON.stringify(validation.error?.issues)}. Hint: Ensure the tool call matches the expected schema for "${call.name}".`,
@@ -80,7 +80,7 @@ export class XmlResponseHandler implements ResponseHandler {
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     return tools.map(tool => {
-      const jsonSchema = zodToJsonSchema(tool.responseSchema, tool.name);
+      const jsonSchema = zodToJsonSchema(tool.argsSchema, tool.name);
       const xsdSchema = convertJsonSchemaToXsd(jsonSchema as any, { rootElementName: 'tool' });
       return `\n${xsdSchema}`;
     }).join('\n\n');

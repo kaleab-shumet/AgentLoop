@@ -45,6 +45,7 @@ export interface AgentLoopOptions {
   promptManager?: PromptManager;
   promptManagerConfig?: PromptManagerConfig;
   stagnationDetector?: StagnationDetectorConfig;
+  sleepBetweenIterationsMs?: number;
 }
 
 /**
@@ -61,6 +62,7 @@ export abstract class AgentLoop {
   protected retryDelay: number;
   protected parallelExecution: boolean;
   protected hooks: AgentLifecycleHooks;
+  protected sleepBetweenIterationsMs: number;
 
   protected abstract systemPrompt: string;
   public tools: Tool<ZodTypeAny>[] = [];
@@ -85,6 +87,7 @@ export abstract class AgentLoop {
     this.retryDelay = options.retryDelay || 1000;
     this.parallelExecution = options.parallelExecution ?? false;
     this.hooks = options.hooks || {};
+    this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs || 2000;
     
     // Initialize prompt manager - will be properly set up in initializePromptManager
     this.promptManager = options.promptManager || new PromptManager(
@@ -212,6 +215,8 @@ export abstract class AgentLoop {
               if (stagnationResult.isStagnant && stagnationResult.confidence > 0.7) {
                 this.logger.warn(`[AgentLoop] Stagnation detected (${stagnationResult.confidence.toFixed(2)}): ${stagnationResult.reason}`);
                 
+                keepRetry = false;
+
                 // Create stagnation warning result
                 const stagnationWarning: ToolResult = {
                   toolname: 'stagnation-detector',
@@ -310,7 +315,7 @@ export abstract class AgentLoop {
           
           // Add small delay between iterations to prevent rate limiting
           if (i < this.maxIterations - 1) { // Don't wait after the last iteration
-            await this.sleep(5000); // 1 second delay between iterations
+            await this.sleep(this.sleepBetweenIterationsMs);
           }
         }
       }
@@ -608,7 +613,7 @@ export abstract class AgentLoop {
     );
     let result: ToolResult;
     try {
-      const validation = tool.responseSchema.safeParse(call);
+      const validation = tool.argsSchema.safeParse(call);
       if (!validation.success) {
         throw new AgentError(`Invalid arguments for tool '${tool.name}': ${validation.error.message}`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolname: tool.name, validationError: validation.error });
       }
@@ -630,7 +635,7 @@ export abstract class AgentLoop {
   private _addTool<T extends ZodTypeAny>(tool: Tool<T>): void {
     if (this.tools.some(t => t.name === tool.name)) throw new AgentError(`A tool with the name '${tool.name}' is already defined.`, AgentErrorType.DUPLICATE_TOOL_NAME, { toolname: tool.name });
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tool.name)) throw new AgentError(`Tool name '${tool.name}' must start with a letter or underscore and contain only letters, numbers, and underscores.`, AgentErrorType.INVALID_TOOL_NAME, { toolname: tool.name });
-    if (!(tool.responseSchema instanceof ZodObject)) throw new AgentError(`The responseSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolname: tool.name });
+    if (!(tool.argsSchema instanceof ZodObject)) throw new AgentError(`The argsSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolname: tool.name });
     
     // Set default timeout if not provided
     const toolWithDefaults = {
@@ -639,8 +644,8 @@ export abstract class AgentLoop {
       dependencies: tool.dependencies || []
     };
     
-    const enhancedSchema = tool.responseSchema.extend({ name: z.string().describe("The name of the tool, which must match the tool's key.") });
-    this.tools.push({ ...toolWithDefaults, responseSchema: enhancedSchema } as unknown as Tool<ZodTypeAny>);
+    const enhancedSchema = tool.argsSchema.extend({ name: z.string().describe("The name of the tool, which must match the tool's key.") });
+    this.tools.push({ ...toolWithDefaults, argsSchema: enhancedSchema } as unknown as Tool<ZodTypeAny>);
   }
 
   private addFinalTool(): void {
@@ -648,7 +653,7 @@ export abstract class AgentLoop {
       this.defineTool((z) => ({
         name: this.FINAL_TOOL_NAME,
         description: `⚠️ CRITICAL: Call this tool to TERMINATE the execution and provide your final answer. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response. (4) When something is beyond your capacity or unclear, seek additional clarification but do so carefully to avoid making the user feel burdened or frustrated. This tool ENDS the conversation - only call it when finished. NEVER call other tools after this one.`,
-        responseSchema: z.object({ 
+        argsSchema: z.object({ 
           value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.") 
         }),
         handler: async (name: string, args: { value: string; }, turnState: TurnState): Promise<ToolResult> => {
