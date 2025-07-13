@@ -1,17 +1,5 @@
-export interface LLMConfig {
-    apiKey: string;
-    model?: string;
-    service?: string;
-    temperature?: number;
-    maxTokens?: number;
-}
-
-export interface CompletionOptions {
-    model?: string;
-    temperature?: number;
-    maxTokens?: number;
-}
+import { FunctionCallingTool } from "../types";
 
 export interface AIProvider {
-    getCompletion(prompt: string, options?: CompletionOptions): Promise<string> | string | undefined;
+    getCompletion(prompt: string, tools?: FunctionCallingTool[], options?: object): Promise<string> | string | undefined;
 }

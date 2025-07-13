@@ -5,7 +5,8 @@ import { LLMDataHandler } from '../handlers/LLMDataHandler';
 import { Logger } from '../utils/Logger';
 import {
   ChatEntry, ToolResult, Tool, PendingToolCall,
-  AgentRunInput, AgentRunOutput, ExecutionMode
+  AgentRunInput, AgentRunOutput, ExecutionMode,
+  FunctionCallingTool
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
@@ -72,7 +73,7 @@ export abstract class AgentLoop {
   protected stagnationDetector: StagnationDetector;
 
   protected temperature?: number;
-  protected maxTokens?: number;
+  protected max_tokens?: number;
 
   private readonly FINAL_TOOL_NAME = 'final';
 
@@ -498,7 +499,25 @@ export abstract class AgentLoop {
     for (let attempt = 0; attempt < this.retryAttempts; attempt++) {
       try {
         await this.hooks.onLLMStart?.(prompt);
-        const response = await this.aiProvider.getCompletion(prompt, options);
+
+        let functionTools: FunctionCallingTool[] | undefined = []
+        if(this.getExecutionMode() === ExecutionMode.FUNCTION_CALLING){
+          const functionToolsString = this.llmDataHandler.formatToolDefinitions(this.tools)
+          const functionDefinitions = JSON.parse(functionToolsString)
+          
+          functionTools = functionDefinitions.map((def: any) => ({
+            type: "function",
+            function: {
+              name: def.name,
+              description: def.description,
+              parameters: def.parameters
+            }
+          }))
+        }
+
+        
+       
+        const response = await this.aiProvider.getCompletion(prompt,functionTools, options);
         if (typeof response !== "string") {
           throw new AgentError("LLM provider returned undefined or non-string response.", AgentErrorType.UNKNOWN);
         }
@@ -512,6 +531,7 @@ export abstract class AgentLoop {
     }
     throw lastError ?? new AgentError("LLM call failed after all retry attempts.", AgentErrorType.UNKNOWN);
   }
+  
 
   private constructPrompt(userPrompt: string, context: Record<string, any>, lastError: AgentError | null, conversationHistory: ChatEntry[], toolCallHistory: ToolResult[], keepRetry: boolean): string {
     const toolDefinitions = this.llmDataHandler.formatToolDefinitions(this.tools);

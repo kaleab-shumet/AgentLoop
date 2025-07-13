@@ -1,5 +1,5 @@
 import { AgentLoop, ExecutionMode, TurnState, ToolResult, AgentRunInput, AgentRunOutput } from '../../core';
-import { GeminiAIProvider } from '../../core/providers/GeminiAIProvider';
+import { DefaultAIProvider } from '../../core/providers/DefaultAIProvider';
 import { FileOperationHandlers, DirectoryHandlers, SearchHandlers, AdvancedFileHandlers } from './handlers';
 import { ConversationMemory } from './utils';
 import * as path from 'path';
@@ -58,7 +58,7 @@ Always be helpful and accurate. Put all conversational responses inside the 'fin
   private debugMode: boolean = false;
 
   constructor(config: any, workingDir: string = process.cwd(), debugMode: boolean = false) {
-    const provider = new GeminiAIProvider(config);
+    const provider = new DefaultAIProvider(config);
     super(provider, {
       maxIterations: 10,
       parallelExecution: false, // Sequential for file operations safety

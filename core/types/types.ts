@@ -105,6 +105,34 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolResult | Promise<ToolResult>;
 };
 
+// Essential types only
+export type ServiceName = 'openai' | 'google' | 'anthropic' | 'groq' | 'ollama';
+
+
+export interface FunctionCallingTool {
+  function: { description: string; name: string; parameters: any };
+  type: "function";
+}
+
+// Simple LLMConfig - only essential fields
+export interface LLMConfig {
+  /** Service to use */
+  service: ServiceName;
+  /** API Key for the service */
+  apiKey: string;
+  /** Model to use */
+  model?: string;
+  /** Temperature for the model */
+  temperature?: number;
+  /** Maximum number of tokens to generate */
+  max_tokens?: number;
+
+  tools: FunctionCallingTool[]
+
+
+}
+
+
 /**
  * Interface for handling different response formats (XML vs Function Calling)
  */

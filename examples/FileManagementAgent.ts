@@ -1,5 +1,5 @@
 import { AgentLoop, ExecutionMode, AgentRunInput, AgentRunOutput } from '../core';
-import { GeminiAIProvider } from '../core/providers/GeminiAIProvider';
+import { DefaultAIProvider } from '../core/providers/DefaultAIProvider';
 import z from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -15,7 +15,7 @@ export class FileManagementAgent extends AgentLoop {
   private workingDirectory: string;
 
   constructor(config: any, workingDir: string = process.cwd()) {
-    const provider = new GeminiAIProvider(config);
+    const provider = new DefaultAIProvider(config);
     super(provider, {
       maxIterations: 8,
       parallelExecution: false, // Sequential for file operations safety
@@ -394,10 +394,10 @@ export class FileManagementAgent extends AgentLoop {
 
 // Example usage and test functions
 export async function demonstrateFileManagement() {
-  // You would need to provide your actual Gemini API key
   const config = {
-    apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key',
-    model: 'gemini-2.0-flash'
+    apiKey: process.env.OPENAI_API_KEY || 'your-api-key-here',
+    service: 'openai',
+    model: 'gpt-4o-mini'
   };
 
   const agent = new FileManagementAgent(config, './test-workspace');
@@ -442,8 +442,9 @@ export async function demonstrateFileManagement() {
 // Complex scenario test
 export async function demonstrateComplexFileOperations() {
   const config = {
-    apiKey: process.env.GEMINI_API_KEY || 'your-api-key-here',
-    model: 'gemini-2.0-flash'
+    apiKey: process.env.OPENAI_API_KEY || 'your-api-key-here',
+    service: 'openai',
+    model: 'gpt-4o-mini'
   };
 
   const agent = new FileManagementAgent(config);
