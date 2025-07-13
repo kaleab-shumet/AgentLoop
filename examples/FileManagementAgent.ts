@@ -16,12 +16,12 @@ export class FileManagementAgent extends AgentLoop {
 
   constructor(config: any, workingDir: string = process.cwd()) {
     const provider = new GeminiAIProvider(config);
-    super(provider, { 
+    super(provider, {
       maxIterations: 8,
       parallelExecution: false, // Sequential for file operations safety
-      executionMode: ExecutionMode.XML 
+      executionMode: ExecutionMode.XML
     });
-    
+
     this.workingDirectory = path.resolve(workingDir);
     this.setupFileTools();
   }
@@ -38,7 +38,7 @@ export class FileManagementAgent extends AgentLoop {
       handler: async (name: string, args: any) => {
         try {
           const targetPath = path.resolve(this.workingDirectory, args.dirPath);
-          
+
           // Security check - prevent directory traversal outside working directory
           if (!targetPath.startsWith(this.workingDirectory) && !path.isAbsolute(args.dirPath)) {
             throw new Error('Access denied: Path outside working directory');
@@ -88,13 +88,13 @@ export class FileManagementAgent extends AgentLoop {
       handler: async (name: string, args: any) => {
         try {
           const targetPath = path.resolve(this.workingDirectory, args.filePath);
-          
+
           if (!fs.existsSync(targetPath)) {
             throw new Error('File does not exist');
           }
 
           const stats = fs.statSync(targetPath);
-          
+
           if (!stats.isFile()) {
             throw new Error('Path is not a file');
           }
@@ -106,7 +106,7 @@ export class FileManagementAgent extends AgentLoop {
           // Try to determine if it's a text file
           const extension = path.extname(targetPath).toLowerCase();
           const textExtensions = ['.txt', '.md', '.json', '.js', '.ts', '.html', '.css', '.xml', '.csv', '.log'];
-          
+
           if (!textExtensions.includes(extension)) {
             // For binary files, just return file info
             return {
@@ -124,7 +124,7 @@ export class FileManagementAgent extends AgentLoop {
           }
 
           const content = fs.readFileSync(targetPath, 'utf8');
-          
+
           return {
             toolName: name,
             success: true,
@@ -153,7 +153,7 @@ export class FileManagementAgent extends AgentLoop {
       description: 'Write content to a file. Creates new file or overwrites existing file.',
       argsSchema: z.object({
         filePath: z.string().describe('Path where to write the file'),
-        content: z.string().describe('Content to write to the file'),
+        content: z.string().optional().describe('Content to write to the file'),
         createDirs: z.boolean().optional().default(false).describe('Create parent directories if they don\'t exist')
       }),
       handler: async (name: string, args: any) => {
@@ -205,7 +205,7 @@ export class FileManagementAgent extends AgentLoop {
       handler: async (name: string, args: any) => {
         try {
           const targetPath = path.resolve(this.workingDirectory, args.dirPath);
-          
+
           if (fs.existsSync(targetPath)) {
             if (fs.statSync(targetPath).isDirectory()) {
               throw new Error('Directory already exists');
@@ -249,23 +249,23 @@ export class FileManagementAgent extends AgentLoop {
         try {
           const targetPath = path.resolve(this.workingDirectory, args.searchPath);
           const results: any[] = [];
-          
+
           const searchRecursive = (dir: string, depth: number) => {
             if (depth > args.maxDepth || results.length >= args.maxResults) return;
-            
+
             try {
               const items = fs.readdirSync(dir, { withFileTypes: true });
-              
+
               for (const item of items) {
                 if (results.length >= args.maxResults) break;
-                
+
                 const itemPath = path.join(dir, item.name);
-                
+
                 if (item.isFile()) {
                   // Simple pattern matching (could be enhanced with proper glob matching)
                   const pattern = args.pattern.replace(/\*/g, '.*').replace(/\?/g, '.');
                   const regex = new RegExp(pattern, 'i');
-                  
+
                   if (regex.test(item.name)) {
                     const stats = fs.statSync(itemPath);
                     results.push({
@@ -318,13 +318,13 @@ export class FileManagementAgent extends AgentLoop {
       handler: async (name: string, args: any) => {
         try {
           const targetPath = path.resolve(this.workingDirectory, args.itemPath);
-          
+
           if (!fs.existsSync(targetPath)) {
             throw new Error('File or directory does not exist');
           }
 
           const stats = fs.statSync(targetPath);
-          
+
           return {
             toolName: name,
             success: true,
@@ -347,6 +347,26 @@ export class FileManagementAgent extends AgentLoop {
             toolName: name,
             success: false,
             error: `Failed to get file info: ${error.message}`
+          };
+        }
+      }
+    }));
+
+
+    this.defineTool((z) => ({
+      name: 'final',
+      description: `⚠️ CRITICAL: Call this tool to TERMINATE the execution and provide your final answer. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response. This tool ENDS the conversation - only call it when finished. NEVER call other tools after this one.`,
+      argsSchema: z.object({
+        value: z.string().describe('Path to the file or directory to examine. You must wrap this in a CDATA ')
+      }),
+      handler: async (name: string, args: any) => {
+        try {
+
+        } catch (error: any) {
+          return {
+            toolName: name,
+            success: false,
+            error: `Failed: ${error.message}`
           };
         }
       }
@@ -396,7 +416,7 @@ export async function demonstrateFileManagement() {
 
   for (let i = 0; i < testCases.length; i++) {
     console.log(`\n--- Test Case ${i + 1}: ${testCases[i]} ---`);
-    
+
     try {
       const result = await agent.run({
         userPrompt: testCases[i],
@@ -407,7 +427,7 @@ export async function demonstrateFileManagement() {
       console.log('✅ Success!');
       console.log('Final Answer:', result.finalAnswer?.output?.value || 'No final answer');
       console.log('Tool Calls Made:', result.toolCallHistory.length);
-      
+
       // Show failed tools if any
       const failedTools = result.toolCallHistory.filter(tool => !tool.success);
       if (failedTools.length > 0) {
@@ -447,7 +467,7 @@ Please make sure each step is completed before moving to the next.`;
     console.log('📋 Complex Operation Result:');
     console.log('Tool Calls Made:', result.toolCallHistory.length);
     console.log('Final Answer:', result.finalAnswer?.output?.value);
-    
+
     // Show the sequence of operations
     result.toolCallHistory.forEach((tool, index) => {
       console.log(`${index + 1}. ${tool.toolName}: ${tool.success ? '✅' : '❌'} ${tool.success ? 'Success' : tool.error}`);

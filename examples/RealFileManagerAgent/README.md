@@ -11,13 +11,21 @@ A comprehensive, interactive file management agent built using the AgentLoop fra
 - ✅ **Path Navigation**: Change working directories safely
 - ✅ **File Information**: Detailed file/directory metadata and statistics
 
-### Advanced Capabilities
-- 🔍 **Content Search**: Find text patterns within files
-- 📊 **Recursive Listing**: Browse directory trees with depth control
-- 🛡️ **Safety Features**: Path traversal protection, file size limits
+### Advanced File Operations
+- 🔍 **File Comparison**: Compare files line-by-line with detailed diff output
+- 🔐 **File Hashing**: Compute cryptographic hashes (MD5, SHA1, SHA256, SHA512)
+- 📋 **File Copy/Move**: Copy and move files with overwrite protection
+- 🔒 **Permissions Management**: View and modify Unix-style file permissions
 - 💾 **Backup Support**: Automatic backups for file overwrites
 - 📝 **Multiple Encodings**: Support for various text file encodings
 - 🎯 **Smart File Detection**: Automatic text vs binary file handling
+
+### Advanced Capabilities
+- 🧠 **Conversation Memory**: Intelligent context retention across sessions
+- 📊 **Usage Analytics**: Track tool usage and success patterns
+- 🔍 **Content Search**: Find text patterns within files
+- 📊 **Recursive Listing**: Browse directory trees with depth control
+- 🛡️ **Safety Features**: Path traversal protection, file size limits
 
 ### Interactive Console Interface
 - 💬 **Natural Language**: Use conversational commands and friendly greetings
@@ -135,12 +143,24 @@ npx ts-node src/examples/RealFileManagerAgent/demo.ts all --debug
 🔍 "find files with 'error' in their content"
 ```
 
-### File Information
+### File Information & Operations
 ```
 ℹ️ "get detailed info about package.json"
 📊 "show statistics for the src directory"
 📋 "what files are in the current folder?"
 🔍 "tell me about the size and permissions of this file"
+🔐 "compute the SHA256 hash of important.txt"
+📋 "copy config.json to backup/config.json"
+🔄 "move old.txt to archive/old.txt"
+⚖️ "compare file1.txt and file2.txt"
+🔒 "set permissions of script.sh to 755"
+```
+
+### Memory & Analytics
+```
+📊 "show memory statistics"
+📈 "what tools have I used most?"
+🧠 "show detailed memory information"
 ```
 
 ### Debug and Special Commands
@@ -157,6 +177,7 @@ npx ts-node src/examples/RealFileManagerAgent/demo.ts all --debug
 
 The agent has access to these specialized tools:
 
+### Core Tools
 | Tool | Description |
 |------|-------------|
 | `list_directory` | List directory contents with detailed information |
@@ -167,6 +188,16 @@ The agent has access to these specialized tools:
 | `get_file_info` | Get detailed file/directory metadata |
 | `change_directory` | Change the current working directory |
 | `delete_item` | Delete files or directories (with confirmation) |
+
+### Advanced Tools
+| Tool | Description |
+|------|-------------|
+| `file_diff` | Compare two files and show line-by-line differences |
+| `file_hash` | Compute cryptographic hashes for file integrity |
+| `copy_file` | Copy files with overwrite protection |
+| `move_file` | Move or rename files safely |
+| `file_permissions` | View or modify Unix-style file permissions |
+| `memory_stats` | View conversation memory and usage analytics |
 
 ## 🛡️ Safety Features
 
@@ -186,6 +217,35 @@ The agent has access to these specialized tools:
 - ✅ Detailed error messages with context
 - ✅ Safe handling of permission issues
 - ✅ Robust file system error management
+
+## 🏗️ Architecture Overview
+
+The RealFileManagerAgent has been designed with a clean, modular architecture that separates concerns and promotes maintainability:
+
+### Component Structure
+```
+RealFileManagerAgent/
+├── RealFileManagerAgent.ts      # Main agent class (tool definitions only)
+├── handlers/                    # Tool implementation handlers
+│   ├── FileOperationHandlers.ts # Basic file operations
+│   ├── DirectoryHandlers.ts     # Directory operations  
+│   ├── SearchHandlers.ts        # Search functionality
+│   ├── AdvancedFileHandlers.ts  # Advanced file operations
+│   └── index.ts                 # Handler exports
+├── utils/                       # Utility classes
+│   ├── ConversationMemory.ts    # Memory management
+│   └── index.ts                 # Utility exports
+├── console-interface.ts         # Interactive console
+├── demo.ts                      # Demo scripts
+└── index.ts                     # Main exports
+```
+
+### Design Principles
+- **Separation of Concerns**: Tool definitions separated from implementation
+- **Modular Handlers**: Each handler focuses on specific functionality
+- **Memory Management**: Intelligent conversation context retention
+- **Type Safety**: Full TypeScript support throughout
+- **Error Handling**: Comprehensive error management and recovery
 
 ## 📊 Library Usage Experience Report
 

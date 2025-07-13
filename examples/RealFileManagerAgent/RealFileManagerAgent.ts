@@ -1,22 +1,23 @@
-import { AgentLoop, ExecutionMode, AgentRunInput, AgentRunOutput, TurnState, ToolResult } from '../../core';
+import { AgentLoop, ExecutionMode, TurnState, ToolResult, AgentRunInput, AgentRunOutput } from '../../core';
 import { GeminiAIProvider } from '../../core/providers/GeminiAIProvider';
-import z from 'zod';
-import * as fs from 'fs';
+import { FileOperationHandlers, DirectoryHandlers, SearchHandlers, AdvancedFileHandlers } from './handlers';
+import { ConversationMemory } from './utils';
 import * as path from 'path';
 
 /**
  * Enhanced Real File Manager Agent that provides a comprehensive file management interface.
  * Features include file operations, directory management, content search, and safe file handling.
  */
+
 export class RealFileManagerAgent extends AgentLoop {
   protected systemPrompt = `You are a friendly and helpful file management assistant named FileBot. You have a warm, conversational personality and comprehensive file operation capabilities.
 
 🎯 CONVERSATIONAL BEHAVIOR:
-- Respond warmly to greetings like "hello", "hi", "good morning" with friendly responses
-- Engage in casual conversation while staying focused on file management tasks
-- Be encouraging and supportive when users are learning
-- Use emojis appropriately to make interactions more engaging
-- If someone just says "hello" or greets you, respond conversationally and ask how you can help with file management
+- Respond warmly to greetings, but put ALL conversational text inside the 'final' tool's value parameter
+- For greetings like "hello" or "hi", use the final tool with a warm, friendly response
+- Be encouraging and supportive in your tool responses
+- Use emojis in your final tool responses to make interactions engaging
+- NEVER put conversational text outside of XML tool calls
 
 🔧 TECHNICAL CAPABILITIES:
 - Creating, reading, writing, and managing files and directories
@@ -44,8 +45,13 @@ export class RealFileManagerAgent extends AgentLoop {
 - Request: "List everything recursively" → Use: list_directory with recursive=true  
 - Request: "Show all files in subdirectories" → Use: list_directory with recursive=true
 
-Always be helpful, accurate, conversational, and explain what you're doing in a friendly manner. Make file management feel approachable and less intimidating!`;
+Always be helpful and accurate. Put all conversational responses inside the 'final' tool to maintain proper XML format. Make file management feel approachable and less intimidating!`;
 
+  private fileHandlers!: FileOperationHandlers;
+  private directoryHandlers!: DirectoryHandlers;
+  private searchHandlers!: SearchHandlers;
+  private advancedFileHandlers!: AdvancedFileHandlers;
+  private conversationMemory!: ConversationMemory;
   private workingDirectory: string;
   private maxFileSize: number = 10 * 1024 * 1024; // 10MB limit
   private allowedExtensions: string[] = ['.txt', '.md', '.json', '.js', '.ts', '.html', '.css', '.xml', '.csv', '.log', '.py', '.java', '.cpp', '.c', '.h'];
@@ -61,25 +67,63 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
 
     this.workingDirectory = path.resolve(workingDir);
     this.debugMode = debugMode;
+    this.conversationMemory = new ConversationMemory({
+      maxEntries: 20,
+      summarizeOlderThan: 15,
+      enableSummary: true,
+      persistToDisk: false
+    });
+    this.initializeHandlers();
     this.setupTools();
+  }
+
+  private initializeHandlers(): void {
+    this.fileHandlers = new FileOperationHandlers(this.workingDirectory, this.maxFileSize, this.allowedExtensions, this.debugMode);
+    this.directoryHandlers = new DirectoryHandlers(this.workingDirectory, this.debugMode);
+    this.searchHandlers = new SearchHandlers(this.workingDirectory, this.maxFileSize, this.allowedExtensions, this.debugMode);
+    this.advancedFileHandlers = new AdvancedFileHandlers(this.workingDirectory, this.debugMode);
   }
 
   public setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
+    this.fileHandlers = new FileOperationHandlers(this.workingDirectory, this.maxFileSize, this.allowedExtensions, this.debugMode);
+    this.directoryHandlers = new DirectoryHandlers(this.workingDirectory, this.debugMode);
+    this.searchHandlers = new SearchHandlers(this.workingDirectory, this.maxFileSize, this.allowedExtensions, this.debugMode);
+    this.advancedFileHandlers = new AdvancedFileHandlers(this.workingDirectory, this.debugMode);
   }
 
   public isDebugMode(): boolean {
     return this.debugMode;
   }
 
-  private debugLog(message: string, data?: any): void {
-    if (this.debugMode) {
-      console.log(`🐛 [DEBUG] ${message}`, data || '');
-    }
+  public async run(input: AgentRunInput): Promise<AgentRunOutput> {
+    // Enhance input with conversation history if not provided
+    const enhancedInput: AgentRunInput = {
+      ...input,
+      conversationHistory: input.conversationHistory.length > 0 
+        ? input.conversationHistory 
+        : this.conversationMemory.getConversationHistory()
+    };
+
+    // Run the agent with enhanced input
+    const output = await super.run(enhancedInput);
+
+    // Store the interaction in memory
+    this.conversationMemory.addEntry(input, output);
+
+    return output;
+  }
+
+  public getMemoryStats() {
+    return this.conversationMemory.getMemoryStats();
+  }
+
+  public clearMemory() {
+    this.conversationMemory.clear();
   }
 
   private setupTools() {
-    // Enhanced directory listing tool
+    // Directory listing tool
     this.defineTool((z) => ({
       name: 'list_directory',
       description: 'List contents of a directory with detailed file information including size, type, and modification dates. Use recursive=true for "recursive" or "list everything" requests.',
@@ -89,54 +133,10 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
         recursive: z.boolean().optional().default(false).describe('Whether to list subdirectories recursively. Set to true for "recursive" or "list everything" requests.'),
         maxDepth: z.number().optional().default(3).describe('Maximum recursion depth when recursive is true')
       }),
-      handler: async (name: string, args: any, turnState: TurnState) => {
-        try {
-          const targetPath = path.resolve(this.workingDirectory, args.dirPath);
-
-          if (!this.isPathSafe(targetPath)) {
-            throw new Error('Access denied: Path outside allowed directory structure');
-          }
-
-          if (!fs.existsSync(targetPath)) {
-            throw new Error('Directory does not exist');
-          }
-
-          if (!fs.statSync(targetPath).isDirectory()) {
-            throw new Error('Path is not a directory');
-          }
-
-          const contents = this.listDirectoryRecursive(targetPath, args.showHidden, args.recursive, args.maxDepth, 0);
-
-          // Store formatted directory listing for direct display
-          turnState.set("display", this.formatDirectoryListing(contents));
-
-          return {
-            toolName: name,
-            success: true,
-            output: {
-              path: targetPath,
-              relativePath: path.relative(this.workingDirectory, targetPath),
-              workingDirectory: this.workingDirectory,
-              contents,
-              totalItems: contents.length,
-              summary: {
-                files: contents.filter(item => item.type === 'file').length,
-                directories: contents.filter(item => item.type === 'directory').length,
-                totalSize: contents.filter(item => item.type === 'file').reduce((sum, item) => sum + (item.size || 0), 0)
-              }
-            }
-          };
-        } catch (error: any) {
-          return {
-            toolName: name,
-            success: false,
-            error: `Failed to list directory: ${error.message}`
-          };
-        }
-      }
+      handler: (name: string, args: any, turnState: TurnState) => this.directoryHandlers.handleListDirectory(name, args, turnState)
     }));
 
-    // Enhanced file reading tool
+    // File reading tool
     this.defineTool((z) => ({
       name: 'read_file',
       description: 'Read the contents of a text file. Supports various text formats and provides encoding detection.',
@@ -147,95 +147,10 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
         endLine: z.number().optional().describe('Stop reading at this line number (1-based)'),
         preview: z.boolean().optional().default(false).describe('If true, only show first 50 lines for large files')
       }),
-      handler: async (name: string, args: any, turnState: TurnState) => {
-        try {
-          const targetPath = path.resolve(this.workingDirectory, args.filePath);
-
-          if (!this.isPathSafe(targetPath)) {
-            throw new Error('Access denied: Path outside allowed directory structure');
-          }
-
-          if (!fs.existsSync(targetPath)) {
-            throw new Error('File does not exist');
-          }
-
-          const stats = fs.statSync(targetPath);
-
-          if (!stats.isFile()) {
-            throw new Error('Path is not a file');
-          }
-
-          if (stats.size > this.maxFileSize) {
-            throw new Error(`File too large (${stats.size} bytes > ${this.maxFileSize} bytes limit). Use preview mode for large files.`);
-          }
-
-          const extension = path.extname(targetPath).toLowerCase();
-          if (!this.allowedExtensions.includes(extension) && extension !== '') {
-            return {
-              toolName: name,
-              success: true,
-              output: {
-                type: 'binary',
-                path: targetPath,
-                relativePath: path.relative(this.workingDirectory, targetPath),
-                size: stats.size,
-                extension,
-                modified: stats.mtime.toISOString(),
-                message: 'Binary file - content not displayed for safety'
-              }
-            };
-          }
-
-          let content = fs.readFileSync(targetPath, args.encoding as BufferEncoding);
-          const lines = content.toString().split('\n');
-
-          let processedContent = content.toString();
-
-          turnState.set("display", processedContent);
-          
-          this.debugLog(`Read file: ${targetPath}`, { size: content.length, lines: lines.length });
-          let isPartial = false;
-
-          if (args.preview && lines.length > 50) {
-            processedContent = lines.slice(0, 50).join('\n') + '\n... (file truncated for preview)';
-            isPartial = true;
-          } else if (args.startLine || args.endLine) {
-            const start = Math.max(0, (args.startLine || 1) - 1);
-            const end = args.endLine || lines.length;
-            processedContent = lines.slice(start, end).join('\n');
-            isPartial = true;
-          }
-
-          return {
-            toolName: name,
-            success: true,
-            output: {
-              type: 'text',
-              path: targetPath,
-              relativePath: path.relative(this.workingDirectory, targetPath),
-              content: processedContent,
-              size: stats.size,
-              lines: lines.length,
-              encoding: args.encoding,
-              modified: stats.mtime.toISOString(),
-              isPartial,
-              range: isPartial ? {
-                startLine: args.startLine || 1,
-                endLine: args.endLine || (args.preview ? 50 : lines.length)
-              } : null
-            }
-          };
-        } catch (error: any) {
-          return {
-            toolName: name,
-            success: false,
-            error: `Failed to read file: ${error.message}`
-          };
-        }
-      }
+      handler: (name: string, args: any, turnState: TurnState) => this.fileHandlers.handleReadFile(name, args, turnState)
     }));
 
-    // Enhanced file writing tool
+    // File writing tool
     this.defineTool((z) => ({
       name: 'write_file',
       description: 'Write content to a file. Supports creating new files or overwriting existing ones with backup options.',
@@ -246,61 +161,10 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
         backup: z.boolean().optional().default(false).describe('Create a backup of existing file before overwriting'),
         encoding: z.string().optional().default('utf8').describe('File encoding')
       }),
-      handler: async (name: string, args: any) => {
-        try {
-          const targetPath = path.resolve(this.workingDirectory, args.filePath);
-
-          if (!this.isPathSafe(targetPath)) {
-            throw new Error('Access denied: Path outside allowed directory structure');
-          }
-
-          const directory = path.dirname(targetPath);
-          const fileName = path.basename(targetPath);
-          let backupPath = null;
-
-          // Check if directory exists or needs to be created
-          if (!fs.existsSync(directory)) {
-            if (args.createDirs) {
-              fs.mkdirSync(directory, { recursive: true });
-            } else {
-              throw new Error(`Directory does not exist: ${directory}. Use createDirs=true to create it.`);
-            }
-          }
-
-          // Create backup if requested and file exists
-          if (args.backup && fs.existsSync(targetPath)) {
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            backupPath = path.join(directory, `${fileName}.backup.${timestamp}`);
-            fs.copyFileSync(targetPath, backupPath);
-          }
-
-          fs.writeFileSync(targetPath, args.content, args.encoding);
-          const stats = fs.statSync(targetPath);
-
-          return {
-            toolName: name,
-            success: true,
-            output: {
-              path: targetPath,
-              relativePath: path.relative(this.workingDirectory, targetPath),
-              size: stats.size,
-              created: stats.mtime.toISOString(),
-              encoding: args.encoding,
-              backupCreated: backupPath,
-              message: `File written successfully${backupPath ? ' (backup created)' : ''}`
-            }
-          };
-        } catch (error: any) {
-          return {
-            toolName: name,
-            success: false,
-            error: `Failed to write file: ${error.message}`
-          };
-        }
-      }
+      handler: (name: string, args: any) => this.fileHandlers.handleWriteFile(name, args)
     }));
 
-    // Enhanced directory creation tool
+    // Directory creation tool
     this.defineTool((z) => ({
       name: 'create_directory',
       description: 'Create a new directory or nested directory structure.',
@@ -308,54 +172,10 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
         dirPath: z.string().describe('Path of the directory to create'),
         recursive: z.boolean().optional().default(true).describe('Create parent directories if needed')
       }),
-      handler: async (name: string, args: any) => {
-        try {
-          const targetPath = path.resolve(this.workingDirectory, args.dirPath);
-
-          if (!this.isPathSafe(targetPath)) {
-            throw new Error('Access denied: Path outside allowed directory structure');
-          }
-
-          if (fs.existsSync(targetPath)) {
-            if (fs.statSync(targetPath).isDirectory()) {
-              return {
-                toolName: name,
-                success: true,
-                output: {
-                  path: targetPath,
-                  relativePath: path.relative(this.workingDirectory, targetPath),
-                  created: new Date().toISOString(),
-                  message: 'Directory already exists'
-                }
-              };
-            } else {
-              throw new Error('Path exists but is not a directory');
-            }
-          }
-
-          fs.mkdirSync(targetPath, { recursive: args.recursive });
-
-          return {
-            toolName: name,
-            success: true,
-            output: {
-              path: targetPath,
-              relativePath: path.relative(this.workingDirectory, targetPath),
-              created: new Date().toISOString(),
-              message: 'Directory created successfully'
-            }
-          };
-        } catch (error: any) {
-          return {
-            toolName: name,
-            success: false,
-            error: `Failed to create directory: ${error.message}`
-          };
-        }
-      }
+      handler: (name: string, args: any) => this.directoryHandlers.handleCreateDirectory(name, args)
     }));
 
-    // File search tool with content search
+    // File search tool
     this.defineTool((z) => ({
       name: 'search_files',
       description: 'Search for files by name pattern and optionally search within file contents.',
@@ -367,259 +187,30 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
         maxResults: z.number().optional().default(100).describe('Maximum number of results to return'),
         caseSensitive: z.boolean().optional().default(false).describe('Whether search should be case sensitive')
       }),
-      handler: async (name: string, args: any, turnState: TurnState) => {
-        try {
-          const targetPath = path.resolve(this.workingDirectory, args.searchPath);
-
-          if (!this.isPathSafe(targetPath)) {
-            throw new Error('Access denied: Path outside allowed directory structure');
-          }
-
-          const results: any[] = [];
-
-          const searchRecursive = (dir: string, depth: number) => {
-            if (depth > args.maxDepth || results.length >= args.maxResults) return;
-
-            try {
-              const items = fs.readdirSync(dir, { withFileTypes: true });
-
-              for (const item of items) {
-                if (results.length >= args.maxResults) break;
-
-                const itemPath = path.join(dir, item.name);
-
-                if (item.isFile()) {
-                  let nameMatches = true;
-
-                  // Check name pattern if provided
-                  if (args.namePattern) {
-                    const pattern = args.namePattern.replace(/\*/g, '.*').replace(/\?/g, '.');
-                    const regex = new RegExp(pattern, args.caseSensitive ? '' : 'i');
-                    nameMatches = regex.test(item.name);
-                  }
-
-                  if (nameMatches) {
-                    const stats = fs.statSync(itemPath);
-                    const result: any = {
-                      path: itemPath,
-                      relativePath: path.relative(this.workingDirectory, itemPath),
-                      name: item.name,
-                      size: stats.size,
-                      modified: stats.mtime.toISOString(),
-                      type: 'file',
-                      nameMatch: !!args.namePattern
-                    };
-
-                    // Search content if pattern provided and file is text
-                    if (args.contentPattern) {
-                      try {
-                        const ext = path.extname(itemPath).toLowerCase();
-                        if (this.allowedExtensions.includes(ext) && stats.size < this.maxFileSize) {
-                          const content = fs.readFileSync(itemPath, 'utf8');
-                          const regex = new RegExp(args.contentPattern, args.caseSensitive ? 'g' : 'gi');
-                          const matches = content.match(regex);
-
-                          if (matches) {
-                            result.contentMatch = true;
-                            result.matchCount = matches.length;
-
-                            // Find line numbers of matches
-                            const lines = content.split('\n');
-                            const matchingLines: any[] = [];
-                            lines.forEach((line, index) => {
-                              if (regex.test(line)) {
-                                matchingLines.push({
-                                  lineNumber: index + 1,
-                                  content: line.trim(),
-                                  matches: line.match(regex)
-                                });
-                              }
-                            });
-                            result.matchingLines = matchingLines.slice(0, 5); // Limit to first 5 matches
-                          } else {
-                            result.contentMatch = false;
-                          }
-                        }
-                      } catch {
-                        result.contentMatch = false;
-                        result.contentSearchError = 'Unable to search content';
-                      }
-                    }
-
-                    // Only add if name matches or content matches
-                    if (!args.contentPattern || result.contentMatch !== false) {
-                      results.push(result);
-                    }
-                  }
-                } else if (item.isDirectory() && !item.name.startsWith('.')) {
-                  searchRecursive(itemPath, depth + 1);
-                }
-              }
-            } catch (error) {
-              // Skip directories we can't read
-            }
-          };
-
-          searchRecursive(targetPath, 0);
-
-          // Store formatted search results for direct display
-          turnState.set("display", this.formatSearchResults(results));
-
-          return {
-            toolName: name,
-            success: true,
-            output: {
-              searchPath: targetPath,
-              namePattern: args.namePattern,
-              contentPattern: args.contentPattern,
-              results,
-              totalFound: results.length,
-              searchComplete: results.length < args.maxResults,
-              summary: {
-                filesFound: results.length,
-                filesWithContent: results.filter(r => r.contentMatch).length,
-                totalMatches: results.reduce((sum, r) => sum + (r.matchCount || 0), 0)
-              }
-            }
-          };
-        } catch (error: any) {
-          return {
-            toolName: name,
-            success: false,
-            error: `Search failed: ${error.message}`
-          };
-        }
-      }
+      handler: (name: string, args: any, turnState: TurnState) => this.searchHandlers.handleSearchFiles(name, args, turnState)
     }));
 
-    // File and directory information tool
+    // File information tool
     this.defineTool((z) => ({
       name: 'get_file_info',
       description: 'Get comprehensive information about a file or directory including permissions, size, dates, and type.',
       argsSchema: z.object({
         itemPath: z.string().describe('Path to the file or directory to examine')
       }),
-      handler: async (name: string, args: any) => {
-        try {
-          const targetPath = path.resolve(this.workingDirectory, args.itemPath);
-
-          if (!this.isPathSafe(targetPath)) {
-            throw new Error('Access denied: Path outside allowed directory structure');
-          }
-
-          if (!fs.existsSync(targetPath)) {
-            throw new Error('File or directory does not exist');
-          }
-
-          const stats = fs.statSync(targetPath);
-          const isDirectory = stats.isDirectory();
-
-          let additionalInfo: any = {};
-
-          if (isDirectory) {
-            try {
-              const items = fs.readdirSync(targetPath);
-              additionalInfo = {
-                itemCount: items.length,
-                files: items.filter(item => {
-                  try {
-                    return fs.statSync(path.join(targetPath, item)).isFile();
-                  } catch { return false; }
-                }).length,
-                directories: items.filter(item => {
-                  try {
-                    return fs.statSync(path.join(targetPath, item)).isDirectory();
-                  } catch { return false; }
-                }).length
-              };
-            } catch {
-              additionalInfo = { itemCount: 'Unable to read directory contents' };
-            }
-          } else {
-            const extension = path.extname(targetPath);
-            additionalInfo = {
-              extension,
-              isTextFile: this.allowedExtensions.includes(extension.toLowerCase()),
-              sizeFormatted: this.formatFileSize(stats.size)
-            };
-          }
-
-          return {
-            toolName: name,
-            success: true,
-            output: {
-              path: targetPath,
-              relativePath: path.relative(this.workingDirectory, targetPath),
-              type: isDirectory ? 'directory' : 'file',
-              size: stats.size,
-              created: stats.birthtime.toISOString(),
-              modified: stats.mtime.toISOString(),
-              accessed: stats.atime.toISOString(),
-              permissions: {
-                mode: stats.mode.toString(8),
-                readable: !!(stats.mode & fs.constants.S_IRUSR),
-                writable: !!(stats.mode & fs.constants.S_IWUSR),
-                executable: !!(stats.mode & fs.constants.S_IXUSR)
-              },
-              ...additionalInfo
-            }
-          };
-        } catch (error: any) {
-          return {
-            toolName: name,
-            success: false,
-            error: `Failed to get file info: ${error.message}`
-          };
-        }
-      }
+      handler: (name: string, args: any) => this.fileHandlers.handleGetFileInfo(name, args)
     }));
 
-    // Change working directory tool
+    // Change directory tool
     this.defineTool((z) => ({
       name: 'change_directory',
       description: 'Change the current working directory for file operations.',
       argsSchema: z.object({
         newPath: z.string().describe('New working directory path')
       }),
-      handler: async (name: string, args: any) => {
-        try {
-          const newPath = path.resolve(this.workingDirectory, args.newPath);
-
-          if (!this.isPathSafe(newPath)) {
-            throw new Error('Access denied: Path outside allowed directory structure');
-          }
-
-          if (!fs.existsSync(newPath)) {
-            throw new Error('Directory does not exist');
-          }
-
-          if (!fs.statSync(newPath).isDirectory()) {
-            throw new Error('Path is not a directory');
-          }
-
-          const oldPath = this.workingDirectory;
-          this.workingDirectory = newPath;
-
-          return {
-            toolName: name,
-            success: true,
-            output: {
-              oldPath,
-              newPath: this.workingDirectory,
-              message: `Working directory changed successfully`
-            }
-          };
-        } catch (error: any) {
-          return {
-            toolName: name,
-            success: false,
-            error: `Failed to change directory: ${error.message}`
-          };
-        }
-      }
+      handler: (name: string, args: any) => this.directoryHandlers.handleChangeDirectory(name, args)
     }));
 
-    // Delete file or directory tool
+    // Delete tool
     this.defineTool((z) => ({
       name: 'delete_item',
       description: 'Delete a file or directory. Use with caution - this operation cannot be undone!',
@@ -628,56 +219,104 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
         recursive: z.boolean().optional().default(false).describe('For directories: delete recursively including all contents'),
         confirm: z.boolean().describe('Must be true to confirm deletion - this is a safety measure')
       }),
-      handler: async (name: string, args: any) => {
-        try {
-          if (!args.confirm) {
-            throw new Error('Deletion not confirmed. Set confirm=true to proceed with deletion.');
-          }
+      handler: (name: string, args: any) => this.fileHandlers.handleDeleteItem(name, args)
+    }));
 
-          const targetPath = path.resolve(this.workingDirectory, args.itemPath);
+    // Advanced file operations
+    this.defineTool((z) => ({
+      name: 'file_diff',
+      description: 'Compare two files and show differences line by line.',
+      argsSchema: z.object({
+        file1: z.string().describe('Path to the first file'),
+        file2: z.string().describe('Path to the second file')
+      }),
+      handler: (name: string, args: any, turnState: TurnState) => this.advancedFileHandlers.handleFileDiff(name, args, turnState)
+    }));
 
-          if (!this.isPathSafe(targetPath)) {
-            throw new Error('Access denied: Path outside allowed directory structure');
-          }
+    this.defineTool((z) => ({
+      name: 'file_hash',
+      description: 'Compute cryptographic hash of a file for integrity verification.',
+      argsSchema: z.object({
+        filePath: z.string().describe('Path to the file to hash'),
+        algorithm: z.string().optional().default('sha256').describe('Hash algorithm (md5, sha1, sha256, sha512)')
+      }),
+      handler: (name: string, args: any) => this.advancedFileHandlers.handleFileHash(name, args)
+    }));
 
-          if (!fs.existsSync(targetPath)) {
-            throw new Error('File or directory does not exist');
-          }
+    this.defineTool((z) => ({
+      name: 'copy_file',
+      description: 'Copy a file from one location to another.',
+      argsSchema: z.object({
+        sourcePath: z.string().describe('Path to the source file'),
+        destinationPath: z.string().describe('Path to the destination'),
+        overwrite: z.boolean().optional().default(false).describe('Whether to overwrite if destination exists'),
+        createDirs: z.boolean().optional().default(false).describe('Create destination directories if needed')
+      }),
+      handler: (name: string, args: any) => this.advancedFileHandlers.handleFileCopy(name, args)
+    }));
 
-          const stats = fs.statSync(targetPath);
-          const isDirectory = stats.isDirectory();
+    this.defineTool((z) => ({
+      name: 'move_file',
+      description: 'Move or rename a file from one location to another.',
+      argsSchema: z.object({
+        sourcePath: z.string().describe('Path to the source file'),
+        destinationPath: z.string().describe('Path to the destination'),
+        overwrite: z.boolean().optional().default(false).describe('Whether to overwrite if destination exists'),
+        createDirs: z.boolean().optional().default(false).describe('Create destination directories if needed')
+      }),
+      handler: (name: string, args: any) => this.advancedFileHandlers.handleFileMove(name, args)
+    }));
 
-          if (isDirectory) {
-            if (args.recursive) {
-              fs.rmSync(targetPath, { recursive: true, force: true });
-            } else {
-              fs.rmdirSync(targetPath);
-            }
-          } else {
-            fs.unlinkSync(targetPath);
-          }
+    this.defineTool((z) => ({
+      name: 'file_permissions',
+      description: 'View or modify file permissions (Unix-style mode).',
+      argsSchema: z.object({
+        filePath: z.string().describe('Path to the file or directory'),
+        mode: z.string().optional().describe('New permissions in octal format (e.g., "755", "644"). Omit to just view current permissions.')
+      }),
+      handler: (name: string, args: any) => this.advancedFileHandlers.handleFilePermissions(name, args)
+    }));
 
-          return {
-            toolName: name,
-            success: true,
-            output: {
-              path: targetPath,
-              relativePath: path.relative(this.workingDirectory, targetPath),
-              type: isDirectory ? 'directory' : 'file',
-              deleted: new Date().toISOString(),
-              message: `${isDirectory ? 'Directory' : 'File'} deleted successfully`
-            }
-          };
-        } catch (error: any) {
-          return {
-            toolName: name,
-            success: false,
-            error: `Failed to delete: ${error.message}`
-          };
+    // Memory management tool
+    this.defineTool((z) => ({
+      name: 'memory_stats',
+      description: 'Get statistics about conversation memory including usage patterns and history.',
+      argsSchema: z.object({
+        detailed: z.boolean().optional().default(false).describe('Whether to show detailed memory information')
+      }),
+      handler: async (name: string, args: any): Promise<ToolResult> => {
+        const stats = this.conversationMemory.getMemoryStats();
+        const toolUsage = this.conversationMemory.getToolUsageStats();
+        
+        const output: any = {
+          totalConversations: stats.totalEntries,
+          successRate: `${Math.round(stats.successRate * 100)}%`,
+          topTools: stats.topTools,
+          memorySize: stats.memorySize,
+          sessionDuration: stats.oldestEntry && stats.newestEntry 
+            ? `${Math.round((stats.newestEntry.getTime() - stats.oldestEntry.getTime()) / (1000 * 60))} minutes`
+            : 'N/A'
+        };
+
+        if (args.detailed) {
+          output.detailedToolUsage = toolUsage;
+          output.recentEntries = this.conversationMemory.getRecentEntries(5).map(entry => ({
+            timestamp: entry.timestamp.toISOString(),
+            prompt: entry.userPrompt.substring(0, 100) + (entry.userPrompt.length > 100 ? '...' : ''),
+            toolsUsed: entry.toolsUsed,
+            success: entry.success
+          }));
         }
+
+        return {
+          toolName: name,
+          success: true,
+          output
+        };
       }
     }));
 
+    // Final tool
     this.defineTool((z) => ({
       name: 'final',
       description: `⚠️ CRITICAL: Call this tool to TERMINATE the execution and provide your final answer. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response. This tool ENDS the conversation - only call it when finished. NEVER call other tools after this one.`,
@@ -685,10 +324,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
         value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.") 
       }),
       handler: async (name: string, args: { value: string; }, turnState: TurnState): Promise<ToolResult> => {
-        
         let display = turnState.get("display")
-        
-        
         return {
           toolName: name,
           success: true,
@@ -699,121 +335,6 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     }));
   }
 
-  // Helper methods
-  private isPathSafe(targetPath: string): boolean {
-    // Ensure the path is within or relative to working directory
-    const resolved = path.resolve(targetPath);
-    const workingDir = path.resolve(this.workingDirectory);
-
-    // Normalize paths for cross-platform compatibility
-    const normalizedResolved = path.normalize(resolved);
-    const normalizedWorkingDir = path.normalize(workingDir);
-
-    return normalizedResolved.startsWith(normalizedWorkingDir) || normalizedResolved === normalizedWorkingDir;
-  }
-
-  private listDirectoryRecursive(dirPath: string, showHidden: boolean, recursive: boolean, maxDepth: number, currentDepth: number): any[] {
-    const results: any[] = [];
-
-    if (currentDepth >= maxDepth && recursive) {
-      return results;
-    }
-
-    try {
-      const items = fs.readdirSync(dirPath, { withFileTypes: true });
-
-      for (const item of items) {
-        if (!showHidden && item.name.startsWith('.')) continue;
-
-        const itemPath = path.join(dirPath, item.name);
-        const stats = fs.statSync(itemPath);
-
-        const itemInfo = {
-          name: item.name,
-          path: itemPath,
-          relativePath: path.relative(this.workingDirectory, itemPath),
-          type: item.isDirectory() ? 'directory' : 'file',
-          size: item.isFile() ? stats.size : null,
-          sizeFormatted: item.isFile() ? this.formatFileSize(stats.size) : null,
-          modified: stats.mtime.toISOString(),
-          created: stats.birthtime.toISOString(),
-          extension: item.isFile() ? path.extname(item.name) : null,
-          depth: currentDepth
-        };
-
-        results.push(itemInfo);
-
-        // Recurse into directories if requested
-        if (recursive && item.isDirectory() && currentDepth < maxDepth) {
-          const subItems = this.listDirectoryRecursive(itemPath, showHidden, recursive, maxDepth, currentDepth + 1);
-          results.push(...subItems);
-        }
-      }
-    } catch (error) {
-      // Skip directories we can't read
-    }
-
-    return results;
-  }
-
-  private formatFileSize(bytes: number): string {
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let size = bytes;
-    let unitIndex = 0;
-
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex++;
-    }
-
-    return `${size.toFixed(2)} ${units[unitIndex]}`;
-  }
-
-  /**
-   * Format directory listing for direct display
-   */
-  private formatDirectoryListing(contents: any[]): string {
-    if (contents.length === 0) {
-      return '📁 Directory is empty';
-    }
-
-    let output = `📁 Directory Contents (${contents.length} items):\n`;
-    output += '─'.repeat(50) + '\n';
-    
-    contents.forEach(item => {
-      const icon = item.type === 'directory' ? '📁' : '📄';
-      const size = item.size ? this.formatFileSize(item.size) : '';
-      const modified = new Date(item.modified).toLocaleDateString();
-      
-      output += `${icon} ${item.name.padEnd(25)} ${size.padEnd(10)} ${modified}\n`;
-    });
-    
-    return output;
-  }
-
-  /**
-   * Format search results for direct display
-   */
-  private formatSearchResults(results: any[]): string {
-    if (results.length === 0) {
-      return '🔍 No files found matching the search criteria';
-    }
-
-    let output = `🔍 Search Results (${results.length} files found):\n`;
-    output += '─'.repeat(60) + '\n';
-    
-    results.forEach(result => {
-      output += `📄 ${result.relativePath}\n`;
-      if (result.contentMatch && result.matchingLines) {
-        result.matchingLines.slice(0, 2).forEach((line: any) => {
-          output += `   Line ${line.lineNumber}: ${line.content}\n`;
-        });
-      }
-      output += '\n';
-    });
-    
-    return output;
-  }
 
   // Public utility methods
   public getWorkingDirectory(): string {
@@ -822,10 +343,11 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
 
   public setWorkingDirectory(newDir: string): void {
     const resolvedPath = path.resolve(newDir);
-    if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isDirectory()) {
+    if (!require('fs').existsSync(resolvedPath) || !require('fs').statSync(resolvedPath).isDirectory()) {
       throw new Error('Directory does not exist or is not a directory');
     }
     this.workingDirectory = resolvedPath;
+    this.directoryHandlers.setWorkingDirectory(resolvedPath);
   }
 
   public getAvailableTools(): string[] {
