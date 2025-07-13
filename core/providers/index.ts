@@ -1,2 +1,2 @@
 export * from './AIProvider';
-export * from './GeminiAIProvider';
+export * from './DefaultAIProvider';
