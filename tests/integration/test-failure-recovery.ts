@@ -374,7 +374,7 @@ export class FailureRecoveryTestSuite {
     let passed = true;
 
     // Check termination
-    const finalCall = result.toolCallHistory.find((call: any) => call.toolname === 'final');
+    const finalCall = result.toolCallHistory.find((call: any) => call.toolName === 'final');
     if (!finalCall) {
       issues.push('No termination');
       recoveryScore -= 40;
@@ -394,7 +394,7 @@ export class FailureRecoveryTestSuite {
     }
     
     // Check for adaptive behavior
-    const toolTypes = new Set(successfulCalls.map((call: any) => call.toolname));
+    const toolTypes = new Set(successfulCalls.map((call: any) => call.toolName));
     if (toolTypes.size > 2 && failedCalls.length > 0) {
       recoveryStrategies.push('Multiple tool utilization');
     }
@@ -415,7 +415,7 @@ export class FailureRecoveryTestSuite {
     // Check for repetitive failures (poor recovery)
     const failureToolCounts = new Map<string, number>();
     failedCalls.forEach((call: any) => {
-      failureToolCounts.set(call.toolname, (failureToolCounts.get(call.toolname) || 0) + 1);
+      failureToolCounts.set(call.toolName, (failureToolCounts.get(call.toolName) || 0) + 1);
     });
     
     const maxFailureRepeats = Math.max(0, ...Array.from(failureToolCounts.values()));

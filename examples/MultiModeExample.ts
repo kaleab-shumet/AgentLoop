@@ -14,7 +14,7 @@ class ExampleAIProvider implements AIProvider {
 
 \`\`\`xml
 <root>
-  <get_weather><name>get_weather</name><city>New York</city></get_weather>
+  <get_weather><city>New York</city></get_weather>
 </root>
 \`\`\``;
     } else {
@@ -58,7 +58,7 @@ class WeatherAgent extends AgentLoop {
         };
         
         return {
-          toolname: name,
+          toolName: name,
           success: true,
           output: weatherData
         };
@@ -101,8 +101,8 @@ async function demonstrateMultiModeUsage() {
   console.log('Current execution mode:', functionAgent.getExecutionMode());
   
   try {
-    const functionResult = await functionAgent.run(functionInput);
-    console.log('Function Calling Mode Result:', JSON.stringify(functionResult, null, 2));
+    const toolResult = await functionAgent.run(functionInput);
+    console.log('Function Calling Mode Result:', JSON.stringify(toolResult, null, 2));
   } catch (error) {
     console.log('Function Calling Mode Error:', error);
   }

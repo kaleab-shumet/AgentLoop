@@ -28,7 +28,7 @@ async function runSimpleTest(): Promise<void> {
     console.log('✅ Agent created successfully');
     
     // Test tool availability
-    const availableTools = agent.getAvailableCommands();
+    const availableTools = agent.getAvailableTools();
     console.log(`🔧 Available tools: ${availableTools.length}`);
     console.log(`   Tools: ${availableTools.join(', ')}`);
     

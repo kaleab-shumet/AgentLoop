@@ -19,10 +19,10 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
         const parsed = JSON.parse(jsonContent);
         
         // Handle both single function call and array of function calls
-        if (parsed.function_call) {
-          functionCalls = [parsed.function_call];
-        } else if (parsed.function_calls) {
-          functionCalls = parsed.function_calls;
+        if (parsed.functionCall) {
+          functionCalls = [parsed.functionCall];
+        } else if (parsed.functionCalls) {
+          functionCalls = parsed.functionCalls;
         } else if (Array.isArray(parsed)) {
           functionCalls = parsed;
         } else if (parsed.name && parsed.arguments) {
@@ -46,7 +46,7 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
 
     if (functionCalls.length === 0) {
       throw new AgentError(
-        `[FunctionCallingResponseHandler] No function calls found in response. Expected JSON format with function_call or function_calls. Response: ${response.slice(0, 200)}...`,
+        `[FunctionCallingResponseHandler] No tool calls found in response. Expected JSON format with functionCall or functionCalls. Response: ${response.slice(0, 200)}...`,
         AgentErrorType.TOOL_NOT_FOUND
       );
     }
@@ -56,7 +56,7 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
     for (const call of functionCalls) {
       if (!call.name || typeof call.name !== 'string') {
         throw new AgentError(
-          `[FunctionCallingResponseHandler] Function call is missing a valid 'name' property. Call: ${JSON.stringify(call)}`,
+          `[FunctionCallingResponseHandler] Tool call is missing a valid 'name' property. Call: ${JSON.stringify(call)}`,
           AgentErrorType.MALFORMED_TOOL_FOUND
         );
       }
@@ -64,7 +64,7 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
       const toolDef = tools.find(t => t.name === call.name);
       if (!toolDef) {
         throw new AgentError(
-          `[FunctionCallingResponseHandler] Function "${call.name}" does not exist. Available tools: ${tools.map(t => t.name).join(", ")}`,
+          `[FunctionCallingResponseHandler] Tool "${call.name}" does not exist. Available tools: ${tools.map(t => t.name).join(", ")}`,
           AgentErrorType.TOOL_NOT_FOUND
         );
       }
@@ -74,7 +74,7 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
         parsedArgs = typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments;
       } catch (error) {
         throw new AgentError(
-          `[FunctionCallingResponseHandler] Invalid arguments for function "${call.name}". Arguments must be valid JSON. Error: ${error}`,
+          `[FunctionCallingResponseHandler] Invalid arguments for tool "${call.name}". Arguments must be valid JSON. Error: ${error}`,
           AgentErrorType.MALFORMED_TOOL_FOUND
         );
       }
@@ -85,7 +85,7 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
       const validation = toolDef.argsSchema.safeParse(toolCallData);
       if (!validation.success) {
         throw new AgentError(
-          `[FunctionCallingResponseHandler] Function "${call.name}" has invalid arguments. Validation errors: ${JSON.stringify(validation.error?.issues)}`,
+          `[FunctionCallingResponseHandler] Tool "${call.name}" has invalid arguments. Validation errors: ${JSON.stringify(validation.error?.issues)}`,
           AgentErrorType.TOOL_NOT_FOUND
         );
       }

@@ -35,7 +35,7 @@ export interface FunctionDefinition {
  * This is stored in the agent's history.
  */
 export interface ToolResult {
-  toolname: string;
+  toolName: string;
   success: boolean;
   // 'output' for successful results, 'error' for failures.
   output?: any;

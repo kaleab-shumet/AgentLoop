@@ -15,8 +15,8 @@ function testImprovedStagnationDetection() {
   console.log('\n1️⃣ Testing lower threshold (2 repeated calls)...');
   const repeatedCall: PendingToolCall = { name: 'get_weather', location: 'New York' };
   const twoRepeats: ToolResult[] = [
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } }
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } }
   ];
 
   const result1 = detector.isStagnant(repeatedCall, twoRepeats, 3);
@@ -27,8 +27,8 @@ function testImprovedStagnationDetection() {
   console.log('\n2️⃣ Testing lower error threshold (2 repeated errors)...');
   const errorCall: PendingToolCall = { name: 'failing_tool', data: 'test' };
   const twoErrors: ToolResult[] = [
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' },
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' }
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' },
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' }
   ];
 
   const result2 = detector.isStagnant(errorCall, twoErrors, 3);
@@ -38,9 +38,9 @@ function testImprovedStagnationDetection() {
   // Test 3: Three repeated calls should have full confidence
   console.log('\n3️⃣ Testing three repeated calls (full confidence)...');
   const threeRepeats: ToolResult[] = [
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } }
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } }
   ];
 
   const result3 = detector.isStagnant(repeatedCall, threeRepeats, 4);
@@ -50,7 +50,7 @@ function testImprovedStagnationDetection() {
   // Test 4: Verify no false positives with single calls
   console.log('\n4️⃣ Testing no false positives (single calls)...');
   const singleCall: ToolResult[] = [
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } }
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } }
   ];
 
   const result4 = detector.isStagnant(repeatedCall, singleCall, 2);

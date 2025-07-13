@@ -29,14 +29,14 @@ export async function testTerminationFix() {
 
     console.log('\nTest Results:');
     console.log('- Total tool calls:', result.toolCallHistory.length);
-    console.log('- Tool sequence:', result.toolCallHistory.map(t => `${t.toolname}(${t.success ? 'OK' : 'FAIL'})`).join(' -> '));
+    console.log('- Tool sequence:', result.toolCallHistory.map(t => `${t.toolName}(${t.success ? 'OK' : 'FAIL'})`).join(' -> '));
     console.log('- Final answer provided:', !!result.finalAnswer);
     if (result.finalAnswer) {
       console.log('- Final answer preview:', result.finalAnswer.output?.value?.substring(0, 100) + '...');
     }
     // Check for termination issues
-    const nonFinalCalls = result.toolCallHistory.filter(call => call.toolname !== 'final');
-    const finalCall = result.toolCallHistory.find(call => call.toolname === 'final');
+    const nonFinalCalls = result.toolCallHistory.filter(call => call.toolName !== 'final');
+    const finalCall = result.toolCallHistory.find(call => call.toolName === 'final');
     const hasRepeatedCalls = hasDuplicateSuccessfulCalls(nonFinalCalls);
     console.log('\nTermination Analysis:');
     console.log('- Repeated successful calls detected:', hasRepeatedCalls);
@@ -58,7 +58,7 @@ function hasDuplicateSuccessfulCalls(toolCalls: any[]): boolean {
   const callCounts = new Map<string, number>();
   
   successfulCalls.forEach(call => {
-    const key = `${call.toolname}`;
+    const key = `${call.toolName}`;
     callCounts.set(key, (callCounts.get(key) || 0) + 1);
   });
   
@@ -67,7 +67,7 @@ function hasDuplicateSuccessfulCalls(toolCalls: any[]): boolean {
 
 function calculateEfficiencyScore(toolCalls: any[]): string {
   const totalCalls = toolCalls.length;
-  const uniqueTools = new Set(toolCalls.map(call => call.toolname));
+  const uniqueTools = new Set(toolCalls.map(call => call.toolName));
   const efficiency = (uniqueTools.size / totalCalls) * 100;
   return `${efficiency.toFixed(1)}% (${uniqueTools.size}/${totalCalls} unique)`;
 }

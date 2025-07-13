@@ -16,8 +16,8 @@ function testStagnationDetector() {
   const call1: PendingToolCall = { name: 'get_weather', location: 'New York' };
   const call2: PendingToolCall = { name: 'get_forecast', location: 'London' };
   const history1: ToolResult[] = [
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_forecast', success: true, output: { forecast: 'sunny' } }
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_forecast', success: true, output: { forecast: 'sunny' } }
   ];
 
   const result1 = detector.isStagnant(call1, history1, 1);
@@ -27,10 +27,10 @@ function testStagnationDetector() {
   console.log('\n2️⃣ Testing repeated calls stagnation...');
   const repeatedCall: PendingToolCall = { name: 'get_weather', location: 'New York' };
   const repeatedHistory: ToolResult[] = [
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } }
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } }
   ];
 
   const result2 = detector.isStagnant(repeatedCall, repeatedHistory, 5);
@@ -40,10 +40,10 @@ function testStagnationDetector() {
   console.log('\n3️⃣ Testing error loops...');
   const errorCall: PendingToolCall = { name: 'failing_tool', data: 'test' };
   const errorHistory: ToolResult[] = [
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' },
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' },
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' },
-    { toolname: 'other_tool', success: true, output: { result: 'ok' } }
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' },
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' },
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' },
+    { toolName: 'other_tool', success: true, output: { result: 'ok' } }
   ];
 
   const result3 = detector.isStagnant(errorCall, errorHistory, 3);
@@ -53,13 +53,13 @@ function testStagnationDetector() {
   console.log('\n4️⃣ Testing cyclic patterns...');
   const cyclicCall: PendingToolCall = { name: 'tool_a', step: 1 };
   const cyclicHistory: ToolResult[] = [
-    { toolname: 'tool_a', success: true, output: { step: 1 } },
-    { toolname: 'tool_b', success: true, output: { step: 2 } },
-    { toolname: 'tool_c', success: true, output: { step: 3 } },
-    { toolname: 'tool_a', success: true, output: { step: 1 } },
-    { toolname: 'tool_b', success: true, output: { step: 2 } },
-    { toolname: 'tool_c', success: true, output: { step: 3 } },
-    { toolname: 'tool_a', success: true, output: { step: 1 } }
+    { toolName: 'tool_a', success: true, output: { step: 1 } },
+    { toolName: 'tool_b', success: true, output: { step: 2 } },
+    { toolName: 'tool_c', success: true, output: { step: 3 } },
+    { toolName: 'tool_a', success: true, output: { step: 1 } },
+    { toolName: 'tool_b', success: true, output: { step: 2 } },
+    { toolName: 'tool_c', success: true, output: { step: 3 } },
+    { toolName: 'tool_a', success: true, output: { step: 1 } }
   ];
 
   const result4 = detector.isStagnant(cyclicCall, cyclicHistory, 8);
@@ -69,11 +69,11 @@ function testStagnationDetector() {
   console.log('\n5️⃣ Testing no progress detection...');
   const noProgressCall: PendingToolCall = { name: 'unreliable_tool', attempt: 5 };
   const noProgressHistory: ToolResult[] = [
-    { toolname: 'unreliable_tool', success: false, error: 'Failed' },
-    { toolname: 'unreliable_tool', success: false, error: 'Failed again' },
-    { toolname: 'unreliable_tool', success: false, error: 'Still failed' },
-    { toolname: 'unreliable_tool', success: false, error: 'Failed' },
-    { toolname: 'unreliable_tool', success: false, error: 'Failed' }
+    { toolName: 'unreliable_tool', success: false, error: 'Failed' },
+    { toolName: 'unreliable_tool', success: false, error: 'Failed again' },
+    { toolName: 'unreliable_tool', success: false, error: 'Still failed' },
+    { toolName: 'unreliable_tool', success: false, error: 'Failed' },
+    { toolName: 'unreliable_tool', success: false, error: 'Failed' }
   ];
 
   const result5 = detector.isStagnant(noProgressCall, noProgressHistory, 6);

@@ -33,14 +33,14 @@ class EmojiPromptTemplate implements PromptTemplateInterface {
 📝 **Response Format**: You MUST respond by calling tools using XML format:
 \`\`\`xml
 <root>
-  <tool_name><name>tool_name</name><param1>value1</param1></tool_name>
+  <toolName><param1>value1</param1></toolName>
 </root>
 \`\`\`
 
 🎯 **Completion Example**:
 \`\`\`xml
 <root>
-  <${finalToolName}><name>${finalToolName}</name><value>✅ Task completed! [summary]</value></${finalToolName}>
+  <${finalToolName}><value>✅ Task completed! [summary]</value></${finalToolName}>
 </root>
 \`\`\``;
   }
@@ -139,7 +139,7 @@ class EmojiPromptTemplate implements PromptTemplateInterface {
     }
 
     const historyList = entries.map(entry =>
-      `  ${entry.success ? '✅' : '❌'} **${entry.toolname}**: ${entry.success ? 'Success' : entry.error}`
+      `  ${entry.success ? '✅' : '❌'} **${entry.toolName}**: ${entry.success ? 'Success' : entry.error}`
     ).join('\n');
 
     const successCount = entries.filter(e => e.success).length;
@@ -318,7 +318,7 @@ class WeatherAgentWithFunctionCalling extends AgentLoop {
     super(geminiProvider, {
       promptManager,
       maxIterations: 5,
-      executionMode: 'function_calling' as any // Cast to avoid type issues
+      executionMode: 'functionCalling' as any // Cast to avoid type issues
     });
 
     this.initializeTools();
@@ -379,13 +379,13 @@ export async function runCustomPromptDemo(config: any) {
     // 3. Default template with function calling format
     console.log('\n3️⃣ Testing Default Template (Function Calling Format)...');
     const functionAgent = new WeatherAgentWithFunctionCalling(config);
-    const functionResult = await functionAgent.run({
+    const toolResult = await functionAgent.run({
       userPrompt: "What's the weather like in London?",
       context: { timestamp: new Date().toISOString() },
       conversationHistory: [],
       toolCallHistory: []
     });
-    console.log('✅ Function Calling Result:', functionResult.finalAnswer);
+    console.log('✅ Function Calling Result:', toolResult.finalAnswer);
 
     console.log('\n🎉 All template demos completed successfully!');
   } catch (error) {

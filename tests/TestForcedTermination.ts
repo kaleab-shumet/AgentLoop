@@ -19,8 +19,8 @@ function testForcedTerminationThresholds() {
   console.log('\n1️⃣ Testing 75% confidence (2 repeated calls)...');
   const repeatedCall: PendingToolCall = { name: 'get_weather', location: 'New York' };
   const twoRepeats: ToolResult[] = [
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } }
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } }
   ];
 
   const result75 = detector.isStagnant(repeatedCall, twoRepeats, 3);
@@ -30,9 +30,9 @@ function testForcedTerminationThresholds() {
   // Test 2: 100% confidence - should force termination
   console.log('\n2️⃣ Testing 100% confidence (3+ repeated calls)...');
   const threeRepeats: ToolResult[] = [
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } },
-    { toolname: 'get_weather', success: true, output: { temp: '20C' } }
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } },
+    { toolName: 'get_weather', success: true, output: { temp: '20C' } }
   ];
 
   const result100 = detector.isStagnant(repeatedCall, threeRepeats, 4);
@@ -43,8 +43,8 @@ function testForcedTerminationThresholds() {
   console.log('\n3️⃣ Testing error loop (2 repeated errors)...');
   const errorCall: PendingToolCall = { name: 'failing_tool', data: 'test' };
   const twoErrors: ToolResult[] = [
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' },
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' }
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' },
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' }
   ];
 
   const resultError = detector.isStagnant(errorCall, twoErrors, 3);

@@ -29,17 +29,7 @@ export class XmlResponseHandler implements ResponseHandler {
     }
 
     const root = parsedJs?.root;
-    let toolCalls: Array<any> = [];
-
-    for (const value of Object.values(root)) {
-      if (Array.isArray(value)) {
-        toolCalls.push(...value);
-      } else {
-        toolCalls.push(value);
-      }
-    }
-
-    if (!toolCalls || toolCalls.length === 0) {
+    if (!root || Object.keys(root).length === 0) {
       throw new AgentError(
         `[XmlResponseHandler] No tool calls found in the parsed XML. The <root> element may be empty or missing tool definitions. Hint: Ensure the LLM response includes at least one valid tool call inside <root>.`,
         AgentErrorType.TOOL_NOT_FOUND
@@ -48,31 +38,33 @@ export class XmlResponseHandler implements ResponseHandler {
 
     const validToolCalls: PendingToolCall[] = [];
 
-    for (const call of toolCalls) {
-      if (typeof call.name !== 'string') {
-        throw new AgentError(
-          `[XmlResponseHandler] Tool call is missing a valid 'name' property or is malformed. Offending tool: ${JSON.stringify(call)}. Hint: Each tool call must have a 'name' property matching a known tool.`,
-          AgentErrorType.MALFORMED_TOOL_FOUND
-        );
-      }
+    // Extract tool calls from XML tag names
+    for (const [tagName, tagValue] of Object.entries(root)) {
+      // Handle both single calls and arrays of calls with the same tag name
+      const calls = Array.isArray(tagValue) ? tagValue : [tagValue];
+      
+      for (const call of calls) {
+        // Tool name comes from XML tag name
+        const toolCall = { ...call, name: tagName };
 
-      const toolDef = tools.find(t => t.name === call.name);
-      if (!toolDef) {
-        throw new AgentError(
-          `[XmlResponseHandler] Tool "${call.name}" does not exist. Available tools: ${tools.map(t => t.name).join(", ")}. Hint: Check for typos or update your tool definitions.`,
-          AgentErrorType.TOOL_NOT_FOUND
-        );
-      }
+        const toolDef = tools.find(t => t.name === tagName);
+        if (!toolDef) {
+          throw new AgentError(
+            `[XmlResponseHandler] Tool "${tagName}" does not exist. Available tools: ${tools.map(t => t.name).join(", ")}. Hint: Check for typos or update your tool definitions.`,
+            AgentErrorType.TOOL_NOT_FOUND
+          );
+        }
 
-      const validation = toolDef.argsSchema.safeParse(call);
-      if (!validation.success) {
-        throw new AgentError(
-          `[XmlResponseHandler] Tool "${call.name}" has an invalid schema. Validation errors: ${JSON.stringify(validation.error?.issues)}. Hint: Ensure the tool call matches the expected schema for "${call.name}".`,
-          AgentErrorType.TOOL_NOT_FOUND
-        );
-      }
+        const validation = toolDef.argsSchema.safeParse(call);
+        if (!validation.success) {
+          throw new AgentError(
+            `[XmlResponseHandler] Tool "${tagName}" has an invalid schema. Validation errors: ${JSON.stringify(validation.error?.issues)}. Hint: Ensure the tool call matches the expected schema for "${tagName}".`,
+            AgentErrorType.TOOL_NOT_FOUND
+          );
+        }
 
-      validToolCalls.push(validation.data as PendingToolCall);
+        validToolCalls.push({ ...validation.data, name: tagName } as PendingToolCall);
+      }
     }
 
     return validToolCalls;

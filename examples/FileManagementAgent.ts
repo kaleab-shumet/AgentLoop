@@ -59,7 +59,7 @@ export class FileManagementAgent extends AgentLoop {
             });
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -69,7 +69,7 @@ export class FileManagementAgent extends AgentLoop {
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to list directory: ${error.message}`
           };
@@ -110,7 +110,7 @@ export class FileManagementAgent extends AgentLoop {
           if (!textExtensions.includes(extension)) {
             // For binary files, just return file info
             return {
-              toolname: name,
+              toolName: name,
               success: true,
               output: {
                 type: 'binary',
@@ -126,7 +126,7 @@ export class FileManagementAgent extends AgentLoop {
           const content = fs.readFileSync(targetPath, 'utf8');
           
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               type: 'text',
@@ -139,7 +139,7 @@ export class FileManagementAgent extends AgentLoop {
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to read file: ${error.message}`
           };
@@ -174,7 +174,7 @@ export class FileManagementAgent extends AgentLoop {
           const stats = fs.statSync(targetPath);
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -185,7 +185,7 @@ export class FileManagementAgent extends AgentLoop {
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to write file: ${error.message}`
           };
@@ -217,7 +217,7 @@ export class FileManagementAgent extends AgentLoop {
           fs.mkdirSync(targetPath, { recursive: args.recursive });
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -227,7 +227,7 @@ export class FileManagementAgent extends AgentLoop {
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to create directory: ${error.message}`
           };
@@ -288,7 +288,7 @@ export class FileManagementAgent extends AgentLoop {
           searchRecursive(targetPath, 0);
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               searchPath: targetPath,
@@ -300,7 +300,7 @@ export class FileManagementAgent extends AgentLoop {
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Search failed: ${error.message}`
           };
@@ -326,7 +326,7 @@ export class FileManagementAgent extends AgentLoop {
           const stats = fs.statSync(targetPath);
           
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -344,7 +344,7 @@ export class FileManagementAgent extends AgentLoop {
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to get file info: ${error.message}`
           };
@@ -411,7 +411,7 @@ export async function demonstrateFileManagement() {
       // Show failed tools if any
       const failedTools = result.toolCallHistory.filter(tool => !tool.success);
       if (failedTools.length > 0) {
-        console.log('❌ Failed Tools:', failedTools.map(t => `${t.toolname}: ${t.error}`));
+        console.log('❌ Failed Tools:', failedTools.map(t => `${t.toolName}: ${t.error}`));
       }
     } catch (error) {
       console.log('❌ Test failed:', error);
@@ -450,7 +450,7 @@ Please make sure each step is completed before moving to the next.`;
     
     // Show the sequence of operations
     result.toolCallHistory.forEach((tool, index) => {
-      console.log(`${index + 1}. ${tool.toolname}: ${tool.success ? '✅' : '❌'} ${tool.success ? 'Success' : tool.error}`);
+      console.log(`${index + 1}. ${tool.toolName}: ${tool.success ? '✅' : '❌'} ${tool.success ? 'Success' : tool.error}`);
     });
 
   } catch (error) {

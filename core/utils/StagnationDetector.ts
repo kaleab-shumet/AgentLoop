@@ -36,12 +36,12 @@ export class StagnationDetector {
   private readonly TIME_WINDOW_MS = 60000; // 1 minute
   
   constructor(config: StagnationDetectorConfig = {}) {
-    this.windowSize = config.windowSize || 10;
-    this.similarityThreshold = config.similarityThreshold || 0.85;
+    this.windowSize = config.windowSize || 12;
+    this.similarityThreshold = config.similarityThreshold || 0.75;
     this.enableTimeBasedDetection = config.enableTimeBasedDetection ?? true;
-    this.repeatedCallThreshold = config.repeatedCallThreshold || 3;
-    this.errorLoopThreshold = config.errorLoopThreshold || 3;
-    this.cyclicPatternThreshold = config.cyclicPatternThreshold || 3;
+    this.repeatedCallThreshold = config.repeatedCallThreshold || 4;
+    this.errorLoopThreshold = config.errorLoopThreshold || 4;
+    this.cyclicPatternThreshold = config.cyclicPatternThreshold || 4;
   }
   
   /**
@@ -91,9 +91,9 @@ export class StagnationDetector {
     // Convert tool results to call signatures (approximate timestamps)
     let baseTime = Date.now() - (toolCallHistory.length * 10000); // Assume 10s between calls
     for (const result of toolCallHistory) {
-      if (result.toolname !== 'final' && result.toolname !== 'run-failure') {
+      if (result.toolName !== 'final' && result.toolName !== 'run-failure') {
         callHistory.push({
-          toolName: result.toolname,
+          toolName: result.toolName,
           argsHash: this.hashResultAsCall(result),
           timestamp: baseTime
         });
@@ -339,7 +339,7 @@ export class StagnationDetector {
    */
   private areSimilarErrors(a: ToolResult, b: ToolResult): boolean {
     if (!a.error || !b.error) return false;
-    if (a.toolname !== b.toolname) return false;
+    if (a.toolName !== b.toolName) return false;
     
     // Simple similarity check - you could use more sophisticated algorithms
     const similarity = this.calculateStringSimilarity(a.error, b.error);
@@ -368,13 +368,13 @@ export class StagnationDetector {
     successRate: number;
   } {
     const recentCalls = toolCallHistory.slice(-10).map(r => 
-      `${r.toolname}(${r.success ? '✓' : '✗'})`
+      `${r.toolName}(${r.success ? '✓' : '✗'})`
     );
     
     const callFrequency = new Map<string, number>();
     for (const result of toolCallHistory) {
-      if (result.toolname !== 'final' && result.toolname !== 'run-failure') {
-        callFrequency.set(result.toolname, (callFrequency.get(result.toolname) || 0) + 1);
+      if (result.toolName !== 'final' && result.toolName !== 'run-failure') {
+        callFrequency.set(result.toolName, (callFrequency.get(result.toolName) || 0) + 1);
       }
     }
     

@@ -210,7 +210,7 @@ export class PromptManager {
       return 'custom';
     }
     const format = (this.template as DefaultPromptTemplate).getResponseFormat();
-    return format === ResponseFormat.FUNCTION_CALLING ? 'function_calling' : 'xml';
+    return format === ResponseFormat.FUNCTION_CALLING ? 'functionCalling' : 'xml';
   }
 
   getTemplateTypeString(): 'xml' | 'function' {
@@ -224,11 +224,11 @@ export class PromptManager {
     
     if (this.isCustomTemplate) {
       // Switch back to default template
-      const format = type === 'function_calling' ? ResponseFormat.FUNCTION_CALLING : ResponseFormat.XML;
+      const format = type === 'functionCalling' ? ResponseFormat.FUNCTION_CALLING : ResponseFormat.XML;
       this.setDefaultTemplate(format);
     } else {
       // Update existing default template
-      const format = type === 'function_calling' ? ResponseFormat.FUNCTION_CALLING : ResponseFormat.XML;
+      const format = type === 'functionCalling' ? ResponseFormat.FUNCTION_CALLING : ResponseFormat.XML;
       this.setResponseFormat(format);
     }
     

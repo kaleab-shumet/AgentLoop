@@ -58,14 +58,14 @@ export async function testWithRateLimiting(): Promise<void> {
       const duration = endTime - startTime;
       
       // Analyze results
-      const finalCall = result.toolCallHistory.find(call => call.toolname === 'final');
-      const nonFinalCalls = result.toolCallHistory.filter(call => call.toolname !== 'final');
+      const finalCall = result.toolCallHistory.find(call => call.toolName === 'final');
+      const nonFinalCalls = result.toolCallHistory.filter(call => call.toolName !== 'final');
       const successfulCalls = nonFinalCalls.filter(call => call.success);
       
       // Check for repetition
       const toolCounts = new Map<string, number>();
       successfulCalls.forEach(call => {
-        toolCounts.set(call.toolname, (toolCounts.get(call.toolname) || 0) + 1);
+        toolCounts.set(call.toolName, (toolCounts.get(call.toolName) || 0) + 1);
       });
       
       const maxRepeats = Math.max(0, ...Array.from(toolCounts.values()));
@@ -73,7 +73,7 @@ export async function testWithRateLimiting(): Promise<void> {
       
       console.log(`   ⏱️  Duration: ${duration}ms`);
       console.log(`   🔧 Tool calls: ${result.toolCallHistory.length}`);
-      console.log(`   📊 Sequence: ${result.toolCallHistory.map(t => `${t.toolname}(${t.success ? '✓' : '✗'})`).join(' → ')}`);
+      console.log(`   📊 Sequence: ${result.toolCallHistory.map(t => `${t.toolName}(${t.success ? '✓' : '✗'})`).join(' → ')}`);
       console.log(`   ${finalCall ? '✅' : '❌'} Terminated: ${!!finalCall}`);
       console.log(`   ${hasRepetition ? '⚠️' : '✅'} No repetition: ${!hasRepetition}`);
       

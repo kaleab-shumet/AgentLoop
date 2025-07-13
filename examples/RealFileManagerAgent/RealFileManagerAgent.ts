@@ -32,6 +32,18 @@ export class RealFileManagerAgent extends AgentLoop {
 - Warn about potential data loss in a helpful way
 - Maintain clear working directory context
 
+📋 IMPORTANT TOOL USAGE RULES:
+- For "recursive" or "list everything" requests, ALWAYS use list_directory with recursive=true
+- If a tool call doesn't give you what you need, try different parameters before repeating
+- Once you have completed a task successfully, use the final tool immediately
+- Don't repeat the same tool call with identical parameters more than twice
+- When listing recursively fails, try breaking it into smaller chunks
+
+🔧 TOOL USAGE EXAMPLES:
+- Request: "List all files recursively" → Use: list_directory with recursive=true
+- Request: "List everything recursively" → Use: list_directory with recursive=true  
+- Request: "Show all files in subdirectories" → Use: list_directory with recursive=true
+
 Always be helpful, accurate, conversational, and explain what you're doing in a friendly manner. Make file management feel approachable and less intimidating!`;
 
   private workingDirectory: string;
@@ -70,11 +82,11 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     // Enhanced directory listing tool
     this.defineTool((z) => ({
       name: 'list_directory',
-      description: 'List contents of a directory with detailed file information including size, type, and modification dates.',
+      description: 'List contents of a directory with detailed file information including size, type, and modification dates. Use recursive=true for "recursive" or "list everything" requests.',
       argsSchema: z.object({
         dirPath: z.string().optional().default('.').describe('Directory path to list (relative to working directory or absolute, defaults to current directory)'),
         showHidden: z.boolean().optional().default(false).describe('Whether to show hidden files and directories'),
-        recursive: z.boolean().optional().default(false).describe('Whether to list subdirectories recursively'),
+        recursive: z.boolean().optional().default(false).describe('Whether to list subdirectories recursively. Set to true for "recursive" or "list everything" requests.'),
         maxDepth: z.number().optional().default(3).describe('Maximum recursion depth when recursive is true')
       }),
       handler: async (name: string, args: any, turnState: TurnState) => {
@@ -99,7 +111,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           turnState.set("display", this.formatDirectoryListing(contents));
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -116,7 +128,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to list directory: ${error.message}`
           };
@@ -160,7 +172,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           const extension = path.extname(targetPath).toLowerCase();
           if (!this.allowedExtensions.includes(extension) && extension !== '') {
             return {
-              toolname: name,
+              toolName: name,
               success: true,
               output: {
                 type: 'binary',
@@ -195,7 +207,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           }
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               type: 'text',
@@ -215,7 +227,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to read file: ${error.message}`
           };
@@ -266,7 +278,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           const stats = fs.statSync(targetPath);
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -280,7 +292,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to write file: ${error.message}`
           };
@@ -307,7 +319,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           if (fs.existsSync(targetPath)) {
             if (fs.statSync(targetPath).isDirectory()) {
               return {
-                toolname: name,
+                toolName: name,
                 success: true,
                 output: {
                   path: targetPath,
@@ -324,7 +336,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           fs.mkdirSync(targetPath, { recursive: args.recursive });
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -335,7 +347,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to create directory: ${error.message}`
           };
@@ -454,7 +466,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           turnState.set("display", this.formatSearchResults(results));
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               searchPath: targetPath,
@@ -472,7 +484,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Search failed: ${error.message}`
           };
@@ -533,7 +545,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           }
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -554,7 +566,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to get file info: ${error.message}`
           };
@@ -589,7 +601,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           this.workingDirectory = newPath;
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               oldPath,
@@ -599,7 +611,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to change directory: ${error.message}`
           };
@@ -646,7 +658,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           }
 
           return {
-            toolname: name,
+            toolName: name,
             success: true,
             output: {
               path: targetPath,
@@ -658,7 +670,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
           };
         } catch (error: any) {
           return {
-            toolname: name,
+            toolName: name,
             success: false,
             error: `Failed to delete: ${error.message}`
           };
@@ -678,7 +690,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
         
         
         return {
-          toolname: name,
+          toolName: name,
           success: true,
           output: args,
           display
@@ -816,7 +828,7 @@ Always be helpful, accurate, conversational, and explain what you're doing in a 
     this.workingDirectory = resolvedPath;
   }
 
-  public getAvailableCommands(): string[] {
+  public getAvailableTools(): string[] {
     return this.tools.map(tool => tool.name);
   }
 }

@@ -237,7 +237,7 @@ The agent has access to these specialized tools:
 ```typescript
 // Had to figure out the correct ToolResult format
 return {
-  toolname: name,
+  toolName: name,
   success: true,
   output: { /* results */ }
 };
@@ -252,7 +252,7 @@ try {
   // file operation
 } catch (error: any) {
   return {
-    toolname: name,
+    toolName: name,
     success: false,
     error: `Failed to ${operation}: ${error.message}`
   };

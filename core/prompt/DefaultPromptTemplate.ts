@@ -65,9 +65,13 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
 **Example of completing after successful operations:**
 \`\`\`xml
 <root>
-  <${finalToolName}><name>${finalToolName}</name><value>I have successfully completed your request. [Summarize what was accomplished based on the history]</value></${finalToolName}>
+  <${finalToolName}>
+    <value>I have successfully completed your request. [Summarize what was accomplished based on the history]</value>
+  </${finalToolName}>
 </root>
 \`\`\`
+
+**Tool call structure:** Tool names are identified by XML tag names. Each tool call contains only its parameter tags.
 
 **Execution Strategy:** ${executionStrategy}`;
   }
@@ -80,37 +84,37 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
     return `You MUST respond by calling one or more functions. Use the following JSON format enclosed in \`\`\`json ... \`\`\`.
 
 **CRITICAL TERMINATION RULES:**
-1. **NEVER REPEAT SUCCESSFUL OPERATIONS:** Before making any function call, check the function call history. If a function has already succeeded for the same purpose, DO NOT call it again.
-2. **MANDATORY TERMINATION:** You MUST call the '${finalToolName}' function when:
+1. **NEVER REPEAT SUCCESSFUL OPERATIONS:** Before making any tool call, check the tool call history. If a tool has already succeeded for the same purpose, DO NOT call it again.
+2. **MANDATORY TERMINATION:** You MUST call the '${finalToolName}' tool when:
    - You have successfully completed the user's request
    - All required information has been gathered or operations completed
    - You can provide a complete answer to the user
-3. **SINGLE FINAL FUNCTION:** When using '${finalToolName}', it must be the ONLY function in your response.
+3. **SINGLE FINAL TOOL:** When using '${finalToolName}', it must be the ONLY tool in your response.
 4. **NO REDUNDANT WORK:** If the history shows a task is complete, immediately use '${finalToolName}' with the results.
 
 **WORKFLOW DECISION PROCESS:**
 - Check history → Identify what's been done → Determine what's still needed → Either do remaining work OR use '${finalToolName}' if complete
 
-**Format for single function call:**
+**Format for single tool call:**
 \`\`\`json
 {
-  "function_call": {
-    "name": "function_name",
+  "functionCall": {
+    "name": "tool_name",
     "arguments": "{\\"param1\\": \\"value1\\", \\"param2\\": \\"value2\\"}"
   }
 }
 \`\`\`
 
-**Format for multiple function calls:**
+**Format for multiple tool calls:**
 \`\`\`json
 {
-  "function_calls": [
+  "functionCalls": [
     {
-      "name": "function_name_1",
+      "name": "tool_name_1",
       "arguments": "{\\"param1\\": \\"value1\\"}"
     },
     {
-      "name": "function_name_2", 
+      "name": "tool_name_2", 
       "arguments": "{\\"param2\\": \\"value2\\"}"
     }
   ]
@@ -218,10 +222,10 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
     
     let statusSummary = '';
     if (successfulTools.length > 0) {
-      statusSummary += `\n**SUCCESSFUL OPERATIONS (${successfulTools.length}):** ${successfulTools.map(t => t.toolname).join(', ')}`;
+      statusSummary += `\n**SUCCESSFUL OPERATIONS (${successfulTools.length}):** ${successfulTools.map(t => t.toolName).join(', ')}`;
     }
     if (failedTools.length > 0) {
-      statusSummary += `\n**FAILED OPERATIONS (${failedTools.length}):** ${failedTools.map(t => t.toolname).join(', ')}`;
+      statusSummary += `\n**FAILED OPERATIONS (${failedTools.length}):** ${failedTools.map(t => t.toolName).join(', ')}`;
     }
     
     const historyLog = JSON.stringify(entries, null, 2);

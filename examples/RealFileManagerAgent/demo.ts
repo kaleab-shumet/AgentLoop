@@ -121,7 +121,7 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
           console.log(`📊 Tool execution summary:`);
           result.toolCallHistory.forEach((tool, index) => {
             const status = tool.success ? '✅' : '❌';
-            console.log(`   ${index + 1}. ${status} ${tool.toolname}`);
+            console.log(`   ${index + 1}. ${status} ${tool.toolName}`);
           });
         }
       }
@@ -138,7 +138,7 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
       if (failedTools.length > 0) {
         console.log(`⚠️ Failed operations:`);
         failedTools.forEach(tool => {
-          console.log(`   ❌ ${tool.toolname}: ${tool.error}`);
+          console.log(`   ❌ ${tool.toolName}: ${tool.error}`);
         });
       }
 

@@ -157,13 +157,13 @@ export class FileManagerConsole {
         console.log('\n🛠️  Tool Execution Details:');
         result.toolCallHistory.forEach((tool, index) => {
           const status = tool.success ? '✅' : '❌';
-          console.log(`  ${index + 1}. ${status} ${tool.toolname}`);
+          console.log(`  ${index + 1}. ${status} ${tool.toolName}`);
 
           if (!tool.success && tool.error) {
             console.log(`     Error: ${tool.error}`);
           } else if (tool.success && tool.output && this.debugMode) {
             // Show detailed output information only in debug mode
-            this.displayToolOutput(tool.toolname, tool.output);
+            this.displayToolOutput(tool.toolName, tool.output);
           }
         });
       } else if (result.toolCallHistory.length > 0 && !this.debugMode) {
@@ -192,7 +192,7 @@ export class FileManagerConsole {
       if (failedTools.length > 0) {
         console.log('\n⚠️  Some operations failed:');
         failedTools.forEach(tool => {
-          console.log(`   ❌ ${tool.toolname}: ${tool.error}`);
+          console.log(`   ❌ ${tool.toolName}: ${tool.error}`);
         });
       }
 
@@ -287,7 +287,7 @@ export class FileManagerConsole {
     console.log('  debug off - Disable debug mode');
 
     console.log('\n🗂️  Available File Operations:');
-    const commands = this.agent.getAvailableCommands();
+    const commands = this.agent.getAvailableTools();
     commands.forEach(cmd => {
       console.log(`  • ${cmd}`);
     });
