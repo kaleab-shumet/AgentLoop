@@ -47,14 +47,14 @@ export async function testComplexTermination() {
         toolCallHistory: []
       });
 
-      const nonFinalCalls = result.toolCallHistory.filter(call => call.toolname !== 'final');
-      const finalCall = result.toolCallHistory.find(call => call.toolname === 'final');
+      const nonFinalCalls = result.toolCallHistory.filter(call => call.toolName !== 'final');
+      const finalCall = result.toolCallHistory.find(call => call.toolName === 'final');
       const hasRepeatedCalls = hasDuplicateSuccessfulCalls(nonFinalCalls);
 
       // Concise summary log
       console.log('Result Summary:');
       console.log(`  Tool calls: ${result.toolCallHistory.length}`);
-      console.log(`  Sequence: ${result.toolCallHistory.map(t => `${t.toolname}(${t.success ? 'OK' : 'FAIL'})`).join(' -> ')}`);
+      console.log(`  Sequence: ${result.toolCallHistory.map(t => `${t.toolName}(${t.success ? 'OK' : 'FAIL'})`).join(' -> ')}`);
       console.log(`  Terminated properly: ${!!finalCall}`);
       console.log(`  No repetition: ${!hasRepeatedCalls}`);
       if (finalCall) {
@@ -87,7 +87,7 @@ function hasDuplicateSuccessfulCalls(toolCalls: any[]): boolean {
   const callCounts = new Map<string, number>();
   
   successfulCalls.forEach(call => {
-    const key = `${call.toolname}`;
+    const key = `${call.toolName}`;
     callCounts.set(key, (callCounts.get(key) || 0) + 1);
   });
   

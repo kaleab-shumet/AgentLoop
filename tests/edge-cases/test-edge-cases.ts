@@ -260,7 +260,7 @@ export class EdgeCaseTestSuite {
       
       console.log(`   ⏱️  Duration: ${endTime - startTime}ms`);
       console.log(`   🔧 Tools: ${(result as any).toolCallHistory.length}`);
-      console.log(`   📊 Sequence: ${(result as any).toolCallHistory.map((t: any) => `${t.toolname}(${t.success ? '✓' : '✗'})`).join(' → ')}`);
+      console.log(`   📊 Sequence: ${(result as any).toolCallHistory.map((t: any) => `${t.toolName}(${t.success ? '✓' : '✗'})`).join(' → ')}`);
       console.log(`   ${analysis.passed ? '✅' : '❌'} Termination: ${analysis.terminationStatus}`);
       console.log(`   🛡️  Robustness: ${analysis.robustnessScore}/10`);
       
@@ -286,7 +286,7 @@ export class EdgeCaseTestSuite {
     let passed = true;
 
     // Check termination
-    const finalCall = result.toolCallHistory.find((call: any) => call.toolname === 'final');
+    const finalCall = result.toolCallHistory.find((call: any) => call.toolName === 'final');
     if (!finalCall) {
       vulnerabilities.push('Failed to terminate');
       robustnessScore -= 4;
@@ -295,12 +295,12 @@ export class EdgeCaseTestSuite {
 
     // Check for repetition
     const nonFinalCalls = result.toolCallHistory.filter((call: any) => 
-      call.toolname !== 'final' && call.toolname !== 'run-failure'
+      call.toolName !== 'final' && call.toolName !== 'run-failure'
     );
     const toolCounts = new Map<string, number>();
     nonFinalCalls.forEach((call: any) => {
       if (call.success) {
-        toolCounts.set(call.toolname, (toolCounts.get(call.toolname) || 0) + 1);
+        toolCounts.set(call.toolName, (toolCounts.get(call.toolName) || 0) + 1);
       }
     });
 

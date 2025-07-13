@@ -218,7 +218,7 @@ export class RobustnessTestSuite {
       
       console.log(`   ⏱️  Duration: ${endTime - startTime}ms`);
       console.log(`   🔧 Tool calls: ${result.toolCallHistory.length}`);
-      console.log(`   📊 Sequence: ${result.toolCallHistory.map(t => `${t.toolname}(${t.success ? '✓' : '✗'})`).join(' → ')}`);
+      console.log(`   📊 Sequence: ${result.toolCallHistory.map(t => `${t.toolName}(${t.success ? '✓' : '✗'})`).join(' → ')}`);
       console.log(`   ${analysis.passed ? '✅' : '❌'} Result: ${analysis.status}`);
       
       if (analysis.issues.length > 0) {
@@ -260,19 +260,19 @@ export class RobustnessTestSuite {
     let passed = true;
 
     // Check for proper termination
-    const finalCall = result.toolCallHistory.find((call: any) => call.toolname === 'final');
+    const finalCall = result.toolCallHistory.find((call: any) => call.toolName === 'final');
     if (!finalCall) {
       issues.push('No final termination');
       passed = false;
     }
 
     // Check for tool repetition
-    const nonFinalCalls = result.toolCallHistory.filter((call: any) => call.toolname !== 'final' && call.toolname !== 'run-failure');
+    const nonFinalCalls = result.toolCallHistory.filter((call: any) => call.toolName !== 'final' && call.toolName !== 'run-failure');
     const successfulCalls = nonFinalCalls.filter((call: any) => call.success);
     const callCounts = new Map<string, number>();
     
     successfulCalls.forEach((call: any) => {
-      const key = `${call.toolname}`;
+      const key = `${call.toolName}`;
       callCounts.set(key, (callCounts.get(key) || 0) + 1);
     });
 

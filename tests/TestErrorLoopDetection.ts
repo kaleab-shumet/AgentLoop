@@ -15,8 +15,8 @@ function testErrorLoopDetection() {
   console.log('\n1️⃣ Testing error loop with different current call...');
   const currentCall: PendingToolCall = { name: 'other_tool', data: 'different' };
   const errorHistory: ToolResult[] = [
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' },
-    { toolname: 'failing_tool', success: false, error: 'Connection timeout' }
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' },
+    { toolName: 'failing_tool', success: false, error: 'Connection timeout' }
   ];
 
   const result1 = detector.isStagnant(currentCall, errorHistory, 3);

@@ -49,7 +49,7 @@ async function debugTest(): Promise<void> {
     console.log('\n📊 Result:');
     console.log(`Tool calls: ${result.toolCallHistory.length}`);
     result.toolCallHistory.forEach((tool, index) => {
-      console.log(`${index + 1}. ${tool.success ? '✅' : '❌'} ${tool.toolname}`);
+      console.log(`${index + 1}. ${tool.success ? '✅' : '❌'} ${tool.toolName}`);
       if (!tool.success) {
         console.log(`   Error: ${tool.error}`);
       }

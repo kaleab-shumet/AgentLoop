@@ -400,7 +400,7 @@ export class StressTestSuite {
     let passed = true;
 
     // Termination analysis
-    const finalCall = result.toolCallHistory.find((call: any) => call.toolname === 'final');
+    const finalCall = result.toolCallHistory.find((call: any) => call.toolName === 'final');
     if (!finalCall) {
       issues.push('No termination');
       robustnessScore -= 30;
@@ -418,13 +418,13 @@ export class StressTestSuite {
 
     // Repetition analysis
     const nonFinalCalls = result.toolCallHistory.filter((call: any) => 
-      call.toolname !== 'final' && call.toolname !== 'run-failure'
+      call.toolName !== 'final' && call.toolName !== 'run-failure'
     );
     const successfulCalls = nonFinalCalls.filter((call: any) => call.success);
     
     const toolCounts = new Map<string, number>();
     successfulCalls.forEach((call: any) => {
-      toolCounts.set(call.toolname, (toolCounts.get(call.toolname) || 0) + 1);
+      toolCounts.set(call.toolName, (toolCounts.get(call.toolName) || 0) + 1);
     });
 
     const maxRepeats = Math.max(0, ...Array.from(toolCounts.values()));

@@ -28,6 +28,7 @@ coverage/
 # Misc
 *.log 
 claude-md/
+file-manager-demo/
 .claude
 
 
