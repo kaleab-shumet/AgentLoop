@@ -97,6 +97,7 @@ export class XmlResponseHandler implements ResponseHandler {
       removeNSPrefix: true,
       parseAttributeValue: false,
       trimValues: true,
+      cdataPropName: "__cdata"
     });
     return parser.parse(xml);
   }

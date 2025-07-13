@@ -35,67 +35,81 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
     return this.responseFormat;
   }
 
-  getFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
+  /**
+   * Generate shared termination and workflow rules
+   */
+  private getSharedTerminationRules(finalToolName: string): string {
+    return `**TERMINATION RULES:**
+1. NEVER repeat successful operations - check tool call history first
+2. Use '${finalToolName}' when task is complete or all required information gathered
+3. When using '${finalToolName}', it must be the ONLY tool in your response
+4. If history shows task completion, immediately use '${finalToolName}' with results
+
+**WORKFLOW:**
+Check history → Identify gaps → Either complete remaining work OR use '${finalToolName}'`;
+  }
+
+  /**
+   * Generate shared batching instructions
+   */
+  private getSharedBatchingRules(): string {
+    return `**BATCHING REQUIRED:** Call ALL related tools in ONE response for efficiency
+- Think about ALL needed tools before responding
+- Batch multiple operations together whenever possible`;
+  }
+
+  getFormatInstructions(finalToolName: string): string {
     if (this.responseFormat === ResponseFormat.XML) {
-      return this.getXmlFormatInstructions(finalToolName, parallelExecution);
+      return this.getXmlFormatInstructions(finalToolName);
     } else {
-      return this.getFunctionCallingFormatInstructions(finalToolName, parallelExecution);
+      return this.getFunctionCallingFormatInstructions(finalToolName);
     }
   }
 
-  private getXmlFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    const executionStrategy = parallelExecution ? 
-      "Your tools can execute concurrently. You should call all necessary tools for a task in a single turn." : 
-      "Your tools execute sequentially. If one tool fails, you must retry and fix it before continuing.";
+  private getXmlFormatInstructions(finalToolName: string): string {
+    return `## XML RESPONSE FORMAT
+Respond ONLY with XML code block - no text before or after.
 
-    return `You MUST respond by calling one or more tools. Your entire output must be a single, valid XML block enclosed in \`\`\`xml ... \`\`\`. All tool calls must be children under a single <root> XML tag.
-
-**CRITICAL TERMINATION RULES:**
-1. **NEVER REPEAT SUCCESSFUL OPERATIONS:** Before making any tool call, check the tool call history. If a tool has already succeeded for the same purpose, DO NOT call it again.
-2. **MANDATORY TERMINATION:** You MUST call the '${finalToolName}' tool when:
-   - You have successfully completed the user's request
-   - All required information has been gathered or operations completed
-   - You can provide a complete answer to the user
-3. **SINGLE FINAL TOOL:** When using '${finalToolName}', it must be the ONLY tool in your response.
-4. **NO REDUNDANT WORK:** If the history shows a task is complete, immediately use '${finalToolName}' with the results.
-
-**WORKFLOW DECISION PROCESS:**
-- Check history → Identify what's been done → Determine what's still needed → Either do remaining work OR use '${finalToolName}' if complete
-
-**Example of completing after successful operations:**
+**Format:**
 \`\`\`xml
 <root>
-  <${finalToolName}>
-    <value>I have successfully completed your request. [Summarize what was accomplished based on the history]</value>
-  </${finalToolName}>
+  <tool_name>
+    <param1>value1</param1>
+    <param2>value2</param2>
+  </tool_name>
 </root>
 \`\`\`
 
-**Tool call structure:** Tool names are identified by XML tag names. Each tool call contains only its parameter tags.
+**Requirements:**
+- Start immediately with \`\`\`xml
+- End immediately with \`\`\`
+- All tool calls inside <root> tags
+- Tool names as XML tag names
+- Use 'final' tool for conversational responses
 
-**Execution Strategy:** ${executionStrategy}`;
+${this.getSharedTerminationRules(finalToolName)}
+
+${this.getSharedBatchingRules()}
+
+**Completion Example:**
+\`\`\`xml
+<root>
+  <${finalToolName}>
+    <value>Task completed. [Brief summary of accomplishments]</value>
+  </${finalToolName}>
+</root>
+\`\`\``;
   }
 
-  private getFunctionCallingFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    const executionStrategy = parallelExecution ? 
-      "You can call multiple functions concurrently in a single response." : 
-      "You should call functions sequentially. If one function fails, retry and fix it before continuing.";
+  private getFunctionCallingFormatInstructions(finalToolName: string): string {
+    return `## FUNCTION CALLING FORMAT
+Respond by calling functions using JSON format in code blocks.
 
-    return `You MUST respond by calling one or more functions. Use the following JSON format enclosed in \`\`\`json ... \`\`\`.
+${this.getSharedTerminationRules(finalToolName)}
 
-**CRITICAL TERMINATION RULES:**
-1. **NEVER REPEAT SUCCESSFUL OPERATIONS:** Before making any tool call, check the tool call history. If a tool has already succeeded for the same purpose, DO NOT call it again.
-2. **MANDATORY TERMINATION:** You MUST call the '${finalToolName}' tool when:
-   - You have successfully completed the user's request
-   - All required information has been gathered or operations completed
-   - You can provide a complete answer to the user
-3. **SINGLE FINAL TOOL:** When using '${finalToolName}', it must be the ONLY tool in your response.
-4. **NO REDUNDANT WORK:** If the history shows a task is complete, immediately use '${finalToolName}' with the results.
+${this.getSharedBatchingRules()}
 
-**WORKFLOW DECISION PROCESS:**
-- Check history → Identify what's been done → Determine what's still needed → Either do remaining work OR use '${finalToolName}' if complete
-
-**Format for single tool call:**
+**Single tool call:**
 \`\`\`json
 {
   "functionCall": {
@@ -105,7 +119,7 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
 }
 \`\`\`
 
-**Format for multiple tool calls:**
+**Multiple tool calls:**
 \`\`\`json
 {
   "functionCalls": [
@@ -121,17 +135,35 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
 }
 \`\`\`
 
-**Example of completing after successful operations:**
+**Completion example:**
 \`\`\`json
 {
-  "function_call": {
+  "functionCall": {
     "name": "${finalToolName}",
-    "arguments": "{\\"value\\": \\"I have successfully completed your request. [Summarize what was accomplished based on the history]\\"}"
+    "arguments": "{\\"value\\": \\"Task completed. [Brief summary]\\"}"
   }
 }
-\`\`\`
+\`\`\``;
+  }
 
-**Execution Strategy:** ${executionStrategy}`;
+  getExecutionStrategySection(parallelExecution: boolean): string {
+    const strategy = parallelExecution
+    ? "Tools run concurrently - batch multiple tools in single responses."
+    : "Tools run sequentially - still batch multiple calls together.";
+  
+    return `# EXECUTION STRATEGY
+${strategy}
+
+${this.getSharedBatchingRules()}
+
+**Example - Multiple tools:**
+\`\`\`xml
+<root>
+  <read_file><path>file1.txt</path></read_file>
+  <read_file><path>file2.txt</path></read_file>
+  <search_code><pattern>function</pattern></search_code>
+</root>
+\`\`\``;
   }
 
   buildPrompt(
@@ -153,12 +185,17 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
     sections.push(systemPrompt);
 
     // 2. Format instructions
-    sections.push(`# OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS\n${this.getFormatInstructions(finalToolName, options.parallelExecution || false)}`);
+    sections.push(`# OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS\n${this.getFormatInstructions(finalToolName)}`);
 
     // 3. Tool definitions
     sections.push(`# AVAILABLE TOOLS\n${toolDefinitions}.`);
 
-    // 4. Context
+    // 4. Tool execution strategy
+    if (options.includeExecutionStrategy) {
+      sections.push(this.getExecutionStrategySection(options.parallelExecution || false));
+    }
+
+    // 5. Context
     if (options.includeContext) {
       sections.push(this.buildContextSection(context, options));
     }
@@ -195,11 +232,11 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
     if (Object.keys(context).length === 0) {
       return '# CONTEXT\nNo background context provided.';
     }
-    
+
     const contextLog = Object.entries(context)
       .map(([key, value]) => `**${key}**:\n${JSON.stringify(value)}`)
       .join('\n\n');
-    
+
     return `# CONTEXT\n${contextLog}`;
   }
 
@@ -208,18 +245,18 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
   }
 
   buildToolHistorySection(toolCallHistory: ToolResult[], options: PromptOptions): string {
-    const entries = options.maxHistoryEntries 
-      ? toolCallHistory.slice(-options.maxHistoryEntries) 
+    const entries = options.maxHistoryEntries
+      ? toolCallHistory.slice(-options.maxHistoryEntries)
       : toolCallHistory;
-    
+
     if (entries.length === 0) {
       return '# TOOL CALL HISTORY\nNo tool calls have been made yet.';
     }
-    
+
     // Analyze completion status
     const successfulTools = entries.filter(entry => entry.success);
     const failedTools = entries.filter(entry => !entry.success);
-    
+
     let statusSummary = '';
     if (successfulTools.length > 0) {
       statusSummary += `\n**SUCCESSFUL OPERATIONS (${successfulTools.length}):** ${successfulTools.map(t => t.toolName).join(', ')}`;
@@ -227,41 +264,38 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
     if (failedTools.length > 0) {
       statusSummary += `\n**FAILED OPERATIONS (${failedTools.length}):** ${failedTools.map(t => t.toolName).join(', ')}`;
     }
-    
+
     const historyLog = JSON.stringify(entries, null, 2);
-    
+
     return `# TOOL CALL HISTORY${statusSummary}\n\n${historyLog}`;
   }
 
   buildErrorRecoverySection(
     finalToolName: string,
-    error: AgentError | null, 
-    keepRetry: boolean, 
+    error: AgentError | null,
+    keepRetry: boolean,
     errorRecoveryInstructions?: string
   ): string {
     if (!error) return '';
-    
-    const defaultRetryInstructions = "You have more attempts. Analyze the error and history, then retry with a corrected approach. If the same error persists, try alternative approaches.";
-    const maxRetryMessage = `⚠️ You have reached the maximum retry limit. You MUST IMMEDIATELY use the '${finalToolName}' tool terminate, report what you accomplished and explain what went wrong. DO NOT attempt more tool calls.`;
-    
-    const retryInstruction = keepRetry 
+
+    const defaultRetryInstructions = "Analyze error and history, then retry with corrected approach. If same error persists, try alternatives.";
+    const maxRetryMessage = `Maximum retries reached. Use '${finalToolName}' to terminate and report what you accomplished and what failed.`;
+
+    const retryInstruction = keepRetry
       ? (errorRecoveryInstructions || defaultRetryInstructions)
       : maxRetryMessage;
-    
-    return `# ERROR RECOVERY\n- **Last Error:** ${error.message}\n- **Recovery Instruction:** ${retryInstruction}`;
+
+    return `# ERROR RECOVERY\n**Last Error:** ${error.message}\n**Action:** ${retryInstruction}`;
   }
 
   buildTaskSection(userPrompt: string, finalToolName: string): string {
     return `# CURRENT TASK
-Based on all the information above, use your tools to respond to this user request:
-"${userPrompt}"
+Respond to: "${userPrompt}"
 
-**CRITICAL DECISION POINT:**
-Before proceeding, analyze the tool call history above:
-1. **If the task is already complete** (all required operations succeeded): Call ONLY the '${finalToolName}' tool with a summary of what was accomplished.
-2. **If work remains**: Call only the tools needed to complete the remaining work.
-3. **Never repeat successful operations** - this wastes iterations and delays completion.
-
-Remember: Your goal is efficient task completion, not tool repetition.`;
+**Decision Process:**
+1. Check tool history - is task complete?
+2. If complete: Use '${finalToolName}' with summary
+3. If incomplete: Call needed tools only
+4. Never repeat successful operations`;
   }
 }

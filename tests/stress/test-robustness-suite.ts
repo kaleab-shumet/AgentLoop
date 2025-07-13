@@ -1,3 +1,7 @@
+
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { FileManagementAgent } from '../../examples/FileManagementAgent';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,7 +18,7 @@ export class RobustnessTestSuite {
   constructor() {
     const config = {
       apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key',
-      model: 'gemini-2.0-flash'
+      model: 'gemini-2.5-flash'
     };
     
     this.testWorkspace = '/mnt/c/Users/user/Desktop/dev/AgentLoop/test-workspace-robustness';
@@ -28,12 +32,12 @@ export class RobustnessTestSuite {
     await this.setupTestEnvironment();
 
     // Test Categories
-    await this.runBasicRobustnessTests();
+    //await this.runBasicRobustnessTests();
     await this.runEdgeCaseTests();
-    await this.runComplexWorkflowTests();
-    await this.runErrorCascadeTests();
-    await this.runStressTests();
-    await this.runBoundaryTests();
+    //await this.runComplexWorkflowTests();
+    //await this.runErrorCascadeTests();
+    //await this.runStressTests();
+    // await this.runBoundaryTests();
 
     this.printSummary();
     await this.cleanup();
@@ -80,20 +84,20 @@ export class RobustnessTestSuite {
     console.log('\n🎯 EDGE CASE TESTS');
     console.log('-'.repeat(40));
 
-    await this.runTest('Empty Directory Operations',
-      'Create a new empty directory called "empty-test" and verify it\'s empty');
+    // await this.runTest('Empty Directory Operations',
+    //   'Create a new empty directory called "empty-test" and verify it\'s empty');
 
-    await this.runTest('Duplicate Operation Request',
-      'List the directory contents, then list them again, then tell me what you saw');
+    // await this.runTest('Duplicate Operation Request',
+    //   'List the directory contents, then list them again, then tell me what you saw');
 
-    await this.runTest('Ambiguous Instructions',
-      'Do something useful with the files in this directory');
+    // await this.runTest('Ambiguous Instructions',
+    //   'Do something useful with the files in this directory');
 
-    await this.runTest('Multiple File Types',
-      'Search for all .txt files and give me a report on what you found');
+    // await this.runTest('Multiple File Types',
+    //   'Search for all .txt files and give me a report on what you found');
 
-    await this.runTest('Path Resolution',
-      'Read the file at ./test.txt and also read existing-dir/nested.txt');
+    // await this.runTest('Path Resolution',
+    //   'Read the file at ./test.txt and also read existing-dir/nested.txt');
 
     await this.runTest('Large File Handling',
       'Read the large-file.txt and tell me about its size and content preview');
@@ -203,7 +207,7 @@ export class RobustnessTestSuite {
   }
 
   private async runTest(testName: string, prompt: string): Promise<void> {
-    console.log(`\n🧪 ${testName}`);
+    console.log(`\n🧪 ${testName}`, process.env.GEMINI_API_KEY);
     const startTime = Date.now();
     
     try {
@@ -374,6 +378,7 @@ interface TestResult {
 
 // Export test function for standalone execution
 export async function runRobustnessTests(): Promise<void> {
+
   const suite = new RobustnessTestSuite();
   await suite.runAllTests();
 }

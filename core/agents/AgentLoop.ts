@@ -85,16 +85,16 @@ export abstract class AgentLoop {
     this.toolTimeoutMs = options.toolTimeoutMs || 30000;
     this.retryAttempts = options.retryAttempts || 3;
     this.retryDelay = options.retryDelay || 1000;
-    this.parallelExecution = options.parallelExecution ?? false;
+    this.parallelExecution = options.parallelExecution ?? true;
     this.hooks = options.hooks || {};
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs || 2000;
-    
+
     // Initialize prompt manager - will be properly set up in initializePromptManager
     this.promptManager = options.promptManager || new PromptManager(
-      '', 
+      '',
       options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.executionMode)
     );
-    
+
     // Initialize stagnation detector
     this.stagnationDetector = new StagnationDetector(options.stagnationDetector);
   }
@@ -103,10 +103,10 @@ export abstract class AgentLoop {
    * Get default prompt manager configuration based on execution mode
    */
   private getDefaultPromptManagerConfig(executionMode?: ExecutionMode): PromptManagerConfig {
-    const responseFormat = executionMode === ExecutionMode.FUNCTION_CALLING 
-      ? ResponseFormat.FUNCTION_CALLING 
+    const responseFormat = executionMode === ExecutionMode.FUNCTION_CALLING
+      ? ResponseFormat.FUNCTION_CALLING
       : ResponseFormat.XML;
-    
+
     return {
       responseFormat,
       promptOptions: {
@@ -114,7 +114,8 @@ export abstract class AgentLoop {
         includeConversationHistory: true,
         includeToolHistory: true,
         maxHistoryEntries: 10,
-        parallelExecution: this.parallelExecution
+        parallelExecution: this.parallelExecution,
+        includeExecutionStrategy: true
       }
     };
   }
@@ -214,7 +215,7 @@ export abstract class AgentLoop {
               const stagnationResult = this.stagnationDetector.isStagnant(call, toolCallHistory, i + 1);
               if (stagnationResult.isStagnant && stagnationResult.confidence > 0.7) {
                 this.logger.warn(`[AgentLoop] Stagnation detected (${stagnationResult.confidence.toFixed(2)}): ${stagnationResult.reason}`);
-                
+
                 keepRetry = false;
 
                 // Create stagnation warning result
@@ -222,7 +223,7 @@ export abstract class AgentLoop {
                   toolName: 'stagnation-detector',
                   success: false,
                   error: `Stagnation detected: ${stagnationResult.reason}. ${stagnationResult.confidence >= 0.90 ? 'Forcing termination.' : 'Consider using the final tool.'}`,
-                  context: { 
+                  context: {
                     stagnationReason: stagnationResult.reason,
                     confidence: stagnationResult.confidence,
                     iteration: i + 1,
@@ -230,27 +231,27 @@ export abstract class AgentLoop {
                   }
                 };
                 toolCallHistory.push(stagnationWarning);
-                
+
                 // For very high confidence stagnation (>=90%), force termination
                 if (stagnationResult.confidence >= 0.90) {
                   this.logger.error(`[AgentLoop] Critical stagnation detected. Forcing termination with final tool.`);
-                  
+
                   const forcedTermination: ToolResult = {
                     toolName: this.FINAL_TOOL_NAME,
                     success: true,
-                    output: { 
+                    output: {
                       value: `Task terminated due to critical stagnation: ${stagnationResult.reason}. The agent was repeating the same actions without making progress. Based on the work completed so far: ${this.summarizeProgress(toolCallHistory)}`
                     }
                   };
-                  
+
                   toolCallHistory.push(forcedTermination);
                   await this.hooks.onFinalAnswer?.(forcedTermination);
-                  
+
                   const output: AgentRunOutput = { toolCallHistory, finalAnswer: forcedTermination };
                   await this.hooks.onRunEnd?.(output);
                   return output;
                 }
-                
+
                 // For high confidence stagnation (70-89%), set error context but continue
                 lastError = new AgentError(
                   `Stagnation detected: ${stagnationResult.reason}. Consider completing the task to avoid loops.`,
@@ -295,7 +296,7 @@ export abstract class AgentLoop {
             } else {
               toolCallHistory.push(this.createFailureResult(agentError));
             }
-            
+
             stagnationTracker.push(agentError.message);
             const toolRetryAmount = stagnationTracker.filter(st => st === agentError.message).length;
             if (toolRetryAmount > this.retryAttempts - 1) keepRetry = false;
@@ -312,7 +313,7 @@ export abstract class AgentLoop {
           }
         } finally {
           await this.hooks.onIterationEnd?.(i + 1, toolCallHistory);
-          
+
           // Add small delay between iterations to prevent rate limiting
           if (i < this.maxIterations - 1) { // Don't wait after the last iteration
             await this.sleep(this.sleepBetweenIterationsMs);
@@ -514,7 +515,7 @@ export abstract class AgentLoop {
 
   private constructPrompt(userPrompt: string, context: Record<string, any>, lastError: AgentError | null, conversationHistory: ChatEntry[], toolCallHistory: ToolResult[], keepRetry: boolean): string {
     const toolDefinitions = this.llmDataHandler.formatToolDefinitions(this.tools);
-    
+
     // Build the prompt using the clean PromptManager API
     let prompt = this.promptManager.buildPrompt(
       userPrompt,
@@ -526,7 +527,7 @@ export abstract class AgentLoop {
       this.FINAL_TOOL_NAME,
       toolDefinitions
     );
-    
+
     return prompt;
   }
 
@@ -536,11 +537,11 @@ export abstract class AgentLoop {
   private summarizeProgress(toolCallHistory: ToolResult[]): string {
     const successfulCalls = toolCallHistory.filter(r => r.success && r.toolName !== this.FINAL_TOOL_NAME && r.toolName !== 'stagnation-detector');
     const failedCalls = toolCallHistory.filter(r => !r.success && r.toolName !== 'stagnation-detector' && r.toolName !== 'run-failure');
-    
+
     if (successfulCalls.length === 0 && failedCalls.length === 0) {
       return "No significant progress was made.";
     }
-    
+
     const summary = [];
     if (successfulCalls.length > 0) {
       const toolCounts = new Map<string, number>();
@@ -552,11 +553,11 @@ export abstract class AgentLoop {
         .join(', ');
       summary.push(`Successfully executed: ${toolSummary}`);
     }
-    
+
     if (failedCalls.length > 0) {
       summary.push(`Encountered ${failedCalls.length} failed operation(s)`);
     }
-    
+
     return summary.join('. ') + '.';
   }
 
@@ -565,12 +566,12 @@ export abstract class AgentLoop {
    */
   private detectPotentialCompletion(toolCallHistory: ToolResult[], userPrompt: string): boolean {
     if (toolCallHistory.length === 0) return false;
-    
+
     // Check for recent operations (both successful and failed)
     const recentCalls = toolCallHistory.slice(-5); // Look at last 5 calls
     const recentSuccessfulCalls = recentCalls.filter(call => call.success && call.toolName !== this.FINAL_TOOL_NAME);
     const recentFailedCalls = recentCalls.filter(call => !call.success && call.toolName !== 'run-failure');
-    
+
     // Check for repeated tool calls (success or failure - both indicate potential loops)
     const allToolNameCounts = new Map<string, number>();
     recentCalls.forEach(call => {
@@ -578,26 +579,26 @@ export abstract class AgentLoop {
         allToolNameCounts.set(call.toolName, (allToolNameCounts.get(call.toolName) || 0) + 1);
       }
     });
-    
+
     // If any tool was called more than twice recently (success or failure), suggest termination
     const hasRepeatedCalls = Array.from(allToolNameCounts.values()).some(count => count > 2);
-    
+
     // If we have multiple failed attempts of the same tool, suggest termination
     const failedToolCounts = new Map<string, number>();
     recentFailedCalls.forEach(call => {
       failedToolCounts.set(call.toolName, (failedToolCounts.get(call.toolName) || 0) + 1);
     });
     const hasRepeatedFailures = Array.from(failedToolCounts.values()).some(count => count >= 2);
-    
+
     // If we have multiple successful operations in recent history, suggest considering termination
     const hasMultipleSuccesses = recentSuccessfulCalls.length >= 2;
-    
+
     // Check if we've used most available tools (indicating thorough work)
     const usedToolNames = new Set(toolCallHistory.filter(call => call.success).map(call => call.toolName));
     const availableToolNames = this.tools.filter(tool => tool.name !== this.FINAL_TOOL_NAME).map(tool => tool.name);
     const toolUsageRatio = usedToolNames.size / Math.max(availableToolNames.length, 1);
     const hasUsedMostTools = toolUsageRatio > 0.6; // Used more than 60% of tools
-    
+
     return hasRepeatedCalls || hasRepeatedFailures || (hasMultipleSuccesses && hasUsedMostTools);
   }
 
@@ -636,14 +637,14 @@ export abstract class AgentLoop {
     if (this.tools.some(t => t.name === tool.name)) throw new AgentError(`A tool with the name '${tool.name}' is already defined.`, AgentErrorType.DUPLICATE_TOOL_NAME, { toolName: tool.name });
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tool.name)) throw new AgentError(`Tool name '${tool.name}' must start with a letter or underscore and contain only letters, numbers, and underscores.`, AgentErrorType.INVALID_TOOL_NAME, { toolName: tool.name });
     if (!(tool.argsSchema instanceof ZodObject)) throw new AgentError(`The argsSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolName: tool.name });
-    
+
     // Set default timeout if not provided
     const toolWithDefaults = {
       ...tool,
       timeout: tool.timeout || this.toolTimeoutMs,
       dependencies: tool.dependencies || []
     };
-    
+
     this.tools.push(toolWithDefaults);
   }
 
@@ -652,8 +653,8 @@ export abstract class AgentLoop {
       this.defineTool((z) => ({
         name: this.FINAL_TOOL_NAME,
         description: `⚠️ CRITICAL: Call this tool to TERMINATE the execution and provide your final answer. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response. (4) When something is beyond your capacity or unclear, seek additional clarification but do so carefully to avoid making the user feel burdened or frustrated. This tool ENDS the conversation - only call it when finished. NEVER call other tools after this one.`,
-        argsSchema: z.object({ 
-          value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.") 
+        argsSchema: z.object({
+          value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.")
         }),
         handler: async (name: string, args: { value: string; }, turnState: TurnState): Promise<ToolResult> => {
           return {

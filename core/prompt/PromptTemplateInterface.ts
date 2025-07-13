@@ -12,6 +12,7 @@ export interface PromptOptions {
   maxHistoryEntries?: number;
   customSections?: Record<string, string>;
   parallelExecution?: boolean;
+  includeExecutionStrategy?: boolean;
 }
 
 /**
@@ -22,7 +23,7 @@ export interface PromptTemplateInterface {
   /**
    * Generate format instructions for the LLM
    */
-  getFormatInstructions(finalToolName: string, parallelExecution: boolean): string;
+  getFormatInstructions(finalToolName: string): string;
 
   /**
    * Build the complete prompt for the agent
