@@ -2,7 +2,6 @@ import { ZodTypeAny } from "zod";
 import { Tool, PendingToolCall, ResponseHandler } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from 'zod-to-json-schema';
-import { convertJsonSchemaToXsd } from '../utils/JsonToXsd';
 import { JsonSchemaXmlParser } from '../utils/JsonSchemaXmlParser';
 
 /**
@@ -20,7 +19,7 @@ export class XmlResponseHandler implements ResponseHandler {
 
     let parsedJs;
     try {
-      parsedJs = this.parseXmlToJs(xmlContent);
+      parsedJs = this.parseXmlToJs(xmlContent, tools);
     } catch (error: any) {
       throw new AgentError(
         `[XmlResponseHandler] Failed to parse XML. Details: ${error.message}. Possible causes: malformed XML syntax or unexpected structure. Hint: Check the LLM's XML output for errors.`,
@@ -42,7 +41,7 @@ export class XmlResponseHandler implements ResponseHandler {
     for (const [tagName, tagValue] of Object.entries(root)) {
       // Handle both single calls and arrays of calls with the same tag name
       const calls = Array.isArray(tagValue) ? tagValue : [tagValue];
-      
+
       for (const call of calls) {
         // Tool name comes from XML tag name
         console.log(tools.length)
@@ -53,7 +52,7 @@ export class XmlResponseHandler implements ResponseHandler {
             AgentErrorType.TOOL_NOT_FOUND
           );
         }
-
+        console.log("Call: ", call)
         const validation = toolDef.argsSchema.safeParse(call);
         if (!validation.success) {
           throw new AgentError(
@@ -72,12 +71,13 @@ export class XmlResponseHandler implements ResponseHandler {
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     return tools.map(tool => {
       const jsonSchema = zodToJsonSchema(tool.argsSchema, tool.name);
-      const xsdSchema = convertJsonSchemaToXsd(jsonSchema as any, { rootElementName: 'tool' });
-      return `\n${xsdSchema}`;
+      return `Tool: ${tool.name}
+Description: ${tool.description}
+Schema: ${JSON.stringify(jsonSchema, null, 2)}`;
     }).join('\n\n');
   }
 
-  getFormatInstructions( finalToolName: string): string {
+  getFormatInstructions(finalToolName: string): string {
     // Format instructions are now centralized in PromptTemplates
     // This handler just needs to specify that it uses XML format
     // The actual instructions are provided by PromptManager
@@ -90,13 +90,11 @@ export class XmlResponseHandler implements ResponseHandler {
     return match ? match[1].trim() : null;
   }
 
-  private parseXmlToJs(xml: string): any {
+  private parseXmlToJs(xml: string, tools: Tool<ZodTypeAny>[]): any {
     const parser = new JsonSchemaXmlParser({
       ignoreAttributes: true,
-      removeNSPrefix: true,
-      parseAttributeValue: false,
-      cdataPropName: "__cdata"
+      parseAttributeValue: false
     });
-    return parser.parse(xml);
+    return parser.parse(xml, tools);
   }
 }

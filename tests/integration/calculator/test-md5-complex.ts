@@ -13,7 +13,7 @@ async function testComplexStrings() {
   console.log('='.repeat(50));
 
   const complexTestCases = [
-    /*
+    /* 
     {
       description: "Very long string (10,000 chars)",
       prompt: `Generate MD5 hash for this very long string: ${'A'.repeat(10000)}`
@@ -43,7 +43,7 @@ Line 1
 			
 Empty line above
 Final line`
-    },*/
+    }, */
     {
       description: "Batch processing complex strings",
       prompt: "Generate MD5 hashes for multiple complex strings: 'password123!@#', '🔐secure🔐', '{\"api\":\"key\"}'"
