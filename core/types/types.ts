@@ -134,6 +134,14 @@ export interface LLMConfig {
 }
 
 
+export interface TypedPaths {
+  arrayPaths: string[];
+  booleanPaths: string[];
+  numberPaths: string[];
+}
+
+
+
 /**
  * Interface for handling different response formats (XML vs Function Calling)
  */

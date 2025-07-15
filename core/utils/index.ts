@@ -1,4 +1,4 @@
 export * from './AgentError';
 export * from './Logger';
-export * from './JsonToXsd';
+// export * from './JsonToXsd'; // Deprecated: XSD conversion removed from main pipeline
 export * from './StagnationDetector';

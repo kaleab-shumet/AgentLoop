@@ -88,6 +88,30 @@ Respond ONLY with XML code block - no text before or after.
 </root>
 \`\`\`
 
+**XML Conversion Rules:**
+- Objects: Use nested XML elements
+- Arrays: Use repeated elements (e.g., <item>value1</item><item>value2</item>)
+- Booleans: Use lowercase true/false
+- Numbers: Plain numbers without quotes
+- Strings: Plain text content
+- Empty values: Use empty tags or omit entirely
+
+**Example with complex data:**
+\`\`\`xml
+<root>
+  <createUser>
+    <name>John Doe</name>
+    <email>john@example.com</email>
+    <tags>
+      <tag>customer</tag>
+      <tag>premium</tag>
+    </tags>
+    <active>true</active>
+    <age>25</age>
+  </createUser>
+</root>
+\`\`\`
+
 **Requirements:**
 - Start immediately with \`\`\`xml
 - End immediately with \`\`\`
@@ -156,9 +180,9 @@ ${this.getSharedBatchingRules()}
 
   getExecutionStrategySection(parallelExecution: boolean): string {
     const strategy = parallelExecution
-    ? "Tools run concurrently - batch multiple tools in single responses."
-    : "Tools run sequentially - still batch multiple calls together.";
-  
+      ? "Tools run concurrently - batch multiple tools in single responses."
+      : "Tools run sequentially - still batch multiple calls together.";
+
     return `# EXECUTION STRATEGY
 ${strategy}
 
