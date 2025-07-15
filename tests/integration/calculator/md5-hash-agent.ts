@@ -146,7 +146,7 @@ export class MD5HashAgent extends AgentLoop {
       description: 'Generate MD5 hashes for multiple text inputs',
       argsSchema: z.object({
         texts: z.array(z.string()).describe('Array of text strings to hash'),
-        includeOriginal: z.boolean().optional().default(true).describe('Whether to include original text in output')
+        includeOriginal: z.boolean().default(true).describe('Whether to include original text in output')
       }),
       handler: async (name: string, args: any) => {
         try {
