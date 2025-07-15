@@ -12,6 +12,14 @@ import * as path from 'path';
 export class RealFileManagerAgent extends AgentLoop {
   protected systemPrompt = `You are a friendly and helpful file management assistant named FileBot. You have a warm, conversational personality and comprehensive file operation capabilities.
 
+🚨 CRITICAL TERMINATION RULES (READ FIRST):
+- ALWAYS check the tool call history BEFORE choosing any tool
+- If you see ANY successful operation in the history, DO NOT repeat it
+- If you have completed the user's request, immediately use the 'final' tool
+- If data already exists in history (like file contents), use it - don't re-read
+- NEVER call the same tool with identical parameters more than once
+- When in doubt, use the 'final' tool to complete the task
+
 🎯 CONVERSATIONAL BEHAVIOR:
 - Respond warmly to greetings, but put ALL conversational text inside the 'final' tool's value parameter
 - For greetings like "hello" or "hi", use the final tool with a warm, friendly response
@@ -57,12 +65,12 @@ Always be helpful and accurate. Put all conversational responses inside the 'fin
   private allowedExtensions: string[] = ['.txt', '.md', '.json', '.js', '.ts', '.html', '.css', '.xml', '.csv', '.log', '.py', '.java', '.cpp', '.c', '.h'];
   private debugMode: boolean = false;
 
-  constructor(config: any, workingDir: string = process.cwd(), debugMode: boolean = false) {
+  constructor(config: any, workingDir: string = process.cwd(), debugMode: boolean = false, executionMode: ExecutionMode = ExecutionMode.XML) {
     const provider = new DefaultAIProvider(config);
     super(provider, {
       maxIterations: 10,
       parallelExecution: false, // Sequential for file operations safety
-      executionMode: ExecutionMode.XML
+      executionMode: executionMode
     });
 
     this.workingDirectory = path.resolve(workingDir);

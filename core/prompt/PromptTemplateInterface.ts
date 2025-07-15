@@ -23,7 +23,7 @@ export interface PromptTemplateInterface {
   /**
    * Generate format instructions for the LLM
    */
-  getFormatInstructions(finalToolName: string): string;
+  getFormatInstructions(finalToolName: string, parallelExecution?: boolean): string;
 
   /**
    * Build the complete prompt for the agent

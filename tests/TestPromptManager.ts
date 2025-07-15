@@ -147,7 +147,7 @@ function testPromptManager() {
   switchManager.setResponseFormat(ResponseFormat.FUNCTION_CALLING);
   console.log('After switch:', switchManager.getResponseFormat());
 
-  const formatInstructions = switchManager.getFormatInstructions('final', false);
+  const formatInstructions = switchManager.getFormatInstructions('final');
   console.log('✅ Format instructions generated');
   console.log('📦 Instructions length:', formatInstructions.length);
 

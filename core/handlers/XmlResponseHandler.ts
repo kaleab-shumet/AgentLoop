@@ -1,9 +1,9 @@
 import { ZodTypeAny } from "zod";
 import { Tool, PendingToolCall, ResponseHandler } from "../types/types";
-import { XMLParser } from 'fast-xml-parser';
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from 'zod-to-json-schema';
 import { convertJsonSchemaToXsd } from '../utils/JsonToXsd';
+import { JsonSchemaXmlParser } from '../utils/JsonSchemaXmlParser';
 
 /**
  * Handles XML-based tool calling (original AgentLoop format)
@@ -45,8 +45,7 @@ export class XmlResponseHandler implements ResponseHandler {
       
       for (const call of calls) {
         // Tool name comes from XML tag name
-        const toolCall = { ...call, name: tagName };
-
+        console.log(tools.length)
         const toolDef = tools.find(t => t.name === tagName);
         if (!toolDef) {
           throw new AgentError(
@@ -78,7 +77,7 @@ export class XmlResponseHandler implements ResponseHandler {
     }).join('\n\n');
   }
 
-  getFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string {
+  getFormatInstructions( finalToolName: string): string {
     // Format instructions are now centralized in PromptTemplates
     // This handler just needs to specify that it uses XML format
     // The actual instructions are provided by PromptManager
@@ -92,11 +91,10 @@ export class XmlResponseHandler implements ResponseHandler {
   }
 
   private parseXmlToJs(xml: string): any {
-    const parser = new XMLParser({
+    const parser = new JsonSchemaXmlParser({
       ignoreAttributes: true,
       removeNSPrefix: true,
       parseAttributeValue: false,
-      trimValues: true,
       cdataPropName: "__cdata"
     });
     return parser.parse(xml);

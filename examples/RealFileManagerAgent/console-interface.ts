@@ -1,6 +1,7 @@
 import * as readline from 'readline';
 import * as path from 'path';
 import { RealFileManagerAgent } from './RealFileManagerAgent';
+import { ExecutionMode } from '../../core';
 
 /**
  * Interactive console interface for the RealFileManagerAgent
@@ -12,9 +13,9 @@ export class FileManagerConsole {
   private isRunning: boolean = false;
   private debugMode: boolean = false;
 
-  constructor(config: any, workingDir?: string, debugMode: boolean = false) {
+  constructor(config: any, workingDir?: string, debugMode: boolean = false, executionMode: ExecutionMode = ExecutionMode.XML) {
     this.debugMode = debugMode;
-    this.agent = new RealFileManagerAgent(config, workingDir, debugMode);
+    this.agent = new RealFileManagerAgent(config, workingDir, debugMode, executionMode);
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -362,8 +363,11 @@ export async function startFileManagerConsole(): Promise<void> {
   // Configuration for the Gemini AI provider
   const config = {
     apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key', // Default key from examples
-    model: 'gemini-2.0-flash'
+    model: 'gemini-2.5-flash',
+    service: 'google' as const
   };
+  
+  const executionMode = ExecutionMode.FUNCTION_CALLING;
 
   // Parse command line arguments
   const args = process.argv.slice(2);
@@ -388,7 +392,7 @@ export async function startFileManagerConsole(): Promise<void> {
       fs.mkdirSync(workingDir, { recursive: true });
     }
 
-    const console_interface = new FileManagerConsole(config, workingDir, debugMode);
+    const console_interface = new FileManagerConsole(config, workingDir, debugMode, executionMode);
     await console_interface.start();
   } catch (error: any) {
     console.error('❌ Failed to start File Manager Agent:', error.message);

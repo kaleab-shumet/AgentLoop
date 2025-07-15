@@ -7,106 +7,105 @@ import zodToJsonSchema from 'zod-to-json-schema';
  * Handles OpenAI-style function calling format
  */
 export class FunctionCallingResponseHandler implements ResponseHandler {
-  parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
-    // Try to parse as JSON first (direct function call format)
-    let functionCalls: FunctionCall[] = [];
+
+
+  parseFunctionCall(functionData: any, tools: Tool<ZodTypeAny>[]): PendingToolCall {
+    // Handle both single function call and the case where this is called on individual items from an array
+    let functionCall = functionData.function_call || functionData.functionCall;
     
-    try {
-      // Check if response contains function calls in JSON format
-      const jsonMatch = response.match(/```json\s*\n([\s\S]+?)\n?```/);
-      if (jsonMatch) {
-        const jsonContent = jsonMatch[1].trim();
-        const parsed = JSON.parse(jsonContent);
-        
-        // Handle both single function call and array of function calls
-        if (parsed.functionCall) {
-          functionCalls = [parsed.functionCall];
-        } else if (parsed.functionCalls) {
-          functionCalls = parsed.functionCalls;
-        } else if (Array.isArray(parsed)) {
-          functionCalls = parsed;
-        } else if (parsed.name && parsed.arguments) {
-          functionCalls = [parsed];
-        }
+    // If this is already a function call object with name and arguments, use it directly
+    if (functionData.name && functionData.arguments) {
+      functionCall = functionData;
+    }
+    
+    if (!functionCall || typeof functionCall.arguments !== 'string' || typeof functionCall.name !== 'string') {
+      throw new AgentError("Invalid function call format", AgentErrorType.INVALID_RESPONSE);
+    }
+
+    const functionCallArgs: string = functionCall.arguments;
+    const functionName: string = functionCall.name;
+
+    const correspondingTool = tools.find(t => t.name === functionName);
+    if (!correspondingTool) {
+      throw new AgentError(`No tool found for function name: ${functionName}`, AgentErrorType.TOOL_NOT_FOUND);
+    }
+
+    const candidatePendingTool = this.parseWithRetry(functionCallArgs);
+
+    if(typeof candidatePendingTool === "string"){
+        console.log("candidatePendingTool: ", candidatePendingTool)
+    }
+
+    const result = correspondingTool.argsSchema.safeParse(candidatePendingTool);
+
+    if (!result.success) {
+      throw new AgentError(
+        `Invalid arguments for function "${functionName}": ${JSON.stringify(result.error.issues)}`,
+        AgentErrorType.INVALID_SCHEMA
+      );
+    }
+
+    candidatePendingTool.name = functionName;
+
+
+    return candidatePendingTool;
+
+  }
+
+
+  parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
+
+    // Check if response contains function calls in JSON format
+    const jsonMatch = response.match(/```json\s*\n([\s\S]+?)\n?```/);
+    if (jsonMatch) {
+      const jsonContent = jsonMatch[1].trim();
+
+      let parsedJson = JSON.parse(jsonContent);
+      let functionCallList: any[] = [];
+
+      // Handle different response formats from Gemini
+      if (Array.isArray(parsedJson)) {
+        // Direct array of function calls
+        functionCallList = parsedJson;
+      } else if (parsedJson.functionCalls && Array.isArray(parsedJson.functionCalls)) {
+        // Multiple function calls: { "functionCalls": [...] }
+        functionCallList = parsedJson.functionCalls;
+      } else if (parsedJson.functionCall) {
+        // Single function call: { "functionCall": {...} }
+        functionCallList = [parsedJson];
       } else {
-        // Try to extract function calls from structured response
-        const directMatch = response.match(/\[FUNCTION_CALLS?\]\s*([\s\S]+?)\s*\[\/FUNCTION_CALLS?\]/);
-        if (directMatch) {
-          const callsContent = directMatch[1].trim();
-          const parsed = JSON.parse(callsContent);
-          functionCalls = Array.isArray(parsed) ? parsed : [parsed];
-        }
+        // Assume it's a single function call object
+        functionCallList = [parsedJson];
       }
-    } catch (error) {
-      throw new AgentError(
-        `[FunctionCallingResponseHandler] Failed to parse function calls from response. Error: ${error}. Response: ${response.slice(0, 200)}...`,
-        AgentErrorType.INVALID_RESPONSE
-      );
+
+      const fclist: PendingToolCall[] = functionCallList.map((fc: any) => this.parseFunctionCall(fc, tools))
+      return fclist
+
     }
 
-    if (functionCalls.length === 0) {
-      throw new AgentError(
-        `[FunctionCallingResponseHandler] No tool calls found in response. Expected JSON format with functionCall or functionCalls. Response: ${response.slice(0, 200)}...`,
-        AgentErrorType.TOOL_NOT_FOUND
-      );
-    }
+    throw new AgentError("No function call json found in response", AgentErrorType.INVALID_RESPONSE);
 
-    const validToolCalls: PendingToolCall[] = [];
-
-    for (const call of functionCalls) {
-      if (!call.name || typeof call.name !== 'string') {
-        throw new AgentError(
-          `[FunctionCallingResponseHandler] Tool call is missing a valid 'name' property. Call: ${JSON.stringify(call)}`,
-          AgentErrorType.MALFORMED_TOOL_FOUND
-        );
-      }
-
-      const toolDef = tools.find(t => t.name === call.name);
-      if (!toolDef) {
-        throw new AgentError(
-          `[FunctionCallingResponseHandler] Tool "${call.name}" does not exist. Available tools: ${tools.map(t => t.name).join(", ")}`,
-          AgentErrorType.TOOL_NOT_FOUND
-        );
-      }
-
-      let parsedArgs: any;
-      try {
-        parsedArgs = typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments;
-      } catch (error) {
-        throw new AgentError(
-          `[FunctionCallingResponseHandler] Invalid arguments for tool "${call.name}". Arguments must be valid JSON. Error: ${error}`,
-          AgentErrorType.MALFORMED_TOOL_FOUND
-        );
-      }
-
-      // Add the name to the parsed arguments to match Tool interface expectations
-      const toolCallData = { name: call.name, ...parsedArgs };
-
-      const validation = toolDef.argsSchema.safeParse(toolCallData);
-      if (!validation.success) {
-        throw new AgentError(
-          `[FunctionCallingResponseHandler] Tool "${call.name}" has invalid arguments. Validation errors: ${JSON.stringify(validation.error?.issues)}`,
-          AgentErrorType.TOOL_NOT_FOUND
-        );
-      }
-
-      validToolCalls.push(validation.data as PendingToolCall);
-    }
-
-    return validToolCalls;
   }
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     const functionDefinitions: FunctionDefinition[] = tools.map(tool => {
       const jsonSchema = zodToJsonSchema(tool.argsSchema, tool.name) as any;
-      
-      // Remove the 'name' property from parameters since it's handled separately
-      const parameters = { ...jsonSchema };
-      if (parameters.properties && typeof parameters.properties === 'object' && parameters.properties.name) {
-        delete parameters.properties.name;
+
+      // Extract the actual schema from definitions if using $ref structure
+      let actualSchema = jsonSchema;
+      if (jsonSchema.$ref && jsonSchema.definitions && jsonSchema.definitions[tool.name]) {
+        actualSchema = jsonSchema.definitions[tool.name];
       }
-      if (parameters.required && Array.isArray(parameters.required)) {
-        parameters.required = parameters.required.filter((req: string) => req !== 'name');
+
+      // Remove the 'name' property from parameters since it's handled separately
+      const properties = { ...actualSchema.properties || {} };
+      if (properties.name) {
+        delete properties.name;
+      }
+
+      let required = actualSchema.required || [];
+      if (Array.isArray(required)) {
+        required = required.filter((req: string) => req !== 'name');
       }
 
       return {
@@ -114,8 +113,8 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
         description: tool.description,
         parameters: {
           type: "object",
-          properties: parameters.properties || {},
-          required: parameters.required || []
+          properties: properties,
+          required: required
         }
       };
     });
@@ -123,10 +122,36 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
     return JSON.stringify(functionDefinitions, null, 2);
   }
 
-  getFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string {
+  getFormatInstructions(finalToolName: string): string {
     // Format instructions are now centralized in PromptTemplates
     // This handler just needs to specify that it uses function calling format
     // The actual instructions are provided by PromptManager
     return 'FUNCTION_FORMAT'; // Marker for prompt manager to use function format instructions
   }
+
+
+  parseWithRetry(jsonStr: string): any {
+
+    let jsVal = JSON.stringify(jsonStr)
+    let c = 0;
+    while (typeof jsVal === "string" && c < 20) {
+      try {
+        jsVal = JSON.parse(jsVal)
+      }
+      catch {
+        jsVal = JSON.stringify(jsVal)
+        c = c/2
+      }
+      c++;
+    }
+    return jsVal;
+
+  }
+
+
+
+
+
+
+
 }

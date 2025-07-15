@@ -42,8 +42,27 @@ export class DefaultAIProvider implements AIProvider {
     async getCompletion(prompt: string, tools: FunctionCallingTool[] = [], options = {}): Promise<string> {
         try {
 
+            let newConfig = { ...this.config };
+            
+            // Handle tools configuration based on service
+            if (tools.length > 0) {
+                if (this.config.service === 'google') {
+                    // For Google/Gemini, try the direct function_declarations format
+                    const functionDeclarations = tools.map(tool => ({
+                        name: tool.function.name,
+                        description: tool.function.description,
+                        parameters: tool.function.parameters
+                    }));
+                    
+                    // Set function_declarations directly for Google/Gemini
+                    (newConfig as any).function_declarations = functionDeclarations;
+                } else {
+                    // For other providers (OpenAI, etc.), use standard format
+                    newConfig.tools = tools;
+                }
 
-            const newConfig = tools.length > 0 ? { ...this.config, tools } : this.config
+            }
+            
             const response = await LLM(prompt, newConfig);
 
             // Handle streaming or string response safely

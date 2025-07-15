@@ -2,6 +2,7 @@ import { RealFileManagerAgent } from './RealFileManagerAgent';
 import { startFileManagerConsole } from './console-interface';
 import * as path from 'path';
 import * as fs from 'fs';
+import { LLMConfig } from '../../core';
 
 /**
  * Demo script for the RealFileManagerAgent
@@ -9,9 +10,17 @@ import * as fs from 'fs';
  */
 
 // Configuration for Gemini AI
-const config = {
-  apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key',
-  model: 'gemini-2.0-flash'
+// const config: LLMConfig = {
+//   apiKey: process.env.GEMINI_API_KEY || 'gemini-api-key',
+//   model: 'gemini-2.0-flash',
+//   service: 'google',
+//   tools: []
+// };
+
+const config: LLMConfig = {
+  apiKey: process.env.OPENAI_API_KEY || 'open-api-key',
+  model: 'gpt-4.6',
+  service: 'openai'
 };
 
 /**
