@@ -160,8 +160,8 @@ export class PromptManager {
   /**
    * Get format instructions from the current template
    */
-  getFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    return this.template.getFormatInstructions(finalToolName, parallelExecution);
+  getFormatInstructions(finalToolName: string): string {
+    return this.template.getFormatInstructions(finalToolName);
   }
 
   /**
@@ -177,8 +177,8 @@ export class PromptManager {
   }
 
 
-  buildFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string {
-    return this.getFormatInstructions(finalToolName, parallelExecution);
+  buildFormatInstructions(finalToolName: string): string {
+    return this.getFormatInstructions(finalToolName);
   }
 
   buildToolDefinitions(tools: Tool<ZodTypeAny>[]): string {

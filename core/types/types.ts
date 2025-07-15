@@ -127,7 +127,8 @@ export interface LLMConfig {
   /** Maximum number of tokens to generate */
   max_tokens?: number;
 
-  tools: FunctionCallingTool[]
+  tools?: FunctionCallingTool[];
+  
 
 
 }
@@ -140,7 +141,7 @@ export interface ResponseHandler {
   /** Parse LLM response and extract tool calls */
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[];
   /** Generate prompt instructions for the specific format */
-  getFormatInstructions(tools: Tool<ZodTypeAny>[], finalToolName: string, parallelExecution: boolean): string;
+  getFormatInstructions(finalToolName: string): string;
   /** Convert tool definitions to the required format for the LLM */
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string;
 }

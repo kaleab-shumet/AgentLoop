@@ -501,10 +501,10 @@ export abstract class AgentLoop {
         await this.hooks.onLLMStart?.(prompt);
 
         let functionTools: FunctionCallingTool[] | undefined = []
-        if(this.getExecutionMode() === ExecutionMode.FUNCTION_CALLING){
+        if (this.getExecutionMode() === ExecutionMode.FUNCTION_CALLING) {
           const functionToolsString = this.llmDataHandler.formatToolDefinitions(this.tools)
           const functionDefinitions = JSON.parse(functionToolsString)
-          
+
           functionTools = functionDefinitions.map((def: any) => ({
             type: "function",
             function: {
@@ -515,9 +515,9 @@ export abstract class AgentLoop {
           }))
         }
 
-        
-       
-        const response = await this.aiProvider.getCompletion(prompt,functionTools, options);
+
+
+        const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
         if (typeof response !== "string") {
           throw new AgentError("LLM provider returned undefined or non-string response.", AgentErrorType.UNKNOWN);
         }
@@ -531,7 +531,7 @@ export abstract class AgentLoop {
     }
     throw lastError ?? new AgentError("LLM call failed after all retry attempts.", AgentErrorType.UNKNOWN);
   }
-  
+
 
   private constructPrompt(userPrompt: string, context: Record<string, any>, lastError: AgentError | null, conversationHistory: ChatEntry[], toolCallHistory: ToolResult[], keepRetry: boolean): string {
     const toolDefinitions = this.llmDataHandler.formatToolDefinitions(this.tools);

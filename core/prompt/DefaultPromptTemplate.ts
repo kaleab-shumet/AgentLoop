@@ -39,14 +39,21 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
    * Generate shared termination and workflow rules
    */
   private getSharedTerminationRules(finalToolName: string): string {
-    return `**TERMINATION RULES:**
-1. NEVER repeat successful operations - check tool call history first
-2. Use '${finalToolName}' when task is complete or all required information gathered
-3. When using '${finalToolName}', it must be the ONLY tool in your response
-4. If history shows task completion, immediately use '${finalToolName}' with results
+    return `**🚨 CRITICAL TERMINATION RULES (MUST FOLLOW):**
+1. ALWAYS check tool call history FIRST before choosing any tool
+2. NEVER repeat ANY successful operation - if you see it in history, don't do it again
+3. If ANY part of the user's request has been completed, immediately use '${finalToolName}' tool
+4. When using '${finalToolName}', it must be the ONLY tool in your response
+5. If data already exists in history (like file contents), use it - don't re-read
+6. If you see the same tool call repeated multiple times, stop and use '${finalToolName}'
 
 **WORKFLOW:**
-Check history → Identify gaps → Either complete remaining work OR use '${finalToolName}'`;
+1. Read tool call history carefully
+2. Check if task is already complete
+3. If complete → use '${finalToolName}' immediately
+4. If incomplete → do ONLY the missing work, then use '${finalToolName}'
+
+**WARNING:** Repeating successful operations will trigger stagnation detection!`;
   }
 
   /**
@@ -67,7 +74,8 @@ Check history → Identify gaps → Either complete remaining work OR use '${fin
   }
 
   private getXmlFormatInstructions(finalToolName: string): string {
-    return `## XML RESPONSE FORMAT
+    return `# OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS
+## XML RESPONSE FORMAT
 Respond ONLY with XML code block - no text before or after.
 
 **Format:**
@@ -85,7 +93,7 @@ Respond ONLY with XML code block - no text before or after.
 - End immediately with \`\`\`
 - All tool calls inside <root> tags
 - Tool names as XML tag names
-- Use 'final' tool for conversational responses
+- Use '${finalToolName}' tool for conversational responses
 
 ${this.getSharedTerminationRules(finalToolName)}
 
