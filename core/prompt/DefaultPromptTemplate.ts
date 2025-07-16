@@ -3,21 +3,21 @@ import { ChatEntry, ToolResult } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 /**
- * Response format types supported by the default template
+ * Response format types - function calling and YAML mode are supported
  */
 export enum ResponseFormat {
-  XML = 'xml',
-  FUNCTION_CALLING = 'function_calling'
+  FUNCTION_CALLING = 'function_calling',
+  YAML_MODE = 'yaml_mode'
 }
 
 /**
  * Default prompt template that implements the standard AgentLoop prompt structure
- * Supports both XML and Function Calling response formats
+ * Supports function calling and YAML response formats
  */
 export class DefaultPromptTemplate implements PromptTemplateInterface {
   private responseFormat: ResponseFormat;
 
-  constructor(responseFormat: ResponseFormat = ResponseFormat.XML) {
+  constructor(responseFormat: ResponseFormat = ResponseFormat.FUNCTION_CALLING) {
     this.responseFormat = responseFormat;
   }
 
@@ -36,22 +36,21 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
   }
 
   /**
-   * Generate shared termination and workflow rules
+   * CORRECTED: Generate shared termination and workflow rules with clearer, less aggressive logic.
    */
   private getSharedTerminationRules(finalToolName: string): string {
     return `**🚨 CRITICAL TERMINATION RULES (MUST FOLLOW):**
-1. ALWAYS check tool call history FIRST before choosing any tool
-2. NEVER repeat ANY successful operation - if you see it in history, don't do it again
-3. If ANY part of the user's request has been completed, immediately use '${finalToolName}' tool
-4. When using '${finalToolName}', it must be the ONLY tool in your response
-5. If data already exists in history (like file contents), use it - don't re-read
-6. If you see the same tool call repeated multiple times, stop and use '${finalToolName}'
+1. Review the tool call history to understand what has already been done.
+2. NEVER repeat a tool call that has already succeeded.
+3. Once ALL parts of the user's request have been successfully completed and you have the final answer, you MUST use the '${finalToolName}' tool.
+4. The '${finalToolName}' tool call must be the ONLY tool in your response.
+5. If you get stuck in a loop or cannot make progress, use '${finalToolName}' to explain the issue.
 
 **WORKFLOW:**
-1. Read tool call history carefully
-2. Check if task is already complete
-3. If complete → use '${finalToolName}' immediately
-4. If incomplete → do ONLY the missing work, then use '${finalToolName}'
+1. Carefully read the user's request and the tool call history.
+2. Determine what the next logical step is to answer the request.
+3. If the task is complete, call the '${finalToolName}' tool with a summary of the results.
+4. If the task is NOT complete, call the necessary tool(s) to make progress. Do not call '${finalToolName}'.
 
 **WARNING:** Repeating successful operations will trigger stagnation detection!`;
   }
@@ -66,72 +65,16 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
   }
 
   getFormatInstructions(finalToolName: string): string {
-    if (this.responseFormat === ResponseFormat.XML) {
-      return this.getXmlFormatInstructions(finalToolName);
-    } else {
-      return this.getFunctionCallingFormatInstructions(finalToolName);
+    switch (this.responseFormat) {
+      case ResponseFormat.FUNCTION_CALLING:
+        return this.getFunctionCallingFormatInstructions(finalToolName);
+      case ResponseFormat.YAML_MODE:
+        return this.getYamlFormatInstructions(finalToolName);
+      default:
+        return this.getFunctionCallingFormatInstructions(finalToolName);
     }
   }
 
-  private getXmlFormatInstructions(finalToolName: string): string {
-    return `# OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS
-## XML RESPONSE FORMAT
-Respond ONLY with XML code block - no text before or after.
-
-**Format:**
-\`\`\`xml
-<root>
-  <tool_name>
-    <param1>value1</param1>
-    <param2>value2</param2>
-  </tool_name>
-</root>
-\`\`\`
-
-**XML Conversion Rules:**
-- Objects: Use nested XML elements
-- Arrays: Use repeated elements (e.g., <item>value1</item><item>value2</item>)
-- Booleans: Use lowercase true/false
-- Numbers: Plain numbers without quotes
-- Strings: Plain text content
-- Empty values: Use empty tags or omit entirely
-
-**Example with complex data:**
-\`\`\`xml
-<root>
-  <createUser>
-    <name>John Doe</name>
-    <email>john@example.com</email>
-    <tags>
-      <tag>customer</tag>
-      <tag>premium</tag>
-    </tags>
-    <active>true</active>
-    <age>25</age>
-  </createUser>
-</root>
-\`\`\`
-
-**Requirements:**
-- Start immediately with \`\`\`xml
-- End immediately with \`\`\`
-- All tool calls inside <root> tags
-- Tool names as XML tag names
-- Use '${finalToolName}' tool for conversational responses
-
-${this.getSharedTerminationRules(finalToolName)}
-
-${this.getSharedBatchingRules()}
-
-**Completion Example:**
-\`\`\`xml
-<root>
-  <${finalToolName}>
-    <value>Task completed. [Brief summary of accomplishments]</value>
-  </${finalToolName}>
-</root>
-\`\`\``;
-  }
 
   private getFunctionCallingFormatInstructions(finalToolName: string): string {
     return `## FUNCTION CALLING FORMAT
@@ -178,6 +121,76 @@ ${this.getSharedBatchingRules()}
 \`\`\``;
   }
 
+  private getYamlFormatInstructions(finalToolName: string): string {
+    return `## YAML FORMAT
+Respond by calling tools using YAML format in code blocks.
+
+${this.getSharedTerminationRules(finalToolName)}
+
+${this.getSharedBatchingRules()}
+
+### 🚨 STRICT SCHEMA COMPLIANCE REQUIRED 🚨
+**CRITICAL:** You MUST follow the exact tool schema definitions. Any deviation will cause failures.
+
+**Schema Validation Rules:**
+1. **ONLY use parameter names defined in the tool schema** - never invent your own parameter names
+2. **Include ALL required parameters** - missing required params will cause validation errors
+3. **Use correct data types** - strings must be quoted, numbers unquoted, arrays use proper YAML syntax
+4. **Follow exact parameter spelling** - case-sensitive parameter names from schema
+5. **Do not add extra parameters** - only use what's defined in the schema
+
+**YAML Syntax Requirements:**
+- All string values must be properly quoted
+- Parameter names are case-sensitive and must match schema exactly
+- Use proper YAML indentation (2 spaces)
+- Arrays use YAML list syntax with dashes
+
+### Examples (Templates Only - Follow Tool Schema Exactly)
+
+**Single tool call:**
+\`\`\`yaml
+tool_calls:
+  - name: <exact_tool_name_from_schema>
+    args:
+      <exact_param_name>: "<value>" # Must match schema parameter name exactly
+      <optional_param>: "<value>" # Only if defined in schema
+\`\`\`
+
+**Multiple (batched) tool calls:**
+\`\`\`yaml
+tool_calls:
+  - name: <exact_tool_name_1>
+    args:
+      <schema_param_1>: "<value>"
+      <schema_param_2>: 123 # Number example
+  
+  - name: <exact_tool_name_2>
+    args:
+      <schema_param_name>: "<value>"
+\`\`\`
+
+**Final tool completion:**
+\`\`\`yaml
+tool_calls:
+  - name: ${finalToolName}
+    args:
+      # CRITICAL: Check the ${finalToolName} tool schema above for ALL required parameters
+      # Include EVERY required parameter with exact names from the schema
+      # Example structure (replace with actual schema parameters):
+      <required_param_1>: "<value_1>"
+      <required_param_2>: "<value_2>"
+      <optional_param_3>: "<value_3>" # Only if defined in schema
+\`\`\`
+
+### ⚠️ VALIDATION WARNING ⚠️
+If your YAML doesn't match the tool schema exactly, the system will reject it with a validation error. Always check:
+- Parameter names match schema exactly
+- All required parameters are included
+- Data types are correct
+- YAML syntax is valid
+`;
+  }
+
   getExecutionStrategySection(parallelExecution: boolean): string {
     const strategy = parallelExecution
       ? "Tools run concurrently - batch multiple tools in single responses."
@@ -185,17 +198,7 @@ ${this.getSharedBatchingRules()}
 
     return `# EXECUTION STRATEGY
 ${strategy}
-
-${this.getSharedBatchingRules()}
-
-**Example - Multiple tools:**
-\`\`\`xml
-<root>
-  <read_file><path>file1.txt</path></read_file>
-  <read_file><path>file2.txt</path></read_file>
-  <search_code><pattern>function</pattern></search_code>
-</root>
-\`\`\``;
+${this.getSharedBatchingRules()}`;
   }
 
   buildPrompt(
@@ -220,7 +223,7 @@ ${this.getSharedBatchingRules()}
     sections.push(`# OUTPUT FORMAT AND TOOL CALLING INSTRUCTIONS\n${this.getFormatInstructions(finalToolName)}`);
 
     // 3. Tool definitions
-    sections.push(`# AVAILABLE TOOLS\n${toolDefinitions}.`);
+    sections.push(`# AVAILABLE TOOLS\n## 🔍 SCHEMA ANALYSIS REQUIRED\n**CRITICAL:** Before calling ANY tool, you MUST:\n1. Read the tool schema carefully\n2. Identify ALL required parameters\n3. Use EXACT parameter names (case-sensitive)\n4. Never add extra parameters not in schema\n5. Follow the data types specified\n\n${toolDefinitions}\n\n⚠️ **VALIDATION:** The system will reject calls that don't match these schemas exactly.`);
 
     // 4. Tool execution strategy
     if (options.includeExecutionStrategy) {
@@ -285,7 +288,6 @@ ${this.getSharedBatchingRules()}
       return '# TOOL CALL HISTORY\nNo tool calls have been made yet.';
     }
 
-    // Analyze completion status
     const successfulTools = entries.filter(entry => entry.success);
     const failedTools = entries.filter(entry => !entry.success);
 
@@ -320,14 +322,17 @@ ${this.getSharedBatchingRules()}
     return `# ERROR RECOVERY\n**Last Error:** ${error.message}\n**Action:** ${retryInstruction}`;
   }
 
+  /**
+   * CORRECTED: The decision process is now clearer and guides the AI correctly.
+   */
   buildTaskSection(userPrompt: string, finalToolName: string): string {
     return `# CURRENT TASK
 Respond to: "${userPrompt}"
 
-**Decision Process:**
-1. Check tool history - is task complete?
-2. If complete: Use '${finalToolName}' with summary
-3. If incomplete: Call needed tools only
-4. Never repeat successful operations`;
+**Your Decision Process:**
+1. Review the history to see what has been done.
+2. If the answer is already in the history, call '${finalToolName}' with a complete answer.
+3. If the answer is not in the history, call the next tool needed to get closer to the answer.
+4. Do not call '${finalToolName}' unless the entire task is finished.`;
   }
 }

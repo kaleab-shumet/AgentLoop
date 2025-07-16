@@ -56,18 +56,18 @@ Tools: ${toolDefinitions}`;
 function testPromptManager() {
   console.log('🧪 Testing Clean Prompt Management System...');
 
-  // Test 1: Default template with XML format
-  console.log('\n1️⃣ Testing Default Template (XML Format)...');
-  const xmlManager = new PromptManager(
+  // Test 1: Default template with Function Calling format
+  console.log('\n1️⃣ Testing Default Template (Function Calling Format)...');
+  const functionCallingManager = new PromptManager(
     "You are a helpful assistant.",
-    { responseFormat: ResponseFormat.XML }
+    { responseFormat: ResponseFormat.FUNCTION_CALLING }
   );
 
-  console.log('✅ XML manager created');
-  console.log('📦 Response format:', xmlManager.getResponseFormat());
-  console.log('📝 Is custom template:', xmlManager.isUsingCustomTemplate());
+  console.log('✅ Function calling manager created');
+  console.log('📦 Response format:', functionCallingManager.getResponseFormat());
+  console.log('📝 Is custom template:', functionCallingManager.isUsingCustomTemplate());
 
-  const xmlPrompt = xmlManager.buildPrompt(
+  const functionCallingPrompt = functionCallingManager.buildPrompt(
     "What's the weather?",
     { location: "New York" },
     null,
@@ -78,8 +78,8 @@ function testPromptManager() {
     "No tools available"
   );
 
-  console.log('✅ XML template prompt generated');
-  console.log('📝 Prompt length:', xmlPrompt.length);
+  console.log('✅ Function calling template prompt generated');
+  console.log('📝 Prompt length:', functionCallingPrompt.length);
 
   // Test 2: Default template with Function Calling format
   console.log('\n2️⃣ Testing Default Template (Function Calling Format)...');
@@ -140,7 +140,7 @@ function testPromptManager() {
 
   // Test 4: Response format switching
   console.log('\n4️⃣ Testing Response Format Switching...');
-  const switchManager = new PromptManager("Assistant", { responseFormat: ResponseFormat.XML });
+  const switchManager = new PromptManager("Assistant", { responseFormat: ResponseFormat.FUNCTION_CALLING });
   
   console.log('Initial format:', switchManager.getResponseFormat());
   
@@ -190,11 +190,11 @@ function testPromptManager() {
 
   // Test 7: Response format string conversion
   console.log('\n7️⃣ Testing Response Format String Conversion...');
-  const xmlManagerType = new PromptManager("Assistant", { responseFormat: ResponseFormat.XML });
+  const functionCallingManagerType = new PromptManager("Assistant", { responseFormat: ResponseFormat.FUNCTION_CALLING });
   const functionManagerType = new PromptManager("Assistant", { responseFormat: ResponseFormat.FUNCTION_CALLING });
   const customManagerType = new PromptManager("Assistant", { customTemplate: new TestTemplate() });
 
-  console.log('XML format string:', xmlManagerType.getResponseFormatString());
+  console.log('Function calling format string:', functionCallingManagerType.getResponseFormatString());
   console.log('Function format string:', functionManagerType.getResponseFormatString());
   console.log('Custom format string:', customManagerType.getResponseFormatString());
 

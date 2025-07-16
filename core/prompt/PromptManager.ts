@@ -19,8 +19,8 @@ export interface PromptManagerConfig {
  * 
  * Usage examples:
  * 
- * // Use default template with XML format
- * const manager = new PromptManager(systemPrompt, { responseFormat: ResponseFormat.XML });
+ * // Use default template with function calling format
+ * const manager = new PromptManager(systemPrompt, { responseFormat: ResponseFormat.FUNCTION_CALLING });
  * 
  * // Use default template with function calling format  
  * const manager = new PromptManager(systemPrompt, { responseFormat: ResponseFormat.FUNCTION_CALLING });
@@ -54,7 +54,7 @@ export class PromptManager {
       this.isCustomTemplate = true;
     } else {
       // Use default template with specified response format
-      const responseFormat = config.responseFormat || ResponseFormat.XML;
+      const responseFormat = config.responseFormat || ResponseFormat.FUNCTION_CALLING;
       this.template = new DefaultPromptTemplate(responseFormat);
       this.isCustomTemplate = false;
     }
@@ -100,7 +100,7 @@ export class PromptManager {
   /**
    * Switch back to default template with specified format
    */
-  setDefaultTemplate(format: ResponseFormat = ResponseFormat.XML): PromptManager {
+  setDefaultTemplate(format: ResponseFormat = ResponseFormat.FUNCTION_CALLING): PromptManager {
     this.template = new DefaultPromptTemplate(format);
     this.isCustomTemplate = false;
     return this;
@@ -167,13 +167,8 @@ export class PromptManager {
   /**
    * Get the response format as a string for compatibility with handlers
    */
-  getResponseFormatString(): 'xml' | 'function' {
-    if (this.isCustomTemplate) {
-      return 'xml'; // Default fallback for custom templates
-    }
-    
-    const format = (this.template as DefaultPromptTemplate).getResponseFormat();
-    return format === ResponseFormat.FUNCTION_CALLING ? 'function' : 'xml';
+  getResponseFormatString(): 'function' {
+    return 'function';
   }
 
 
@@ -210,10 +205,10 @@ export class PromptManager {
       return 'custom';
     }
     const format = (this.template as DefaultPromptTemplate).getResponseFormat();
-    return format === ResponseFormat.FUNCTION_CALLING ? 'functionCalling' : 'xml';
+    return 'functionCalling';
   }
 
-  getTemplateTypeString(): 'xml' | 'function' {
+  getTemplateTypeString(): 'function' {
     return this.getResponseFormatString();
   }
 
@@ -224,11 +219,11 @@ export class PromptManager {
     
     if (this.isCustomTemplate) {
       // Switch back to default template
-      const format = type === 'functionCalling' ? ResponseFormat.FUNCTION_CALLING : ResponseFormat.XML;
+      const format = ResponseFormat.FUNCTION_CALLING;
       this.setDefaultTemplate(format);
     } else {
       // Update existing default template
-      const format = type === 'functionCalling' ? ResponseFormat.FUNCTION_CALLING : ResponseFormat.XML;
+      const format = ResponseFormat.FUNCTION_CALLING;
       this.setResponseFormat(format);
     }
     
