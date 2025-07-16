@@ -1,6 +1,6 @@
 import { PromptManager, PromptManagerConfig } from '../../../../core/prompt/PromptManager';
 import { PromptTemplateInterface, PromptOptions } from '../../../../core/prompt/PromptTemplateInterface';
-import { DefaultPromptTemplate, ResponseFormat } from '../../../../core/prompt/DefaultPromptTemplate';
+import { DefaultPromptTemplate, FormatType } from '../../../../core/prompt/DefaultPromptTemplate';
 import { Tool, ChatEntry, ToolResult } from '../../../../core/types/types';
 import { MockFactory, TestDataFactory } from '../../../helpers';
 import { z } from 'zod';
@@ -52,7 +52,7 @@ describe('PromptManager', () => {
 
     it('should initialize with custom response format', () => {
       const manager = new PromptManager('System prompt', {
-        responseFormat: ResponseFormat.FUNCTION_CALLING,
+        responseFormat: FormatType.FUNCTION_CALLING,
       });
       expect(manager).toBeDefined();
     });
@@ -450,7 +450,7 @@ describe('PromptManager', () => {
   describe('Integration with Response Formats', () => {
     it('should work with FUNCTION_CALLING response format', () => {
       const manager = new PromptManager('System prompt', {
-        responseFormat: ResponseFormat.FUNCTION_CALLING,
+        responseFormat: FormatType.FUNCTION_CALLING,
       });
       
       const prompt = manager.buildPrompt('Test input', mockTools);
@@ -462,7 +462,7 @@ describe('PromptManager', () => {
 
     it('should handle response format switching', () => {
       const manager1 = new PromptManager('System prompt', {
-        responseFormat: ResponseFormat.FUNCTION_CALLING,
+        responseFormat: FormatType.FUNCTION_CALLING,
       });
       
       const prompt1 = manager1.buildPrompt('Test input', mockTools);
@@ -470,7 +470,7 @@ describe('PromptManager', () => {
       
       // Create new manager with different format
       const manager2 = new PromptManager('System prompt', {
-        responseFormat: ResponseFormat.FUNCTION_CALLING,
+        responseFormat: FormatType.FUNCTION_CALLING,
       });
       
       const prompt2 = manager2.buildPrompt('Test input', mockTools);
