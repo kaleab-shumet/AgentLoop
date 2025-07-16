@@ -2,13 +2,13 @@ import { Tool, ChatEntry, ToolResult } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
 import { PromptTemplateInterface, PromptOptions } from './PromptTemplateInterface';
-import { DefaultPromptTemplate, ResponseFormat } from './DefaultPromptTemplate';
+import { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
 
 /**
  * Configuration for PromptManager
  */
 export interface PromptManagerConfig {
-  responseFormat?: ResponseFormat;
+  responseFormat?: FormatType;
   customTemplate?: PromptTemplateInterface;
   promptOptions?: PromptOptions;
   errorRecoveryInstructions?: string;
@@ -54,7 +54,7 @@ export class PromptManager {
       this.isCustomTemplate = true;
     } else {
       // Use default template with specified response format
-      const responseFormat = config.responseFormat || ResponseFormat.FUNCTION_CALLING;
+      const responseFormat = config.responseFormat || FormatType.FUNCTION_CALLING;
       this.template = new DefaultPromptTemplate(responseFormat);
       this.isCustomTemplate = false;
     }
@@ -70,7 +70,7 @@ export class PromptManager {
   /**
    * Get the current response format (only applies to default template)
    */
-  getResponseFormat(): ResponseFormat | null {
+  getResponseFormat(): FormatType | null {
     if (this.isCustomTemplate) {
       return null; // Custom templates manage their own format
     }
@@ -80,7 +80,7 @@ export class PromptManager {
   /**
    * Switch response format (only applies to default template)
    */
-  setResponseFormat(format: ResponseFormat): PromptManager {
+  setResponseFormat(format: FormatType): PromptManager {
     if (this.isCustomTemplate) {
       throw new Error('Cannot set response format when using a custom template. Custom templates manage their own format.');
     }
@@ -100,7 +100,7 @@ export class PromptManager {
   /**
    * Switch back to default template with specified format
    */
-  setDefaultTemplate(format: ResponseFormat = ResponseFormat.FUNCTION_CALLING): PromptManager {
+  setDefaultTemplate(format: FormatType = FormatType.FUNCTION_CALLING): PromptManager {
     this.template = new DefaultPromptTemplate(format);
     this.isCustomTemplate = false;
     return this;
@@ -219,11 +219,11 @@ export class PromptManager {
     
     if (this.isCustomTemplate) {
       // Switch back to default template
-      const format = ResponseFormat.FUNCTION_CALLING;
+      const format = FormatType.FUNCTION_CALLING;
       this.setDefaultTemplate(format);
     } else {
       // Update existing default template
-      const format = ResponseFormat.FUNCTION_CALLING;
+      const format = FormatType.FUNCTION_CALLING;
       this.setResponseFormat(format);
     }
     
@@ -233,4 +233,4 @@ export class PromptManager {
 
 // Re-export types for convenience
 export { PromptTemplateInterface, PromptOptions } from './PromptTemplateInterface';
-export { DefaultPromptTemplate, ResponseFormat } from './DefaultPromptTemplate';
+export { DefaultPromptTemplate, FormatType as ResponseFormat } from './DefaultPromptTemplate';

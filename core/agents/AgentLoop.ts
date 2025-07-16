@@ -106,8 +106,8 @@ export abstract class AgentLoop {
    * Get default prompt manager configuration based on execution mode
    */
   private getDefaultPromptManagerConfig(executionMode?: ExecutionMode): PromptManagerConfig {
-    const responseFormat = executionMode === ExecutionMode.YAML_MODE 
-      ? ResponseFormat.YAML_MODE 
+    const responseFormat = executionMode === ExecutionMode.YAML_MODE
+      ? ResponseFormat.YAML_MODE
       : ResponseFormat.FUNCTION_CALLING;
 
     return {
@@ -132,7 +132,7 @@ export abstract class AgentLoop {
     this._addTool(dfTool);
   }
 
- 
+
 
   /**
    * Set a custom prompt manager
@@ -492,7 +492,7 @@ export abstract class AgentLoop {
         await this.hooks.onLLMStart?.(prompt);
 
         let functionTools: FunctionCallingTool[] | undefined = []
-        if (this.executionMode=== ExecutionMode.FUNCTION_CALLING) {
+        if (this.executionMode === ExecutionMode.FUNCTION_CALLING) {
           const functionToolsString = this.llmDataHandler.formatToolDefinitions(this.tools)
           const functionDefinitions = JSON.parse(functionToolsString)
 

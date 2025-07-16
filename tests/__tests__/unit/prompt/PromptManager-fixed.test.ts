@@ -1,6 +1,6 @@
 import { PromptManager, PromptManagerConfig } from '../../../../core/prompt/PromptManager';
 import { PromptTemplateInterface } from '../../../../core/prompt/PromptTemplateInterface';
-import { DefaultPromptTemplate, ResponseFormat } from '../../../../core/prompt/DefaultPromptTemplate';
+import { DefaultPromptTemplate, FormatType } from '../../../../core/prompt/DefaultPromptTemplate';
 import { ChatEntry, ToolResult } from '../../../../core/types/types';
 import { AgentError } from '../../../../core/utils/AgentError';
 
@@ -50,7 +50,7 @@ describe('PromptManager (Fixed)', () => {
 
     it('should initialize with custom response format', () => {
       const manager = new PromptManager('System prompt', {
-        responseFormat: ResponseFormat.FUNCTION_CALLING,
+        responseFormat: FormatType.FUNCTION_CALLING,
       });
       expect(manager).toBeDefined();
     });

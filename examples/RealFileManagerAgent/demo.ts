@@ -18,9 +18,10 @@ import { LLMConfig } from '../../core';
 // };
 
 const config: LLMConfig = {
-  apiKey: process.env.OPENAI_API_KEY || 'open-api-key',
-  model: 'gpt-4.6',
-  service: 'openai'
+  apiKey: process.env.GEMINI_API_KEY || 'your-api-key-here',
+  service: 'google',
+  model: 'gemini-2.0-flash',
+  temperature: 0.1,
 };
 
 /**
@@ -32,21 +33,21 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
     console.log('🐛 Debug mode enabled - showing detailed output');
   }
   console.log('=============================================');
-  
+
   // Create a demo workspace
   const demoWorkspace = path.join(process.cwd(), 'file-manager-demo');
-  
+
   // Ensure demo workspace exists
   if (!fs.existsSync(demoWorkspace)) {
     fs.mkdirSync(demoWorkspace, { recursive: true });
   }
-  
+
   console.log(`📁 Demo workspace: ${demoWorkspace}`);
-  
+
   const agent = new RealFileManagerAgent(config, demoWorkspace, debugMode);
-  
+
   const testCases = [
-    {
+   /*  {
       description: "📋 List current directory contents",
       prompt: "List all files and directories in the current location with details"
     },
@@ -77,7 +78,7 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
     {
       description: "📝 Create some source files",
       prompt: "In the src directory, create an index.js file with a simple hello world console.log and a utils.js file with a helper function"
-    },
+    }, */
     {
       description: "📖 Read the package.json file",
       prompt: "Read and display the contents of the package.json file"
@@ -106,9 +107,9 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
     console.log(`🧪 Test ${i + 1}/${testCases.length}: ${testCase.description}`);
     console.log(`📝 Prompt: "${testCase.prompt}"`);
     console.log(`⏳ Processing...`);
-    
+
     const startTime = Date.now();
-    
+
     try {
       const result = await agent.run({
         userPrompt: testCase.prompt,
@@ -120,11 +121,11 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
       const duration = endTime - startTime;
 
       console.log(`\n✅ Success!`);
-      
+
       if (debugMode) {
         console.log(`⏱️  Duration: ${duration}ms`);
         console.log(`🔧 Tools used: ${result.toolCallHistory.length}`);
-        
+
         // Show tool execution summary in debug mode
         if (result.toolCallHistory.length > 0) {
           console.log(`📊 Tool execution summary:`);
@@ -134,14 +135,14 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
           });
         }
       }
-      
+
       // Show final answer (always shown)
       if (result.finalAnswer && result.finalAnswer.output?.value) {
         const response = result.finalAnswer.output.value;
         const preview = debugMode ? response : response.substring(0, 150) + (response.length > 150 ? '...' : '');
         console.log(`💬 Agent response: ${preview}`);
       }
-      
+
       // Show any failures (always shown)
       const failedTools = result.toolCallHistory.filter(tool => !tool.success);
       if (failedTools.length > 0) {
@@ -154,7 +155,7 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
     } catch (error: any) {
       console.log(`❌ Test failed: ${error.message}`);
     }
-    
+
     // Small delay between tests
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
@@ -171,9 +172,9 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
 export async function runPerformanceTest(debugMode: boolean = false): Promise<void> {
   console.log('\n🏃 Performance Test - Multiple Concurrent Operations');
   console.log('===================================================');
-  
+
   const agent = new RealFileManagerAgent(config, process.cwd(), debugMode);
-  
+
   const stressTests = [
     "Create 10 test files with numbered content",
     "Search for all created test files",
@@ -183,24 +184,24 @@ export async function runPerformanceTest(debugMode: boolean = false): Promise<vo
   ];
 
   console.log('⏱️ Running stress tests...');
-  
+
   for (const test of stressTests) {
     const startTime = Date.now();
-    
+
     try {
       await agent.run({
         userPrompt: test,
         conversationHistory: [],
         toolCallHistory: []
       });
-      
+
       const duration = Date.now() - startTime;
       if (debugMode) {
         console.log(`✅ "${test}" - ${duration}ms`);
       } else {
         console.log(`✅ "${test}" completed`);
       }
-      
+
     } catch (error: any) {
       console.log(`❌ "${test}" - Failed: ${error.message}`);
     }
@@ -213,9 +214,9 @@ export async function runPerformanceTest(debugMode: boolean = false): Promise<vo
 export async function runErrorHandlingTest(debugMode: boolean = false): Promise<void> {
   console.log('\n🛡️ Error Handling Test - Edge Cases and Invalid Operations');
   console.log('=========================================================');
-  
+
   const agent = new RealFileManagerAgent(config, process.cwd(), debugMode);
-  
+
   const errorTests = [
     "Read a file that doesn't exist called nonexistent.txt",
     "Create a file in a directory that doesn't exist without creating directories",
@@ -227,17 +228,17 @@ export async function runErrorHandlingTest(debugMode: boolean = false): Promise<
 
   for (const test of errorTests) {
     console.log(`\n🧪 Testing: "${test}"`);
-    
+
     try {
       const result = await agent.run({
         userPrompt: test,
         conversationHistory: [],
         toolCallHistory: []
       });
-      
+
       const hasErrors = result.toolCallHistory.some(tool => !tool.success);
       console.log(hasErrors ? '✅ Error handled gracefully' : '⚠️ Expected error but operation succeeded');
-      
+
     } catch (error: any) {
       console.log(`✅ Error caught and handled: ${error.message.substring(0, 100)}`);
     }
@@ -257,7 +258,7 @@ export async function runInteractiveDemo(): Promise<void> {
   console.log('   - "search for .js files"');
   console.log('   - Type "help" for more examples');
   console.log('');
-  
+
   await startFileManagerConsole();
 }
 
@@ -270,7 +271,7 @@ export async function runDemo(mode: 'auto' | 'interactive' | 'performance' | 'er
     console.log('🐛 Debug mode enabled');
   }
   console.log('=====================================');
-  
+
   try {
     switch (mode) {
       case 'auto':
@@ -307,6 +308,6 @@ if (require.main === module) {
   const args = process.argv.slice(2);
   const debugMode = args.includes('--debug');
   const mode = (args.find(arg => !arg.startsWith('--')) as any) || 'auto';
-  
+
   runDemo(mode, debugMode).catch(console.error);
 }

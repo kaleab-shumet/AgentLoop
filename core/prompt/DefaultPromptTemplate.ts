@@ -5,7 +5,7 @@ import { AgentError } from '../utils/AgentError';
 /**
  * Response format types - function calling and YAML mode are supported
  */
-export enum ResponseFormat {
+export enum FormatType {
   FUNCTION_CALLING = 'function_calling',
   YAML_MODE = 'yaml_mode'
 }
@@ -15,23 +15,23 @@ export enum ResponseFormat {
  * Supports function calling and YAML response formats
  */
 export class DefaultPromptTemplate implements PromptTemplateInterface {
-  private responseFormat: ResponseFormat;
+  private responseFormat: FormatType;
 
-  constructor(responseFormat: ResponseFormat = ResponseFormat.FUNCTION_CALLING) {
+  constructor(responseFormat: FormatType = FormatType.FUNCTION_CALLING) {
     this.responseFormat = responseFormat;
   }
 
   /**
    * Set the response format (XML or Function Calling)
    */
-  setResponseFormat(format: ResponseFormat): void {
+  setResponseFormat(format: FormatType): void {
     this.responseFormat = format;
   }
 
   /**
    * Get the current response format
    */
-  getResponseFormat(): ResponseFormat {
+  getResponseFormat(): FormatType {
     return this.responseFormat;
   }
 
@@ -66,9 +66,9 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
 
   getFormatInstructions(finalToolName: string): string {
     switch (this.responseFormat) {
-      case ResponseFormat.FUNCTION_CALLING:
+      case FormatType.FUNCTION_CALLING:
         return this.getFunctionCallingFormatInstructions(finalToolName);
-      case ResponseFormat.YAML_MODE:
+      case FormatType.YAML_MODE:
         return this.getYamlFormatInstructions(finalToolName);
       default:
         return this.getFunctionCallingFormatInstructions(finalToolName);
@@ -140,12 +140,28 @@ ${this.getSharedBatchingRules()}
 5. **Do not add extra parameters** - only use what's defined in the schema
 
 **YAML Syntax Requirements:**
-- All string values must be properly quoted
+- Use double quotes (") for simple, single-line strings without special characters.
+- If the string contains quotes, backslashes, or newlines, escape all special characters properly inside the quotes.
+- Never wrap arbitrary text in double quotes without escaping — this causes invalid YAML.
+- To include multi-line text (e.g. a message or CODE ), use the | block scalar style. This preserves newlines and formatting exactly as written.
 - Parameter names are case-sensitive and must match schema exactly
 - Use proper YAML indentation (2 spaces)
 - Arrays use YAML list syntax with dashes
 
 ### Examples (Templates Only - Follow Tool Schema Exactly)
+**Multiline string usage**
+⚠️ If your message includes code, JSON, XML, or any text with line breaks, colons, or quotes, you must use the | multi-line block style.
+Do not try to squeeze these into a single-line string — YAML will break or require escaping that violates the schema rules.
+tool_calls:
+  - name: <exact_tool_name_from_schema>
+    args:
+      value: |
+        This is a multi-line string.
+        It preserves all line breaks,
+        spaces, and formatting exactly.
+        you can write a code here.
+
+
 
 **Single tool call:**
 \`\`\`yaml
