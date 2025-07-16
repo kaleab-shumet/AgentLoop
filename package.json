@@ -9,6 +9,15 @@
     "build": "tsc",
     "dev": "ts-node src/index.ts",
     "test": "jest",
+    "test:unit": "jest --testPathPatterns='__tests__/unit'",
+    "test:integration": "jest --testPathPatterns='__tests__/integration'",
+    "test:performance": "jest --testPathPatterns='__tests__/performance'",
+    "test:all": "jest --testPathPatterns='__tests__'",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:legacy": "echo 'Running legacy tests...' && npm run test:legacy:unit && npm run test:legacy:integration",
+    "test:legacy:unit": "npm run build && node dist/tests/legacy/unit/test-simple.js",
+    "test:legacy:integration": "npm run build && node dist/tests/legacy/integration/test-master-suite.js",
     "clean": "rmdir -rf dist",
     "prepublish": "npm run clean && npm run build",
     "test:robustness": "npm run build && node dist/tests/integration/test-master-suite.js",
@@ -62,6 +71,7 @@
     "xml-js": "^1.6.11",
     "xmldom": "^0.6.0",
     "xpath": "^0.0.34",
+    "yaml": "^2.8.0",
     "zod": "^3.25.75",
     "zod-to-json-schema": "^3.24.6"
   }

@@ -2,11 +2,11 @@ import z, { ZodTypeAny } from "zod";
 import { TurnState } from "../agents/TurnState";
 
 /**
- * Execution mode for the agent - determines how tool calls are formatted and parsed
+ * Execution mode for the agent - function calling and YAML mode are supported
  */
 export enum ExecutionMode {
-  XML = "xml",
-  FUNCTION_CALLING = "function_calling"
+  FUNCTION_CALLING = "function_calling",
+  YAML_MODE = "yaml_mode"
 }
 
 /**
@@ -145,12 +145,7 @@ export interface TypedPaths {
 /**
  * Interface for handling different response formats (XML vs Function Calling)
  */
-export interface ResponseHandler {
-  /** Parse LLM response and extract tool calls */
+export interface FormatHandler {
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[];
-  /** Generate prompt instructions for the specific format */
-  getFormatInstructions(finalToolName: string): string;
-  /** Convert tool definitions to the required format for the LLM */
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string;
 }
-

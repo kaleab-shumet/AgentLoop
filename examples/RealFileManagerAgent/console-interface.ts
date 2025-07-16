@@ -13,7 +13,7 @@ export class FileManagerConsole {
   private isRunning: boolean = false;
   private debugMode: boolean = false;
 
-  constructor(config: any, workingDir?: string, debugMode: boolean = false, executionMode: ExecutionMode = ExecutionMode.XML) {
+  constructor(config: any, workingDir?: string, debugMode: boolean = false, executionMode: ExecutionMode = ExecutionMode.FUNCTION_CALLING) {
     this.debugMode = debugMode;
     this.agent = new RealFileManagerAgent(config, workingDir, debugMode, executionMode);
     this.rl = readline.createInterface({

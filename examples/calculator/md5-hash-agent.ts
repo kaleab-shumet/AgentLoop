@@ -1,46 +1,49 @@
-import { AgentLoop, ExecutionMode } from '../../../core';
-import { DefaultAIProvider } from '../../../core/providers/DefaultAIProvider';
+import { AgentLoop } from '../../core/agents/AgentLoop';
+import { DefaultAIProvider } from '../../core/providers/DefaultAIProvider';
+import { ExecutionMode } from '../../core/types/types';
 import z from 'zod';
 import * as crypto from 'crypto';
+import 'dotenv/config';
 
 /**
  * An MD5 hash agent that can generate MD5 hashes for text input, files, and perform hash-related operations.
  * Demonstrates cryptographic tool usage with AgentLoop framework.
  */
 export class MD5HashAgent extends AgentLoop {
-  protected systemPrompt = `You are a helpful MD5 hash assistant. You can generate MD5 hashes for text strings, compare hashes, validate hash formats, and provide information about MD5 hashing. Always explain what MD5 hashing is and its use cases when appropriate.`;
+  protected systemPrompt = `You are a helpful MD5 hash assistant. You can generate MD5 hashes for text strings, compare hashes, validate hash formats, and provide information about MD5 hashing. When asked to process a data structure, use the process_api_data_structure tool. Always explain what MD5 hashing is and its use cases when appropriate.`;
 
   constructor(config: any) {
     const provider = new DefaultAIProvider(config);
     super(provider, {
       maxIterations: 5,
       parallelExecution: false,
-      executionMode: ExecutionMode.XML
+      executionMode: ExecutionMode.YAML_MODE
     });
 
     this.setupHashTools();
   }
 
   private setupHashTools() {
-    // Generate MD5 hash from text
-    this.defineTool((z) => ({
+    // CORRECTED: Generate MD5 hash from text (flexible schema)
+    this.defineTool((z: any) => ({
       name: 'generate_md5_hash',
       description: 'Generate MD5 hash from input text string',
       argsSchema: z.object({
-        text: z.string().describe('The text to hash'),
+        text: z.string().optional().describe('The text to hash'),
         encoding: z.enum(['utf8', 'ascii', 'base64']).optional().default('utf8').describe('Text encoding to use')
       }),
-      handler: async (name: string, args: any) => {
+      handler: async (name: string, args: any, turnState: any) => {
         try {
+          const inputText = args.text || args.param1; // Use whichever is provided
           const hash = crypto.createHash('md5');
-          hash.update(args.text, args.encoding);
+          hash.update(inputText, args.encoding);
           const result = hash.digest('hex');
 
           return {
             toolName: name,
             success: true,
             output: {
-              originalText: args.text,
+              originalText: inputText,
               encoding: args.encoding,
               md5Hash: result,
               hashLength: result.length,
@@ -57,8 +60,8 @@ export class MD5HashAgent extends AgentLoop {
       }
     }));
 
-    // Compare two MD5 hashes
-    this.defineTool((z) => ({
+    // CORRECTED: Compare two MD5 hashes (flexible schema)
+    this.defineTool((z: any) => ({
       name: 'compare_hashes',
       description: 'Compare two MD5 hashes to check if they match',
       argsSchema: z.object({
@@ -66,7 +69,7 @@ export class MD5HashAgent extends AgentLoop {
         hash2: z.string().describe('Second MD5 hash to compare'),
         caseSensitive: z.boolean().optional().default(false).describe('Whether comparison should be case sensitive')
       }),
-      handler: async (name: string, args: any) => {
+      handler: async (name: string, args: any, turnState: any) => {
         try {
           // Validate hash format
           const md5Regex = /^[a-fA-F0-9]{32}$/;
@@ -102,22 +105,23 @@ export class MD5HashAgent extends AgentLoop {
       }
     }));
 
-    // Validate MD5 hash format
-    this.defineTool((z) => ({
+    // CORRECTED: Validate MD5 hash format (flexible schema)
+    this.defineTool((z: any) => ({
       name: 'validate_hash_format',
       description: 'Validate if a string is a properly formatted MD5 hash',
       argsSchema: z.object({
-        hash: z.string().describe('The hash string to validate')
+        hash: z.string().optional().describe('The hash string to validate'),
       }),
-      handler: async (name: string, args: any) => {
+      handler: async (name: string, args: any, turnState: any) => {
         try {
+          const inputHash = args.hash || args.param1;
           const md5Regex = /^[a-fA-F0-9]{32}$/;
-          const isValid = md5Regex.test(args.hash);
+          const isValid = md5Regex.test(inputHash);
           
           const analysis = {
-            length: args.hash.length,
+            length: inputHash.length,
             expectedLength: 32,
-            containsOnlyHexChars: /^[a-fA-F0-9]+$/.test(args.hash),
+            containsOnlyHexChars: /^[a-fA-F0-9]+$/.test(inputHash),
             isValid
           };
 
@@ -125,7 +129,7 @@ export class MD5HashAgent extends AgentLoop {
             toolName: name,
             success: true,
             output: {
-              hash: args.hash,
+              hash: inputHash,
               ...analysis,
               message: isValid ? 'Valid MD5 hash format' : 'Invalid MD5 hash format'
             }
@@ -141,14 +145,14 @@ export class MD5HashAgent extends AgentLoop {
     }));
 
     // Generate multiple hashes for comparison
-    this.defineTool((z) => ({
+    this.defineTool((z: any) => ({
       name: 'batch_hash_generation',
       description: 'Generate MD5 hashes for multiple text inputs',
       argsSchema: z.object({
         texts: z.array(z.string()).describe('Array of text strings to hash'),
         includeOriginal: z.boolean().default(true).describe('Whether to include original text in output')
       }),
-      handler: async (name: string, args: any) => {
+      handler: async (name: string, args: any, turnState: any) => {
         try {
           const results = args.texts.map((text: string, index: number) => {
             const hash = crypto.createHash('md5');
@@ -181,15 +185,113 @@ export class MD5HashAgent extends AgentLoop {
         }
       }
     }));
+    
+    // UNIFIED: A single tool to process multiple API data structures
+    this.defineTool((z: any) => {
+      // Schema for a standard paginated API response
+      const paginatedApiSchema = z.object({
+          status: z.string(),
+          message: z.string(),
+          data: z.array(z.any()),
+          errors: z.array(z.any()).optional(),
+          page: z.number().optional(),
+          total: z.number().optional(),
+          hasMore: z.boolean().optional(),
+        }).describe('Standard paginated API response structure.');
+
+      // Schema for a composite business data object
+      const businessDataSchema = z.object({
+          users: z.array(z.any()),
+          orders: z.array(z.any()),
+          products: z.array(z.any()),
+          totalSales: z.number(),
+          activeUsers: z.number(),
+          errorRate: z.number(),
+        }).describe('A business data object containing users, orders, products, and summary metrics.');
+
+      return {
+        name: 'process_api_data_structure',
+        description: 'Analyzes and processes common API response structures, including paginated lists and composite business data objects.',
+        argsSchema: z.object({
+          // The top-level argument is an object that can contain ONE of the known structures.
+          apiResponse: z.union([
+            z.object({ businessData: businessDataSchema }),
+            z.object({ apiResponse: paginatedApiSchema })
+          ])
+        }).describe('The API response object, which must be wrapped in either a "businessData" or "apiResponse" key.'),
+        
+        handler: async (name: string, args: any, turnState: any) => {
+          try {
+            const { apiResponse } = args;
+            let output;
+
+            // Check which structure was passed and process accordingly
+            if (apiResponse.businessData) {
+              const data = apiResponse.businessData;
+              const analysis = {
+                dataType: 'BusinessDataObject',
+                totalRecords: data.users.length + data.orders.length + data.products.length,
+                recordCounts: {
+                  users: data.users.length,
+                  orders: data.orders.length,
+                  products: data.products.length,
+                },
+                keyMetrics: {
+                  totalSales: data.totalSales,
+                  activeUsers: data.activeUsers,
+                  errorRate: data.errorRate,
+                },
+              };
+              const structuralInfo = {
+                maxNestingDepth: this.calculateNestingDepth(data),
+                isFlatStructure: this.calculateNestingDepth(data) <= 2,
+                dataIntegrityHash: crypto.createHash('md5').update(JSON.stringify(data)).digest('hex')
+              };
+              output = { message: 'Successfully processed business data object', analysis, structuralInfo };
+
+            } else if (apiResponse.apiResponse) {
+              const data = apiResponse.apiResponse;
+              const analysis = {
+                dataType: 'PaginatedApiResponse',
+                status: data.status,
+                totalRecords: data.data?.length || 0,
+                errorCount: data.errors?.length || 0,
+                pagination: {
+                  currentPage: data.page,
+                  totalRecords: data.total,
+                  hasMore: data.hasMore,
+                }
+              };
+              const structuralInfo = {
+                maxNestingDepth: this.calculateNestingDepth(data),
+                isFlatStructure: this.calculateNestingDepth(data) <= 2,
+                dataIntegrityHash: crypto.createHash('md5').update(JSON.stringify(data)).digest('hex')
+              };
+              output = { message: 'Successfully processed paginated API response', analysis, structuralInfo };
+            } else {
+              throw new Error('Unrecognized API response structure provided.');
+            }
+
+            return { toolName: name, success: true, output };
+          } catch (error: any) {
+            return {
+              toolName: name,
+              success: false,
+              error: `API data processing failed: ${error.message}`
+            };
+          }
+        }
+      };
+    });
 
     // Hash information and facts
-    this.defineTool((z) => ({
+    this.defineTool((z: any) => ({
       name: 'hash_info',
       description: 'Provide information about MD5 hashing, its properties, and use cases',
       argsSchema: z.object({
         topic: z.enum(['general', 'security', 'properties', 'use-cases', 'limitations']).describe('What aspect of MD5 to explain')
       }),
-      handler: async (name: string, args: any) => {
+      handler: async (name: string, args: any, turnState: any) => {
         try {
           const info: { [key: string]: any } = {
             general: {
@@ -241,74 +343,35 @@ export class MD5HashAgent extends AgentLoop {
     }));
 
     // Final answer tool
-    this.defineTool((z) => ({
+    this.defineTool((z: any) => ({
       name: 'final',
       description: 'Provide the final hash result and explanation',
       argsSchema: z.object({
-        answer: z.string().describe('The final answer with explanation')
+        value: z.string().describe('The final answer with explanation')
       }),
-      handler: async (name: string, args: any) => {
+      handler: async (name: string, args: any, turnState: any) => {
         return {
           toolName: name,
           success: true,
           output: {
-            value: args.answer
+            value: args.value
           }
         };
       }
     }));
   }
-}
 
-// Example usage and test functions
-export async function demonstrateMD5Hash() {
-  const config = {
-    apiKey: process.env.GEMINI_API_KEY || 'your-api-key-here',
-    service: 'google',
-    model: 'gemini-2.0-flash'
-  };
-
-  const agent = new MD5HashAgent(config);
-
-  console.log('🔐 MD5 Hash Agent Demo');
-
-  const testCases = [
-    "Generate MD5 hash for the text 'Hello World'",
-    "What is the MD5 hash of 'password123'?",
-    "Compare these two hashes: 5d41402abc4b2a76b9719d911017c592 and 5d41402abc4b2a76b9719d911017c592",
-    "Is 'abc123' a valid MD5 hash format?",
-    "Generate MD5 hashes for: 'apple', 'banana', 'cherry'",
-    "Tell me about MD5 security considerations"
-  ];
-
-  for (let i = 0; i < testCases.length; i++) {
-    console.log(`\n--- Test Case ${i + 1}: ${testCases[i]} ---`);
-
-    try {
-      const result = await agent.run({
-        userPrompt: testCases[i],
-        conversationHistory: [],
-        toolCallHistory: []
-      });
-
-      console.log('✅ Success!');
-      console.log('Final Answer:', result.finalAnswer?.output?.value || 'No final answer');
-      console.log('Tool Calls Made:', result.toolCallHistory.length);
-
-      // Show hash operation details
-      result.toolCallHistory.forEach((tool, index) => {
-        if (tool.success && tool.output) {
-          console.log(`${index + 1}. ${tool.toolName}:`, tool.output);
-        }
-      });
-
-    } catch (error) {
-      console.log('❌ Test failed:', error);
+  // Helper methods for complex data analysis
+  private calculateNestingDepth(obj: any): number {
+    if (typeof obj !== 'object' || obj === null) return 0;
+    
+    let maxDepth = 0;
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        const depth = 1 + this.calculateNestingDepth(obj[key]);
+        maxDepth = Math.max(maxDepth, depth);
+      }
     }
+    return maxDepth;
   }
-}
-
-// Run the demo if this file is executed directly
-if (require.main === module) {
-  demonstrateMD5Hash().catch(console.error);
 }

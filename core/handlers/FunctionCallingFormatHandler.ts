@@ -1,23 +1,23 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, ResponseHandler, FunctionCall, FunctionDefinition } from "../types/types";
+import { Tool, PendingToolCall, FormatHandler, FunctionCall, FunctionDefinition } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from 'zod-to-json-schema';
 
 /**
  * Handles OpenAI-style function calling format
  */
-export class FunctionCallingResponseHandler implements ResponseHandler {
+export class FunctionCallingFormatHandler implements FormatHandler {
 
 
   parseFunctionCall(functionData: any, tools: Tool<ZodTypeAny>[]): PendingToolCall {
     // Handle both single function call and the case where this is called on individual items from an array
     let functionCall = functionData.function_call || functionData.functionCall;
-    
+
     // If this is already a function call object with name and arguments, use it directly
     if (functionData.name && functionData.arguments) {
       functionCall = functionData;
     }
-    
+
     if (!functionCall || typeof functionCall.arguments !== 'string' || typeof functionCall.name !== 'string') {
       throw new AgentError("Invalid function call format", AgentErrorType.INVALID_RESPONSE);
     }
@@ -32,8 +32,8 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
 
     const candidatePendingTool = this.parseWithRetry(functionCallArgs);
 
-    if(typeof candidatePendingTool === "string"){
-        console.log("candidatePendingTool: ", candidatePendingTool)
+    if (typeof candidatePendingTool === "string") {
+      console.log("candidatePendingTool: ", candidatePendingTool)
     }
 
     const result = correspondingTool.argsSchema.safeParse(candidatePendingTool);
@@ -134,13 +134,12 @@ export class FunctionCallingResponseHandler implements ResponseHandler {
 
     let jsVal = JSON.stringify(jsonStr)
     let c = 0;
-    while (typeof jsVal === "string" && c < 20) {
+    while (typeof jsVal === "string" && c < 2) {
       try {
         jsVal = JSON.parse(jsVal)
       }
       catch {
-        jsVal = JSON.stringify(jsVal)
-        c = c/2
+        break;
       }
       c++;
     }

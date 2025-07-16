@@ -76,11 +76,12 @@ export abstract class AgentLoop {
   protected max_tokens?: number;
 
   private readonly FINAL_TOOL_NAME = 'final';
+  executionMode: ExecutionMode;
 
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.llmDataHandler = new LLMDataHandler(options.executionMode || ExecutionMode.XML);
+    this.llmDataHandler = new LLMDataHandler(options.executionMode || ExecutionMode.FUNCTION_CALLING);
     this.logger = options.logger || console;
     this.maxIterations = options.maxIterations || 10;
     this.toolTimeoutMs = options.toolTimeoutMs || 30000;
@@ -88,6 +89,7 @@ export abstract class AgentLoop {
     this.retryDelay = options.retryDelay || 1000;
     this.parallelExecution = options.parallelExecution ?? true;
     this.hooks = options.hooks || {};
+    this.executionMode = options.executionMode || ExecutionMode.YAML_MODE;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs || 2000;
 
     // Initialize prompt manager - will be properly set up in initializePromptManager
@@ -104,9 +106,9 @@ export abstract class AgentLoop {
    * Get default prompt manager configuration based on execution mode
    */
   private getDefaultPromptManagerConfig(executionMode?: ExecutionMode): PromptManagerConfig {
-    const responseFormat = executionMode === ExecutionMode.FUNCTION_CALLING
-      ? ResponseFormat.FUNCTION_CALLING
-      : ResponseFormat.XML;
+    const responseFormat = executionMode === ExecutionMode.YAML_MODE 
+      ? ResponseFormat.YAML_MODE 
+      : ResponseFormat.FUNCTION_CALLING;
 
     return {
       responseFormat,
@@ -130,19 +132,7 @@ export abstract class AgentLoop {
     this._addTool(dfTool);
   }
 
-  /**
-   * Set the execution mode for the agent
-   */
-  public setExecutionMode(mode: ExecutionMode): void {
-    this.llmDataHandler.setExecutionMode(mode);
-  }
-
-  /**
-   * Get the current execution mode
-   */
-  public getExecutionMode(): ExecutionMode {
-    return this.llmDataHandler.getExecutionMode();
-  }
+ 
 
   /**
    * Set a custom prompt manager
@@ -165,8 +155,7 @@ export abstract class AgentLoop {
     // If promptManager was not provided in options or needs system prompt, create new one
     if (!this.promptManager || this.systemPrompt) {
       // Get the execution mode from the LLM data handler
-      const executionMode = this.llmDataHandler.getExecutionMode();
-      const config = this.getDefaultPromptManagerConfig(executionMode);
+      const config = this.getDefaultPromptManagerConfig(this.executionMode);
       this.promptManager = new PromptManager(this.systemPrompt, config);
     }
   }
@@ -204,6 +193,8 @@ export abstract class AgentLoop {
         try {
           let prompt = this.constructPrompt(userPrompt, context, lastError, conversationHistory, toolCallHistory, keepRetry);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
+
+
 
           const llmResponse = await this.getLLMResponseWithRetry(prompt);
           const parsedToolCalls = this.llmDataHandler.parseAndValidate(llmResponse, this.tools);
@@ -501,7 +492,7 @@ export abstract class AgentLoop {
         await this.hooks.onLLMStart?.(prompt);
 
         let functionTools: FunctionCallingTool[] | undefined = []
-        if (this.getExecutionMode() === ExecutionMode.FUNCTION_CALLING) {
+        if (this.executionMode=== ExecutionMode.FUNCTION_CALLING) {
           const functionToolsString = this.llmDataHandler.formatToolDefinitions(this.tools)
           const functionDefinitions = JSON.parse(functionToolsString)
 

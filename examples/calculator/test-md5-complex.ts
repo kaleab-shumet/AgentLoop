@@ -13,10 +13,10 @@ async function testComplexStrings() {
   console.log('='.repeat(50));
 
   const complexTestCases = [
-    /* 
+
     {
-      description: "Very long string (10,000 chars)",
-      prompt: `Generate MD5 hash for this very long string: ${'A'.repeat(10000)}`
+      description: "Very long string (1,000 chars)",
+      prompt: `Generate MD5 hash for this very long string: ${'A'.repeat(1000)}`
     },
     {
       description: "Unicode and special characters",
@@ -43,10 +43,31 @@ Line 1
 			
 Empty line above
 Final line`
-    }, */
+    },
     {
       description: "Batch processing complex strings",
       prompt: "Generate MD5 hashes for multiple complex strings: 'password123!@#', '🔐secure🔐', '{\"api\":\"key\"}'"
+    },
+    {
+      description: "2-level nested API response structure",
+      prompt: `Handle this API response with 2-level nesting: {
+        "apiResponse": {
+          "status": "success",
+          "message": "Data retrieved successfully from microservice",
+          "data": [
+            {"id": "item-001", "name": "Server Monitor", "category": "Hardware", "active": true},
+            {"id": "item-002", "name": "Load Balancer", "category": "Software", "active": true},
+            {"id": "item-003", "name": "Database Cluster", "category": "Infrastructure", "active": false}
+          ],
+          "errors": [
+            {"code": "WARN_001", "message": "High memory usage detected"},
+            {"code": "INFO_002", "message": "Cache will expire in 1 hour"}
+          ],
+          "page": 2,
+          "total": 847,
+          "hasMore": true
+        }
+      }`
     }
   ];
 
@@ -56,7 +77,7 @@ Final line`
 
     try {
       const startTime = Date.now();
-      
+
       const result = await agent.run({
         userPrompt: testCase.prompt,
         conversationHistory: [],
@@ -69,8 +90,8 @@ Final line`
       console.log('✅ Success!');
       console.log(`⏱️  Duration: ${duration}ms`);
       console.log('Final Answer:', result.finalAnswer?.output?.value || 'No final answer');
-      
-      // Show detailed tool results
+
+      // CORRECTED: Show detailed tool results with updated logging paths
       result.toolCallHistory.forEach((tool, index) => {
         if (tool.success && tool.output) {
           console.log(`\n${index + 1}. ${tool.toolName}:`);
@@ -83,6 +104,14 @@ Final line`
             tool.output.results.forEach((r: any, idx: number) => {
               console.log(`     ${idx + 1}. ${r.md5Hash} (${r.textLength} chars)`);
             });
+          }
+          // Corrected logging for the unified data processing tool
+          if (tool.output.analysis && tool.output.structuralInfo) {
+            console.log(`   Data Analysis: ${tool.output.analysis.totalRecords || 0} records processed`);
+            console.log(`   Data Type: ${tool.output.analysis.dataType}`);
+            console.log(`   Nesting Depth: ${tool.output.structuralInfo.maxNestingDepth}`);
+            console.log(`   Is Flat Structure: ${tool.output.structuralInfo.isFlatStructure}`);
+            console.log(`   Data Hash: ${tool.output.structuralInfo.dataIntegrityHash}`);
           }
         } else if (!tool.success) {
           console.log(`❌ ${tool.toolName} failed: ${tool.error}`);
