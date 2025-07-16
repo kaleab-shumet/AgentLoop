@@ -186,39 +186,66 @@ export class MD5HashAgent extends AgentLoop {
       }
     }));
     
-    // UNIFIED: A single tool to process multiple API data structures
+    // UNIFIED: A single tool to process multiple API data structures with 3-level nesting
     this.defineTool((z: any) => {
-      // Schema for a standard paginated API response
+      // Schema for a standard paginated API response (now with 3-level nesting)
       const paginatedApiSchema = z.object({
           status: z.string(),
           message: z.string(),
-          data: z.array(z.any()),
-          errors: z.array(z.any()).optional(),
-          page: z.number().optional(),
-          total: z.number().optional(),
-          hasMore: z.boolean().optional(),
-        }).describe('Standard paginated API response structure.');
+          data: z.object({
+            items: z.array(z.any()),
+            metadata: z.object({
+              pagination: z.object({
+                page: z.number(),
+                total: z.number(),
+                hasMore: z.boolean()
+              }),
+              filters: z.record(z.any()).optional(),
+              sorting: z.record(z.any()).optional()
+            })
+          }),
+          errors: z.array(z.object({
+            code: z.string(),
+            message: z.string(),
+            details: z.record(z.any()).optional()
+          })).optional(),
+        }).describe('Standard paginated API response structure with 3-level nesting.');
 
-      // Schema for a composite business data object
+      // Schema for a composite business data object (now with 3-level nesting)
       const businessDataSchema = z.object({
-          users: z.array(z.any()),
-          orders: z.array(z.any()),
-          products: z.array(z.any()),
-          totalSales: z.number(),
-          activeUsers: z.number(),
-          errorRate: z.number(),
-        }).describe('A business data object containing users, orders, products, and summary metrics.');
+          organization: z.object({
+            department: z.object({
+              team: z.object({
+                id: z.string(),
+                name: z.string(),
+                lead: z.string(),
+                members: z.array(z.any()),
+                projects: z.object({
+                  active: z.array(z.any()),
+                  completed: z.array(z.any())
+                })
+              })
+            })
+          }),
+          metrics: z.object({
+            performance: z.object({
+              sales: z.number(),
+              users: z.number(),
+              errorRate: z.number()
+            })
+          })
+        }).describe('A business data object with 3-level organizational hierarchy.');
 
       return {
         name: 'process_api_data_structure',
-        description: 'Analyzes and processes common API response structures, including paginated lists and composite business data objects.',
+        description: 'Analyzes and processes API response structures with 3-level nesting, including paginated lists and hierarchical business data objects.',
         argsSchema: z.object({
           // The top-level argument is an object that can contain ONE of the known structures.
           apiResponse: z.union([
             z.object({ businessData: businessDataSchema }),
             z.object({ apiResponse: paginatedApiSchema })
           ])
-        }).describe('The API response object, which must be wrapped in either a "businessData" or "apiResponse" key.'),
+        }).describe('The API response object with 3-level nesting, wrapped in either a "businessData" or "apiResponse" key.'),
         
         handler: async (name: string, args: any, turnState: any) => {
           try {
@@ -228,46 +255,50 @@ export class MD5HashAgent extends AgentLoop {
             // Check which structure was passed and process accordingly
             if (apiResponse.businessData) {
               const data = apiResponse.businessData;
+              const teamData = data.organization.department.team;
               const analysis = {
-                dataType: 'BusinessDataObject',
-                totalRecords: data.users.length + data.orders.length + data.products.length,
-                recordCounts: {
-                  users: data.users.length,
-                  orders: data.orders.length,
-                  products: data.products.length,
+                dataType: 'BusinessDataObject3Level',
+                organizationStructure: {
+                  teamId: teamData.id,
+                  teamName: teamData.name,
+                  teamLead: teamData.lead,
+                  memberCount: teamData.members.length,
+                  activeProjects: teamData.projects.active.length,
+                  completedProjects: teamData.projects.completed.length,
                 },
-                keyMetrics: {
-                  totalSales: data.totalSales,
-                  activeUsers: data.activeUsers,
-                  errorRate: data.errorRate,
-                },
+                metrics: data.metrics.performance,
+                totalProjectsCount: teamData.projects.active.length + teamData.projects.completed.length,
               };
               const structuralInfo = {
                 maxNestingDepth: this.calculateNestingDepth(data),
                 isFlatStructure: this.calculateNestingDepth(data) <= 2,
+                isDeeplyNested: this.calculateNestingDepth(data) >= 3,
                 dataIntegrityHash: crypto.createHash('md5').update(JSON.stringify(data)).digest('hex')
               };
-              output = { message: 'Successfully processed business data object', analysis, structuralInfo };
+              output = { message: 'Successfully processed 3-level business data object', analysis, structuralInfo };
 
             } else if (apiResponse.apiResponse) {
               const data = apiResponse.apiResponse;
               const analysis = {
-                dataType: 'PaginatedApiResponse',
+                dataType: 'PaginatedApiResponse3Level',
                 status: data.status,
-                totalRecords: data.data?.length || 0,
+                message: data.message,
+                dataStructure: {
+                  itemCount: data.data.items?.length || 0,
+                  pagination: data.data.metadata.pagination,
+                  hasFilters: !!data.data.metadata.filters,
+                  hasSorting: !!data.data.metadata.sorting,
+                },
                 errorCount: data.errors?.length || 0,
-                pagination: {
-                  currentPage: data.page,
-                  totalRecords: data.total,
-                  hasMore: data.hasMore,
-                }
+                errorDetails: data.errors?.map((e: { code: any; message: any; }) => ({ code: e.code, message: e.message })) || []
               };
               const structuralInfo = {
                 maxNestingDepth: this.calculateNestingDepth(data),
                 isFlatStructure: this.calculateNestingDepth(data) <= 2,
+                isDeeplyNested: this.calculateNestingDepth(data) >= 3,
                 dataIntegrityHash: crypto.createHash('md5').update(JSON.stringify(data)).digest('hex')
               };
-              output = { message: 'Successfully processed paginated API response', analysis, structuralInfo };
+              output = { message: 'Successfully processed 3-level paginated API response', analysis, structuralInfo };
             } else {
               throw new Error('Unrecognized API response structure provided.');
             }

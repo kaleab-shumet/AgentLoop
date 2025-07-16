@@ -49,23 +49,72 @@ Final line`
       prompt: "Generate MD5 hashes for multiple complex strings: 'password123!@#', '🔐secure🔐', '{\"api\":\"key\"}'"
     },
     {
-      description: "2-level nested API response structure",
-      prompt: `Handle this API response with 2-level nesting: {
+      description: "3-level nested API response structure",
+      prompt: `Handle this API response with 3-level nesting: {
         "apiResponse": {
           "status": "success",
           "message": "Data retrieved successfully from microservice",
-          "data": [
-            {"id": "item-001", "name": "Server Monitor", "category": "Hardware", "active": true},
-            {"id": "item-002", "name": "Load Balancer", "category": "Software", "active": true},
-            {"id": "item-003", "name": "Database Cluster", "category": "Infrastructure", "active": false}
-          ],
+          "data": {
+            "items": [
+              {"id": "item-001", "name": "Server Monitor", "category": "Hardware", "active": true},
+              {"id": "item-002", "name": "Load Balancer", "category": "Software", "active": true},
+              {"id": "item-003", "name": "Database Cluster", "category": "Infrastructure", "active": false}
+            ],
+            "metadata": {
+              "pagination": {
+                "page": 2,
+                "total": 847,
+                "hasMore": true
+              },
+              "filters": {
+                "category": "Hardware",
+                "status": "active"
+              },
+              "sorting": {
+                "field": "name",
+                "order": "asc"
+              }
+            }
+          },
           "errors": [
-            {"code": "WARN_001", "message": "High memory usage detected"},
-            {"code": "INFO_002", "message": "Cache will expire in 1 hour"}
-          ],
-          "page": 2,
-          "total": 847,
-          "hasMore": true
+            {"code": "WARN_001", "message": "High memory usage detected", "details": {"severity": "medium"}},
+            {"code": "INFO_002", "message": "Cache will expire in 1 hour", "details": {"timestamp": "2024-01-01T12:00:00Z"}}
+          ]
+        }
+      }`
+    },
+    {
+      description: "3-level nested business data structure",
+      prompt: `Process this 3-level nested business data structure: {
+        "businessData": {
+          "organization": {
+            "department": {
+              "team": {
+                "id": "team-001",
+                "name": "Engineering",
+                "lead": "Alice",
+                "members": [
+                  {"name": "Alice", "role": "Manager", "id": "emp-001"},
+                  {"name": "Bob", "role": "Developer", "id": "emp-002"},
+                  {"name": "Charlie", "role": "DevOps", "id": "emp-003"}
+                ],
+                "projects": {
+                  "active": [
+                    {"name": "Project Alpha", "status": "in-progress"},
+                    {"name": "Project Beta", "status": "testing"}
+                  ],
+                  "completed": ["Project Gamma", "Project Delta"]
+                }
+              }
+            }
+          },
+          "metrics": {
+            "performance": {
+              "sales": 1250000,
+              "users": 15000,
+              "errorRate": 0.02
+            }
+          }
         }
       }`
     }
@@ -105,13 +154,24 @@ Final line`
               console.log(`     ${idx + 1}. ${r.md5Hash} (${r.textLength} chars)`);
             });
           }
-          // Corrected logging for the unified data processing tool
+          // Corrected logging for the unified data processing tool with 3-level nesting
           if (tool.output.analysis && tool.output.structuralInfo) {
-            console.log(`   Data Analysis: ${tool.output.analysis.totalRecords || 0} records processed`);
             console.log(`   Data Type: ${tool.output.analysis.dataType}`);
             console.log(`   Nesting Depth: ${tool.output.structuralInfo.maxNestingDepth}`);
             console.log(`   Is Flat Structure: ${tool.output.structuralInfo.isFlatStructure}`);
+            console.log(`   Is Deeply Nested: ${tool.output.structuralInfo.isDeeplyNested}`);
             console.log(`   Data Hash: ${tool.output.structuralInfo.dataIntegrityHash}`);
+            
+            if (tool.output.analysis.organizationStructure) {
+              console.log(`   Team: ${tool.output.analysis.organizationStructure.teamName} (${tool.output.analysis.organizationStructure.memberCount} members)`);
+              console.log(`   Projects: ${tool.output.analysis.totalProjectsCount} total`);
+            }
+            
+            if (tool.output.analysis.dataStructure) {
+              console.log(`   API Items: ${tool.output.analysis.dataStructure.itemCount}`);
+              console.log(`   Page: ${tool.output.analysis.dataStructure.pagination.page} of ${tool.output.analysis.dataStructure.pagination.total}`);
+              console.log(`   Errors: ${tool.output.analysis.errorCount}`);
+            }
           }
         } else if (!tool.success) {
           console.log(`❌ ${tool.toolName} failed: ${tool.error}`);
