@@ -65,7 +65,7 @@ Always be helpful and accurate. Put all conversational responses inside the 'fin
   private allowedExtensions: string[] = ['.txt', '.md', '.json', '.js', '.ts', '.html', '.css', '.xml', '.csv', '.log', '.py', '.java', '.cpp', '.c', '.h'];
   private debugMode: boolean = false;
 
-  constructor(config: any, workingDir: string = process.cwd(), debugMode: boolean = false, formatMode: FormatMode = FormatMode.YAML_MODE) {
+  constructor(config: any, workingDir: string = process.cwd(), debugMode: boolean = false, formatMode: FormatMode = FormatMode.FUNCTION_CALLING) {
     const provider = new DefaultAIProvider(config);
     super(provider, {
       maxIterations: 10,

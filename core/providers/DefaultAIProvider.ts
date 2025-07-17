@@ -5,6 +5,12 @@ import { generateText, tool } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createMistral } from "@ai-sdk/mistral";
+import { createCohere } from "@ai-sdk/cohere";
+import { createGroq } from "@ai-sdk/groq";
+import { createFireworks } from "@ai-sdk/fireworks";
+import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createPerplexity } from "@ai-sdk/perplexity";
 import { z } from "zod";
 
 /**
@@ -31,7 +37,7 @@ export class DefaultAIProvider implements AIProvider {
 
         if (!config.service) {
             throw new AgentError(
-                'Service is required. Please specify one of: openai, google, anthropic',
+                'Service is required. Please specify one of: openai, google, anthropic, mistral, cohere, groq, fireworks, deepseek, perplexity',
                 AgentErrorType.INVALID_RESPONSE
             );
         }
@@ -45,8 +51,10 @@ export class DefaultAIProvider implements AIProvider {
      */
     async getCompletion(prompt: string, tools: FunctionCallingTool[] = [], options = {}): Promise<string> {
         try {
+
+
             const model = this.getModel();
-            
+
             // Convert tools to AI-SDK format
             const aiTools = tools.length > 0 ? tools.reduce((acc, functionTool) => {
                 acc[functionTool.function.name] = tool({
@@ -101,7 +109,7 @@ export class DefaultAIProvider implements AIProvider {
      */
     private getModel() {
         const modelName = this.config.model || this.getDefaultModel();
-        
+
         switch (this.config.service) {
             case 'openai':
                 const openai = createOpenAI({
@@ -118,6 +126,36 @@ export class DefaultAIProvider implements AIProvider {
                     apiKey: this.config.apiKey,
                 });
                 return anthropic(modelName);
+            case 'mistral':
+                const mistral = createMistral({
+                    apiKey: this.config.apiKey,
+                });
+                return mistral(modelName);
+            case 'cohere':
+                const cohere = createCohere({
+                    apiKey: this.config.apiKey,
+                });
+                return cohere(modelName);
+            case 'groq':
+                const groq = createGroq({
+                    apiKey: this.config.apiKey,
+                });
+                return groq(modelName);
+            case 'fireworks':
+                const fireworks = createFireworks({
+                    apiKey: this.config.apiKey,
+                });
+                return fireworks(modelName);
+            case 'deepseek':
+                const deepseek = createDeepSeek({
+                    apiKey: this.config.apiKey,
+                });
+                return deepseek(modelName);
+            case 'perplexity':
+                const perplexity = createPerplexity({
+                    apiKey: this.config.apiKey,
+                });
+                return perplexity(modelName);
             default:
                 throw new AgentError(
                     `Unsupported service: ${this.config.service}`,
@@ -137,6 +175,18 @@ export class DefaultAIProvider implements AIProvider {
                 return 'gemini-1.5-flash';
             case 'anthropic':
                 return 'claude-3-haiku-20240307';
+            case 'mistral':
+                return 'mistral-7b-instruct';
+            case 'cohere':
+                return 'command-r-plus';
+            case 'groq':
+                return 'llama3-8b-8192';
+            case 'fireworks':
+                return 'accounts/fireworks/models/llama-v3p1-8b-instruct';
+            case 'deepseek':
+                return 'deepseek-chat';
+            case 'perplexity':
+                return 'llama-3.1-sonar-small-128k-online';
             default:
                 return 'gpt-4o-mini';
         }
@@ -151,7 +201,7 @@ export class DefaultAIProvider implements AIProvider {
         }
 
         const zodObj: Record<string, z.ZodSchema> = {};
-        
+
         for (const [key, value] of Object.entries(jsonSchema.properties)) {
             const prop = value as any;
             let zodSchema: z.ZodSchema;
@@ -194,7 +244,7 @@ export class DefaultAIProvider implements AIProvider {
      * Get supported providers
      */
     static getSupportedProviders(): ServiceName[] {
-        return ['openai', 'google', 'anthropic'];
+        return ['openai', 'google', 'anthropic', 'mistral', 'cohere', 'groq', 'fireworks', 'deepseek', 'perplexity'];
     }
 
 
