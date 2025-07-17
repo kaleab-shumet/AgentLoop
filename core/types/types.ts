@@ -106,7 +106,7 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
 };
 
 // Essential types only
-export type ServiceName = 'openai' | 'google' | 'anthropic';
+export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'cohere' | 'groq' | 'fireworks' | 'deepseek' | 'perplexity';
 
 
 export interface FunctionCallingTool {
