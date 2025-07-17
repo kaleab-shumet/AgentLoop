@@ -1,13 +1,16 @@
 import { FunctionCallingTool, LLMConfig, ServiceName } from "../types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { AIProvider } from "./AIProvider";
-import LLM from "@themaximalist/llm.js";
+import { generateText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createAnthropic } from "@ai-sdk/anthropic";
 
 /**
- * DefaultAIProvider - Simple, stateless AI provider using llm.js
+ * DefaultAIProvider - Simple, stateless AI provider using AI-SDK
  * 
  * Features:
- * - Supports OpenAI, Google, Anthropic, Groq, Ollama
+ * - Supports OpenAI, Google, Anthropic via AI-SDK
  * - Stateless design - no internal state or chat history
  * - Simple text in, text out interface
  * - Manual configuration required
@@ -27,7 +30,7 @@ export class DefaultAIProvider implements AIProvider {
 
         if (!config.service) {
             throw new AgentError(
-                'Service is required. Please specify one of: openai, google, anthropic, groq, ollama',
+                'Service is required. Please specify one of: openai, google, anthropic',
                 AgentErrorType.INVALID_RESPONSE
             );
         }
@@ -41,49 +44,30 @@ export class DefaultAIProvider implements AIProvider {
      */
     async getCompletion(prompt: string, tools: FunctionCallingTool[] = [], options = {}): Promise<string> {
         try {
-
-            let newConfig = { ...this.config };
+            const model = this.getModel();
             
-            // Handle tools configuration based on service
-            if (tools.length > 0) {
-                if (this.config.service === 'google') {
-                    // For Google/Gemini, try the direct function_declarations format
-                    const functionDeclarations = tools.map(tool => ({
-                        name: tool.function.name,
-                        description: tool.function.description,
-                        parameters: tool.function.parameters
-                    }));
-                    
-                    // Set function_declarations directly for Google/Gemini
-                    (newConfig as any).function_declarations = functionDeclarations;
-                } else {
-                    // For other providers (OpenAI, etc.), use standard format
-                    newConfig.tools = tools;
-                }
+            // Convert tools to AI-SDK format
+            const aiTools = tools.length > 0 ? tools.reduce((acc, tool) => {
+                acc[tool.function.name] = {
+                    description: tool.function.description,
+                    parameters: tool.function.parameters
+                };
+                return acc;
+            }, {} as Record<string, any>) : undefined;
 
-            }
-            
-            const response = await LLM(prompt, newConfig);
+            const result = await generateText({
+                model,
+                prompt,
+                tools: aiTools,
+                temperature: this.config.temperature,
+                maxTokens: this.config.max_tokens,
+            });
 
-            // Handle streaming or string response safely
-            if (typeof response === 'string') {
-                return response;
-            } else if (typeof response === 'object' && response !== null && Symbol.asyncIterator in response) {
-                let result = '';
-                for await (const chunk of response as AsyncIterable<string>) {
-                    result += chunk;
-                }
-                return result;
-            } else {
-                throw new AgentError(
-                    'Unexpected response type from LLM provider.',
-                    AgentErrorType.INVALID_RESPONSE
-                );
-            }
+            return result.text;
 
         } catch (error: any) {
             // Enhanced error handling with provider-specific guidance
-            if (error.message?.includes('API key')) {
+            if (error.message?.includes('API key') || error.message?.includes('authentication')) {
                 throw new AgentError(
                     `API authentication failed for ${this.config.service}. Please check your API key.`,
                     AgentErrorType.INVALID_RESPONSE
@@ -112,10 +96,56 @@ export class DefaultAIProvider implements AIProvider {
     }
 
     /**
+     * Get model instance based on service and configuration
+     */
+    private getModel() {
+        const modelName = this.config.model || this.getDefaultModel();
+        
+        switch (this.config.service) {
+            case 'openai':
+                const openai = createOpenAI({
+                    apiKey: this.config.apiKey,
+                });
+                return openai(modelName);
+            case 'google':
+                const google = createGoogleGenerativeAI({
+                    apiKey: this.config.apiKey,
+                });
+                return google(modelName);
+            case 'anthropic':
+                const anthropic = createAnthropic({
+                    apiKey: this.config.apiKey,
+                });
+                return anthropic(modelName);
+            default:
+                throw new AgentError(
+                    `Unsupported service: ${this.config.service}`,
+                    AgentErrorType.INVALID_RESPONSE
+                );
+        }
+    }
+
+    /**
+     * Get default model for each service
+     */
+    private getDefaultModel(): string {
+        switch (this.config.service) {
+            case 'openai':
+                return 'gpt-4o-mini';
+            case 'google':
+                return 'gemini-1.5-flash';
+            case 'anthropic':
+                return 'claude-3-haiku-20240307';
+            default:
+                return 'gpt-4o-mini';
+        }
+    }
+
+    /**
      * Get supported providers
      */
     static getSupportedProviders(): ServiceName[] {
-        return ['openai', 'google', 'anthropic', 'groq', 'ollama'];
+        return ['openai', 'google', 'anthropic'];
     }
 
 
