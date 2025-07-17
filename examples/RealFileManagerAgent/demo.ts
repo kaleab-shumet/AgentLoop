@@ -47,7 +47,7 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
   const agent = new RealFileManagerAgent(config, demoWorkspace, debugMode);
 
   const testCases = [
-   /*  {
+    {
       description: "📋 List current directory contents",
       prompt: "List all files and directories in the current location with details"
     },
@@ -78,7 +78,7 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
     {
       description: "📝 Create some source files",
       prompt: "In the src directory, create an index.js file with a simple hello world console.log and a utils.js file with a helper function"
-    }, */
+    },
     {
       description: "📖 Read the package.json file",
       prompt: "Read and display the contents of the package.json file"
@@ -97,7 +97,7 @@ export async function runAutomatedDemo(debugMode: boolean = false): Promise<void
     },
     {
       description: "📊 List everything recursively",
-      prompt: "List all files and directories recursively with full details"
+      prompt: "List all files and directories with full details"
     }
   ];
 
