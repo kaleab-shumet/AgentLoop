@@ -1,6 +1,6 @@
 import { AgentLoop } from '../core/agents/AgentLoop';
 import { DefaultAIProvider } from '../core/providers/DefaultAIProvider';
-import { ExecutionMode } from '../core/types/types';
+import { FormatMode } from '../core/types/types';
 import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -29,7 +29,7 @@ When performing tasks:
     });
 
     super(provider, {
-      executionMode: ExecutionMode.YAML_MODE,
+      formatMode: FormatMode.YAML_MODE,
       maxIterations: 5,
       parallelExecution: true
     });
@@ -184,7 +184,7 @@ async function runYamlExample() {
 
   const agent = new YamlModeExampleAgent();
 
-  console.log('Current execution mode:', agent.getExecutionMode());
+  console.log('Current format mode:', agent.formatMode);
   console.log('Available tools:', agent.getAvailableTools());
   console.log('\\nThis example demonstrates how AgentLoop works with YAML_MODE:');
   console.log('- LLM responses are expected in YAML format');

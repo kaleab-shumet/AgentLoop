@@ -1,6 +1,6 @@
 import { AgentLoop } from '../../core/agents/AgentLoop';
 import { DefaultAIProvider } from '../../core/providers/DefaultAIProvider';
-import { ExecutionMode } from '../../core/types/types';
+import { FormatMode } from '../../core/types/types';
 import z from 'zod';
 import * as crypto from 'crypto';
 import 'dotenv/config';
@@ -17,7 +17,7 @@ export class MD5HashAgent extends AgentLoop {
     super(provider, {
       maxIterations: 5,
       parallelExecution: false,
-      executionMode: ExecutionMode.YAML_MODE
+      formatMode: FormatMode.YAML_MODE
     });
 
     this.setupHashTools();

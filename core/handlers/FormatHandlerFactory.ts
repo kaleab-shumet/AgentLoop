@@ -1,4 +1,4 @@
-import { ExecutionMode, FormatHandler } from "../types/types";
+import { FormatMode, FormatHandler } from "../types/types";
 import { FunctionCallingFormatHandler } from "./FunctionCallingFormatHandler";
 import { YamlFormatHandler } from "./YamlFormatHandler";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
@@ -7,23 +7,23 @@ import { AgentError, AgentErrorType } from "../utils/AgentError";
  * Factory for creating response handlers - function calling and YAML mode are supported
  */
 export class FormatHandlerFactory {
-  private static handlers: Map<ExecutionMode, FormatHandler> = new Map();
+  private static handlers: Map<FormatMode, FormatHandler> = new Map();
 
   /**
-   * Get response handler for the specified execution mode
+   * Get response handler for the specified format mode
    */
-  static getHandler(mode: ExecutionMode): FormatHandler {
+  static getHandler(mode: FormatMode): FormatHandler {
     if (!this.handlers.has(mode)) {
       switch (mode) {
-        case ExecutionMode.FUNCTION_CALLING:
+        case FormatMode.FUNCTION_CALLING:
           this.handlers.set(mode, new FunctionCallingFormatHandler());
           break;
-        case ExecutionMode.YAML_MODE:
+        case FormatMode.YAML_MODE:
           this.handlers.set(mode, new YamlFormatHandler());
           break;
         default:
           throw new AgentError(
-            `[ResponseHandlerFactory] Unsupported execution mode: ${mode}`,
+            `[ResponseHandlerFactory] Unsupported format mode: ${mode}`,
             AgentErrorType.INVALID_RESPONSE
           );
       }
@@ -32,9 +32,9 @@ export class FormatHandlerFactory {
   }
 
   /**
-   * Register a custom response handler for a specific execution mode
+   * Register a custom response handler for a specific format mode
    */
-  static registerHandler(mode: ExecutionMode, handler: FormatHandler): void {
+  static registerHandler(mode: FormatMode, handler: FormatHandler): void {
     this.handlers.set(mode, handler);
   }
 

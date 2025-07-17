@@ -1,10 +1,11 @@
 import { FunctionCallingTool, LLMConfig, ServiceName } from "../types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { AIProvider } from "./AIProvider";
-import { generateText } from "ai";
+import { generateText, tool } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
 
 /**
  * DefaultAIProvider - Simple, stateless AI provider using AI-SDK
@@ -47,11 +48,11 @@ export class DefaultAIProvider implements AIProvider {
             const model = this.getModel();
             
             // Convert tools to AI-SDK format
-            const aiTools = tools.length > 0 ? tools.reduce((acc, tool) => {
-                acc[tool.function.name] = {
-                    description: tool.function.description,
-                    parameters: tool.function.parameters
-                };
+            const aiTools = tools.length > 0 ? tools.reduce((acc, functionTool) => {
+                acc[functionTool.function.name] = tool({
+                    description: functionTool.function.description,
+                    parameters: this.convertToZodSchema(functionTool.function.parameters)
+                });
                 return acc;
             }, {} as Record<string, any>) : undefined;
 
@@ -139,6 +140,54 @@ export class DefaultAIProvider implements AIProvider {
             default:
                 return 'gpt-4o-mini';
         }
+    }
+
+    /**
+     * Convert JSON schema to Zod schema for AI-SDK compatibility
+     */
+    private convertToZodSchema(jsonSchema: any): z.ZodSchema {
+        if (!jsonSchema || !jsonSchema.properties) {
+            return z.object({});
+        }
+
+        const zodObj: Record<string, z.ZodSchema> = {};
+        
+        for (const [key, value] of Object.entries(jsonSchema.properties)) {
+            const prop = value as any;
+            let zodSchema: z.ZodSchema;
+
+            switch (prop.type) {
+                case 'string':
+                    zodSchema = z.string();
+                    break;
+                case 'number':
+                    zodSchema = z.number();
+                    break;
+                case 'boolean':
+                    zodSchema = z.boolean();
+                    break;
+                case 'array':
+                    zodSchema = z.array(z.any());
+                    break;
+                case 'object':
+                    zodSchema = z.object({});
+                    break;
+                default:
+                    zodSchema = z.any();
+            }
+
+            if (prop.description) {
+                zodSchema = zodSchema.describe(prop.description);
+            }
+
+            if (!jsonSchema.required?.includes(key)) {
+                zodSchema = zodSchema.optional();
+            }
+
+            zodObj[key] = zodSchema;
+        }
+
+        return z.object(zodObj);
     }
 
     /**

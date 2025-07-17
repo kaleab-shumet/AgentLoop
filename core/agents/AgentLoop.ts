@@ -5,7 +5,7 @@ import { LLMDataHandler } from '../handlers/LLMDataHandler';
 import { Logger } from '../utils/Logger';
 import {
   ChatEntry, ToolResult, Tool, PendingToolCall,
-  AgentRunInput, AgentRunOutput, ExecutionMode,
+  AgentRunInput, AgentRunOutput, FormatMode,
   FunctionCallingTool
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
@@ -42,7 +42,7 @@ export interface AgentLoopOptions {
   retryAttempts?: number;
   retryDelay?: number;
   hooks?: AgentLifecycleHooks;
-  executionMode?: ExecutionMode;
+  formatMode?: FormatMode;
   promptManager?: PromptManager;
   promptManagerConfig?: PromptManagerConfig;
   stagnationDetector?: StagnationDetectorConfig;
@@ -76,12 +76,12 @@ export abstract class AgentLoop {
   protected max_tokens?: number;
 
   private readonly FINAL_TOOL_NAME = 'final';
-  executionMode: ExecutionMode;
+  formatMode: FormatMode;
 
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.llmDataHandler = new LLMDataHandler(options.executionMode || ExecutionMode.FUNCTION_CALLING);
+    this.llmDataHandler = new LLMDataHandler(options.formatMode || FormatMode.FUNCTION_CALLING);
     this.logger = options.logger || console;
     this.maxIterations = options.maxIterations || 10;
     this.toolTimeoutMs = options.toolTimeoutMs || 30000;
@@ -89,13 +89,13 @@ export abstract class AgentLoop {
     this.retryDelay = options.retryDelay || 1000;
     this.parallelExecution = options.parallelExecution ?? true;
     this.hooks = options.hooks || {};
-    this.executionMode = options.executionMode || ExecutionMode.YAML_MODE;
+    this.formatMode = options.formatMode || FormatMode.FUNCTION_CALLING;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs || 2000;
 
     // Initialize prompt manager - will be properly set up in initializePromptManager
     this.promptManager = options.promptManager || new PromptManager(
       '',
-      options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.executionMode)
+      options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.formatMode)
     );
 
     // Initialize stagnation detector
@@ -105,8 +105,8 @@ export abstract class AgentLoop {
   /**
    * Get default prompt manager configuration based on execution mode
    */
-  private getDefaultPromptManagerConfig(executionMode?: ExecutionMode): PromptManagerConfig {
-    const responseFormat = executionMode === ExecutionMode.YAML_MODE
+  private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
+    const responseFormat = formatMode === FormatMode.YAML_MODE
       ? ResponseFormat.YAML_MODE
       : ResponseFormat.FUNCTION_CALLING;
 
@@ -155,7 +155,7 @@ export abstract class AgentLoop {
     // If promptManager was not provided in options or needs system prompt, create new one
     if (!this.promptManager || this.systemPrompt) {
       // Get the execution mode from the LLM data handler
-      const config = this.getDefaultPromptManagerConfig(this.executionMode);
+      const config = this.getDefaultPromptManagerConfig(this.formatMode);
       this.promptManager = new PromptManager(this.systemPrompt, config);
     }
   }
@@ -492,7 +492,7 @@ export abstract class AgentLoop {
         await this.hooks.onLLMStart?.(prompt);
 
         let functionTools: FunctionCallingTool[] | undefined = []
-        if (this.executionMode === ExecutionMode.FUNCTION_CALLING) {
+        if (this.formatMode === FormatMode.FUNCTION_CALLING) {
           const functionToolsString = this.llmDataHandler.formatToolDefinitions(this.tools)
           const functionDefinitions = JSON.parse(functionToolsString)
 

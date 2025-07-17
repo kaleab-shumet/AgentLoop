@@ -1,4 +1,4 @@
-import { AgentLoop, ExecutionMode, TurnState, ToolResult, AgentRunInput, AgentRunOutput } from '../../core';
+import { AgentLoop, FormatMode, TurnState, ToolResult, AgentRunInput, AgentRunOutput } from '../../core';
 import { DefaultAIProvider } from '../../core/providers/DefaultAIProvider';
 import { FileOperationHandlers, DirectoryHandlers, SearchHandlers, AdvancedFileHandlers } from './handlers';
 import { ConversationMemory } from './utils';
@@ -65,12 +65,12 @@ Always be helpful and accurate. Put all conversational responses inside the 'fin
   private allowedExtensions: string[] = ['.txt', '.md', '.json', '.js', '.ts', '.html', '.css', '.xml', '.csv', '.log', '.py', '.java', '.cpp', '.c', '.h'];
   private debugMode: boolean = false;
 
-  constructor(config: any, workingDir: string = process.cwd(), debugMode: boolean = false, executionMode: ExecutionMode = ExecutionMode.FUNCTION_CALLING) {
+  constructor(config: any, workingDir: string = process.cwd(), debugMode: boolean = false, formatMode: FormatMode = FormatMode.YAML_MODE) {
     const provider = new DefaultAIProvider(config);
     super(provider, {
       maxIterations: 10,
       parallelExecution: false, // Sequential for file operations safety
-      executionMode: executionMode
+      formatMode: formatMode
     });
 
     this.workingDirectory = path.resolve(workingDir);
@@ -105,6 +105,9 @@ Always be helpful and accurate. Put all conversational responses inside the 'fin
   }
 
   public async run(input: AgentRunInput): Promise<AgentRunOutput> {
+    console.log(`\n🔧 RealFileManagerAgent running in FormatMode: ${this.formatMode}`);
+    console.log(`📝 Processing user input: "${input.userPrompt}"`);
+    
     // Enhance input with conversation history if not provided
     const enhancedInput: AgentRunInput = {
       ...input,
@@ -361,4 +364,5 @@ Always be helpful and accurate. Put all conversational responses inside the 'fin
   public getAvailableTools(): string[] {
     return this.tools.map(tool => tool.name);
   }
+
 }

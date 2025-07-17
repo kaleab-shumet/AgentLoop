@@ -2,9 +2,9 @@ import z, { ZodTypeAny } from "zod";
 import { TurnState } from "../agents/TurnState";
 
 /**
- * Execution mode for the agent - function calling and YAML mode are supported
+ * Format mode for the agent - function calling and YAML mode are supported
  */
-export enum ExecutionMode {
+export enum FormatMode {
   FUNCTION_CALLING = "function_calling",
   YAML_MODE = "yaml_mode"
 }

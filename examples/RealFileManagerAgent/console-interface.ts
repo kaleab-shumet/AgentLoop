@@ -1,7 +1,7 @@
 import * as readline from 'readline';
 import * as path from 'path';
 import { RealFileManagerAgent } from './RealFileManagerAgent';
-import { ExecutionMode } from '../../core';
+import { FormatMode } from '../../core';
 
 /**
  * Interactive console interface for the RealFileManagerAgent
@@ -13,9 +13,9 @@ export class FileManagerConsole {
   private isRunning: boolean = false;
   private debugMode: boolean = false;
 
-  constructor(config: any, workingDir?: string, debugMode: boolean = false, executionMode: ExecutionMode = ExecutionMode.FUNCTION_CALLING) {
+  constructor(config: any, workingDir?: string, debugMode: boolean = false, formatMode: FormatMode = FormatMode.FUNCTION_CALLING) {
     this.debugMode = debugMode;
-    this.agent = new RealFileManagerAgent(config, workingDir, debugMode, executionMode);
+    this.agent = new RealFileManagerAgent(config, workingDir, debugMode, formatMode);
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -33,6 +33,7 @@ export class FileManagerConsole {
     }
     console.log('==================================================');
     console.log(`📍 Working Directory: ${this.agent.getWorkingDirectory()}`);
+    console.log(`🔧 Format Mode: ${this.agent.formatMode}`);
     console.log('💡 Type "help" for available commands or "exit" to quit');
     console.log('✨ You can use natural language commands like:');
     console.log('   - "hello" or "hi" for a friendly greeting');
@@ -367,7 +368,7 @@ export async function startFileManagerConsole(): Promise<void> {
     service: 'google' as const
   };
   
-  const executionMode = ExecutionMode.FUNCTION_CALLING;
+  const formatMode = FormatMode.FUNCTION_CALLING;
 
   // Parse command line arguments
   const args = process.argv.slice(2);
@@ -383,6 +384,7 @@ export async function startFileManagerConsole(): Promise<void> {
   }
 
   console.log('🏗️  Initializing File Manager Agent...');
+  console.log(`🔧 Using FormatMode: ${formatMode}`);
 
   try {
     // Ensure the working directory exists
@@ -392,7 +394,7 @@ export async function startFileManagerConsole(): Promise<void> {
       fs.mkdirSync(workingDir, { recursive: true });
     }
 
-    const console_interface = new FileManagerConsole(config, workingDir, debugMode, executionMode);
+    const console_interface = new FileManagerConsole(config, workingDir, debugMode, formatMode);
     await console_interface.start();
   } catch (error: any) {
     console.error('❌ Failed to start File Manager Agent:', error.message);
