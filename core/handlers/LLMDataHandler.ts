@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, ExecutionMode, FormatHandler } from "../types/types";
+import { Tool, PendingToolCall, FormatMode, FormatHandler } from "../types/types";
 import { FormatHandlerFactory } from "./FormatHandlerFactory";
 
 /**
@@ -8,8 +8,8 @@ import { FormatHandlerFactory } from "./FormatHandlerFactory";
 export class LLMDataHandler {
   private formatHandler: FormatHandler;
 
-  constructor(executionMode: ExecutionMode = ExecutionMode.FUNCTION_CALLING) {
-    this.formatHandler = FormatHandlerFactory.getHandler(executionMode);
+  constructor(formatMode: FormatMode = FormatMode.FUNCTION_CALLING) {
+    this.formatHandler = FormatHandlerFactory.getHandler(formatMode);
   }
 
   parseAndValidate(llmResponse: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
