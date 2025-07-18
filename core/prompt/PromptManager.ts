@@ -1,7 +1,6 @@
-import { Tool, ChatEntry, ToolResult } from '../types/types';
+import { Tool, ChatEntry, ToolResult, PromptOptions } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
-import { PromptTemplateInterface, PromptOptions } from './PromptTemplateInterface';
 import { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
 
 /**
@@ -9,7 +8,7 @@ import { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
  */
 export interface PromptManagerConfig {
   responseFormat?: FormatType;
-  customTemplate?: PromptTemplateInterface;
+  customTemplate?: DefaultPromptTemplate;
   promptOptions?: PromptOptions;
   errorRecoveryInstructions?: string;
 }
@@ -26,12 +25,12 @@ export interface PromptManagerConfig {
  * const manager = new PromptManager(systemPrompt, { responseFormat: ResponseFormat.FUNCTION_CALLING });
  * 
  * // Use custom template
- * class MyTemplate implements PromptTemplateInterface { ... }
+ * class MyTemplate extends DefaultPromptTemplate { ... }
  * const manager = new PromptManager(systemPrompt, { customTemplate: new MyTemplate() });
  */
 export class PromptManager {
   private systemPrompt: string;
-  private template: PromptTemplateInterface;
+  private template: DefaultPromptTemplate;
   private isCustomTemplate: boolean;
   private promptOptions: PromptOptions;
   private errorRecoveryInstructions?: string;
@@ -93,9 +92,9 @@ export class PromptManager {
   }
 
   /**
-   * Set a custom template (developer implements PromptTemplateInterface)
+   * Set a custom template
    */
-  setCustomTemplate(template: PromptTemplateInterface): PromptManager {
+  setCustomTemplate(template: DefaultPromptTemplate): PromptManager {
     this.template = template;
     this.isCustomTemplate = true;
     return this;
@@ -162,22 +161,10 @@ export class PromptManager {
   }
 
   /**
-   * Get format instructions from the current template
-   */
-  getFormatInstructions(finalToolName: string): string {
-    return this.template.getFormatInstructions(finalToolName);
-  }
-
-  /**
    * Get the response format as a string for compatibility with handlers
    */
   getResponseFormatString(): 'function' {
     return 'function';
-  }
-
-
-  buildFormatInstructions(finalToolName: string): string {
-    return this.getFormatInstructions(finalToolName);
   }
 
 
@@ -236,6 +223,4 @@ export class PromptManager {
   }
 }
 
-// Re-export types for convenience
-export { PromptTemplateInterface, PromptOptions } from './PromptTemplateInterface';
 export { DefaultPromptTemplate, FormatType as ResponseFormat } from './DefaultPromptTemplate';

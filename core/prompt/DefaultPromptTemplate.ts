@@ -1,5 +1,4 @@
-import { PromptTemplateInterface, PromptOptions } from './PromptTemplateInterface';
-import { ChatEntry, ToolResult } from '../types/types';
+import { ChatEntry, PromptOptions, ToolResult } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 /**
@@ -14,7 +13,7 @@ export enum FormatType {
  * Default prompt template that implements the standard AgentLoop prompt structure
  * Supports function calling and YAML response formats
  */
-export class DefaultPromptTemplate implements PromptTemplateInterface {
+export class DefaultPromptTemplate {
   private responseFormat: FormatType;
 
   constructor(responseFormat: FormatType = FormatType.FUNCTION_CALLING) {
@@ -64,7 +63,7 @@ export class DefaultPromptTemplate implements PromptTemplateInterface {
 - Batch multiple operations together whenever possible`;
   }
 
-  getFormatInstructions(finalToolName: string): string {
+  private getFormatInstructions(finalToolName: string): string {
     switch (this.responseFormat) {
       case FormatType.FUNCTION_CALLING:
         return this.getFunctionCallingFormatInstructions(finalToolName);

@@ -117,7 +117,7 @@ export class FunctionCallingFormatHandler implements FormatHandler {
   }
 
 
-  getFormatInstructions(finalToolName: string): string {
+  private getFormatInstructions(finalToolName: string): string {
     // Format instructions are now centralized in PromptTemplates
     // This handler just needs to specify that it uses function calling format
     // The actual instructions are provided by PromptManager

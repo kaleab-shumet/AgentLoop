@@ -149,3 +149,13 @@ export interface FormatHandler {
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[];
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string | FunctionCallingTool[];
 }
+
+export interface PromptOptions {
+  includeContext?: boolean;
+  includeConversationHistory?: boolean;
+  includeToolHistory?: boolean;
+  maxHistoryEntries?: number;
+  customSections?: Record<string, string>;
+  parallelExecution?: boolean;
+  includeExecutionStrategy?: boolean;
+}
