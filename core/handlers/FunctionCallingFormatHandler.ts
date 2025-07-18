@@ -19,7 +19,11 @@ export class FunctionCallingFormatHandler implements FormatHandler {
     }
 
     if (!functionCall || typeof functionCall.arguments !== 'string' || typeof functionCall.name !== 'string') {
-      throw new AgentError("Invalid function call format", AgentErrorType.INVALID_RESPONSE);
+      throw new AgentError(
+        "Invalid function call format - missing required fields or invalid types", 
+        AgentErrorType.INVALID_RESPONSE,
+        { functionCall, expectedFormat: { name: 'string', arguments: 'string' } }
+      );
     }
 
     const functionCallArgs: string = functionCall.arguments;
@@ -27,13 +31,17 @@ export class FunctionCallingFormatHandler implements FormatHandler {
 
     const correspondingTool = tools.find(t => t.name === functionName);
     if (!correspondingTool) {
-      throw new AgentError(`No tool found for function name: ${functionName}`, AgentErrorType.TOOL_NOT_FOUND);
+      throw new AgentError(
+        `No tool found for function name: ${functionName}`, 
+        AgentErrorType.TOOL_NOT_FOUND,
+        { toolName: functionName, availableTools: tools.map(t => t.name) }
+      );
     }
 
     const candidatePendingTool = this.parseWithRetry(functionCallArgs);
 
     if (typeof candidatePendingTool === "string") {
-      console.log("candidatePendingTool: ", candidatePendingTool)
+      // Remove debug logging - not needed in production
     }
 
     const result = correspondingTool.argsSchema.safeParse(candidatePendingTool);
@@ -41,7 +49,13 @@ export class FunctionCallingFormatHandler implements FormatHandler {
     if (!result.success) {
       throw new AgentError(
         `Invalid arguments for function "${functionName}": ${JSON.stringify(result.error.issues)}`,
-        AgentErrorType.INVALID_SCHEMA
+        AgentErrorType.INVALID_INPUT,
+        { 
+          toolName: functionName, 
+          validationErrors: result.error.issues,
+          receivedArgs: candidatePendingTool,
+          expectedSchema: correspondingTool.argsSchema
+        }
       );
     }
 
@@ -82,7 +96,11 @@ export class FunctionCallingFormatHandler implements FormatHandler {
 
     }
 
-    throw new AgentError("No function call json found in response", AgentErrorType.INVALID_RESPONSE);
+    throw new AgentError(
+      "No function call json found in response", 
+      AgentErrorType.INVALID_RESPONSE,
+      { response: response.substring(0, 500) + (response.length > 500 ? '...' : '') }
+    );
 
   }
 

@@ -498,7 +498,11 @@ export abstract class AgentLoop {
 
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
         if (typeof response !== "string") {
-          throw new AgentError("LLM provider returned undefined or non-string response.", AgentErrorType.UNKNOWN);
+          throw new AgentError(
+            "LLM provider returned undefined or non-string response.", 
+            AgentErrorType.INVALID_RESPONSE,
+            { responseType: typeof response, expectedType: 'string' }
+          );
         }
         await this.hooks.onLLMEnd?.(response);
         return response;
@@ -508,7 +512,11 @@ export abstract class AgentLoop {
         if (attempt < this.retryAttempts - 1) await this.sleep(this.retryDelay * Math.pow(2, attempt));
       }
     }
-    throw lastError ?? new AgentError("LLM call failed after all retry attempts.", AgentErrorType.UNKNOWN);
+    throw lastError ?? new AgentError(
+      "LLM call failed after all retry attempts.", 
+      AgentErrorType.UNKNOWN,
+      { retryAttempts: this.retryAttempts }
+    );
   }
 
 
@@ -595,9 +603,27 @@ export abstract class AgentLoop {
 
 
   private _addTool<T extends ZodTypeAny>(tool: Tool<T>): void {
-    if (this.tools.some(t => t.name === tool.name)) throw new AgentError(`A tool with the name '${tool.name}' is already defined.`, AgentErrorType.DUPLICATE_TOOL_NAME, { toolName: tool.name });
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tool.name)) throw new AgentError(`Tool name '${tool.name}' must start with a letter or underscore and contain only letters, numbers, and underscores.`, AgentErrorType.INVALID_TOOL_NAME, { toolName: tool.name });
-    if (!(tool.argsSchema instanceof ZodObject)) throw new AgentError(`The argsSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolName: tool.name });
+    if (this.tools.some(t => t.name === tool.name)) {
+      throw new AgentError(
+        `A tool with the name '${tool.name}' is already defined.`, 
+        AgentErrorType.DUPLICATE_TOOL_NAME, 
+        { toolName: tool.name, existingTools: this.tools.map(t => t.name) }
+      );
+    }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tool.name)) {
+      throw new AgentError(
+        `Tool name '${tool.name}' must start with a letter or underscore and contain only letters, numbers, and underscores.`, 
+        AgentErrorType.INVALID_TOOL_NAME, 
+        { toolName: tool.name, validPattern: '^[a-zA-Z_][a-zA-Z0-9_]*$' }
+      );
+    }
+    if (!(tool.argsSchema instanceof ZodObject)) {
+      throw new AgentError(
+        `The argsSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`, 
+        AgentErrorType.CONFIGURATION_ERROR, 
+        { toolName: tool.name, receivedSchemaType: typeof tool.argsSchema }
+      );
+    }
 
     // Set default timeout if not provided
     const toolWithDefaults = {

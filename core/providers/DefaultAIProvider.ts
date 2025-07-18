@@ -31,14 +31,16 @@ export class DefaultAIProvider implements AIProvider {
         if (!config.apiKey) {
             throw new AgentError(
                 'API key is required. Please provide apiKey in the configuration.',
-                AgentErrorType.INVALID_RESPONSE
+                AgentErrorType.CONFIGURATION_ERROR,
+                { config: { service: config.service, hasApiKey: false } }
             );
         }
 
         if (!config.service) {
             throw new AgentError(
                 'Service is required. Please specify one of: openai, google, anthropic, mistral, cohere, groq, fireworks, deepseek, perplexity',
-                AgentErrorType.INVALID_RESPONSE
+                AgentErrorType.CONFIGURATION_ERROR,
+                { supportedServices: DefaultAIProvider.getSupportedProviders() }
             );
         }
 
@@ -79,20 +81,23 @@ export class DefaultAIProvider implements AIProvider {
             if (error.message?.includes('API key') || error.message?.includes('authentication')) {
                 throw new AgentError(
                     `API authentication failed for ${this.config.service}. Please check your API key.`,
-                    AgentErrorType.INVALID_RESPONSE
+                    AgentErrorType.CONFIGURATION_ERROR,
+                    { service: this.config.service, hasApiKey: !!this.config.apiKey, originalError: error.message }
                 );
             }
 
             if (error.message?.includes('model')) {
                 throw new AgentError(
                     `Model "${this.config.model}" not available for ${this.config.service}. Try a different model.`,
-                    AgentErrorType.INVALID_RESPONSE
+                    AgentErrorType.CONFIGURATION_ERROR,
+                    { service: this.config.service, model: this.config.model, originalError: error.message }
                 );
             }
 
             throw new AgentError(
                 `AI provider error: ${error.message}`,
-                AgentErrorType.INVALID_RESPONSE
+                AgentErrorType.UNKNOWN,
+                { service: this.config.service, originalError: error.message, errorType: error.name }
             );
         }
     }
@@ -159,7 +164,8 @@ export class DefaultAIProvider implements AIProvider {
             default:
                 throw new AgentError(
                     `Unsupported service: ${this.config.service}`,
-                    AgentErrorType.INVALID_RESPONSE
+                    AgentErrorType.CONFIGURATION_ERROR,
+                    { service: this.config.service, supportedServices: DefaultAIProvider.getSupportedProviders() }
                 );
         }
     }
