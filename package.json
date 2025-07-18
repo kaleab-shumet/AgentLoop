@@ -11,6 +11,7 @@
     "test": "jest",
     "test:unit": "jest __tests__/unit",
     "test:integration": "jest __tests__/integration",
+    "test:gemini": "jest __tests__/integration/AgentLoop.gemini.test.ts",
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
     "clean": "rimraf dist",

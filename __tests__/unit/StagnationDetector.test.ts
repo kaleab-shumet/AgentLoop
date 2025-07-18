@@ -23,7 +23,7 @@ describe('StagnationDetector', () => {
 
   it('should return stagnation result with required properties', () => {
     const currentCall: PendingToolCall = {
-      name: 'test_tool',
+      toolName: 'test_tool',
       args: { input: 'test' }
     };
 
@@ -39,7 +39,7 @@ describe('StagnationDetector', () => {
 
   it('should not detect stagnation with empty history', () => {
     const currentCall: PendingToolCall = {
-      name: 'test_tool',
+      toolName: 'test_tool',
       args: { input: 'test' }
     };
 
@@ -50,7 +50,7 @@ describe('StagnationDetector', () => {
 
   it('should handle repeated tool calls', () => {
     const currentCall: PendingToolCall = {
-      name: 'same_tool',
+      toolName: 'same_tool',
       args: { input: 'test' }
     };
 
@@ -72,7 +72,7 @@ describe('StagnationDetector', () => {
 
   it('should handle error scenarios', () => {
     const currentCall: PendingToolCall = {
-      name: 'failing_tool',
+      toolName: 'failing_tool',
       args: { input: 'test' }
     };
 

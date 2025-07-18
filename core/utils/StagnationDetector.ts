@@ -103,7 +103,7 @@ export class StagnationDetector {
     
     // Add current call
     callHistory.push({
-      toolName: currentCall.name,
+      toolName: currentCall.toolName,
       argsHash: this.hashArgs(currentCall),
       timestamp: Date.now()
     });

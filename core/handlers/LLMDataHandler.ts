@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatMode, FormatHandler } from "../types/types";
+import { Tool, PendingToolCall, FormatMode, FormatHandler, FunctionCallingTool } from "../types/types";
 import { FormatHandlerFactory } from "./FormatHandlerFactory";
 
 /**
@@ -19,7 +19,6 @@ export class LLMDataHandler {
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]){
     return this.formatHandler.formatToolDefinitions(tools)
   }
-
 
 }
 

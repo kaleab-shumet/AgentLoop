@@ -70,7 +70,7 @@ describe('Basic Workflow Integration', () => {
 
   it('should handle stagnation detection workflow', () => {
     const currentCall = {
-      name: 'test_tool',
+      toolName: 'test_tool',
       args: { input: 'test' }
     };
 

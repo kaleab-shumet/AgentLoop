@@ -52,7 +52,7 @@ describe('LLMDataHandler', () => {
       ];
 
       const expectedResult: PendingToolCall[] = [
-        { name: 'test_tool', args: { input: 'test' } }
+        { toolName: 'test_tool', args: { input: 'test' } }
       ];
 
       (mockFormatHandler.parseResponse as jest.Mock).mockReturnValue(expectedResult);
@@ -93,8 +93,8 @@ describe('LLMDataHandler', () => {
       ];
 
       const expectedResult: PendingToolCall[] = [
-        { name: 'tool1', args: { input: 'test' } },
-        { name: 'tool2', args: { value: 42 } }
+        { toolName: 'tool1', args: { input: 'test' } },
+        { toolName: 'tool2', args: { value: 42 } }
       ];
 
       (mockFormatHandler.parseResponse as jest.Mock).mockReturnValue(expectedResult);

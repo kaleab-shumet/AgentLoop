@@ -15,11 +15,11 @@ describe('Types', () => {
 
   it('should create valid PendingToolCall', () => {
     const pendingCall: PendingToolCall = {
-      name: 'test_tool',
+      toolName: 'test_tool',
       args: { input: 'test input' }
     };
 
-    expect(pendingCall.name).toBe('test_tool');
+    expect(pendingCall.toolName).toBe('test_tool');
     expect(pendingCall.args.input).toBe('test input');
   });
 

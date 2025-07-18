@@ -341,9 +341,9 @@ export abstract class AgentLoop {
       // Sequential execution
       for (const call of toolCalls) {
         //this.logger.info(`[AgentLoop] Executing tool: ${call.name}`);
-        const tool = this.tools.find(t => t.name === call.name);
+        const tool = this.tools.find(t => t.name === call.toolName);
         if (!tool) {
-          const err = new AgentError(`Tool '${call.name}' not found.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.name });
+          const err = new AgentError(`Tool '${call.toolName}' not found.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.toolName });
           const result = this.createFailureResult(err);
           iterationResults.push(result);
           await this.hooks.onToolCallEnd?.(result);
@@ -363,8 +363,8 @@ export abstract class AgentLoop {
     const iterationResults: ToolResult[] = []; // Collect results for this iteration to return
 
     const validToolCalls = toolCalls.filter(call => {
-      if (!this.tools.some(t => t.name === call.name)) {
-        const error = new AgentError(`Tool '${call.name}' not found.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.name });
+      if (!this.tools.some(t => t.name === call.toolName)) {
+        const error = new AgentError(`Tool '${call.toolName}' not found.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.toolName });
         const result = this.createFailureResult(error);
         iterationResults.push(result);
         return false;
@@ -398,7 +398,7 @@ export abstract class AgentLoop {
     const execute = async (toolName: string): Promise<void> => {
       //this.logger.info(`[AgentLoop] Executing tool: ${toolName}`);
       const tool = this.tools.find(t => t.name === toolName)!;
-      const callsForTool = validToolCalls.filter(t => t.name === toolName);
+      const callsForTool = validToolCalls.filter(t => t.toolName === toolName);
 
       try {
         // Execute all calls for this specific tool concurrently
@@ -431,28 +431,28 @@ export abstract class AgentLoop {
   private buildDependencyGraph(toolCalls: PendingToolCall[]) {
     const pending = new Map<string, Set<string>>();
     const dependents = new Map<string, string[]>();
-    const callNames = new Set(toolCalls.map(c => c.name));
+    const callNames = new Set(toolCalls.map(c => c.toolName));
     toolCalls.forEach(call => {
-      const tool = this.tools.find(t => t.name === call.name)!;
+      const tool = this.tools.find(t => t.name === call.toolName)!;
       const validDeps = (tool.dependencies || []).filter(dep => callNames.has(dep));
-      pending.set(call.name, new Set(validDeps));
+      pending.set(call.toolName, new Set(validDeps));
       validDeps.forEach(dep => {
         if (!dependents.has(dep)) dependents.set(dep, []);
-        dependents.get(dep)!.push(call.name);
+        dependents.get(dep)!.push(call.toolName);
       });
     });
-    const ready = toolCalls.map(c => c.name).filter(name => (pending.get(name)?.size || 0) === 0);
+    const ready = toolCalls.map(c => c.toolName).filter(name => (pending.get(name)?.size || 0) === 0);
     return { pending, dependents, ready: [...new Set(ready)] };
   }
 
   private detectCircularDependencies(toolCalls: PendingToolCall[], toolList: Tool<ZodTypeAny>[]): string[] {
-    const callNames = new Set(toolCalls.map(call => call.name));
+    const callNames = new Set(toolCalls.map(call => call.toolName));
     const adjList = new Map<string, string[]>();
 
     for (const call of toolCalls) {
-      const tool = toolList.find(t => t.name === call.name);
+      const tool = toolList.find(t => t.name === call.toolName);
       const deps = (tool?.dependencies || []).filter(dep => callNames.has(dep));
-      adjList.set(call.name, deps);
+      adjList.set(call.toolName, deps);
     }
 
     const visited = new Set<string>();
@@ -476,8 +476,8 @@ export abstract class AgentLoop {
       return null;
     };
     for (const call of toolCalls) {
-      if (!visited.has(call.name)) {
-        const cycle = dfs(call.name, []);
+      if (!visited.has(call.toolName)) {
+        const cycle = dfs(call.toolName, []);
         if (cycle) return cycle;
       }
     }
@@ -491,22 +491,10 @@ export abstract class AgentLoop {
       try {
         await this.hooks.onLLMStart?.(prompt);
 
-        let functionTools: FunctionCallingTool[] | undefined = []
+        let functionTools: FunctionCallingTool[] | undefined = undefined;
         if (this.formatMode === FormatMode.FUNCTION_CALLING) {
-          const functionToolsString = this.llmDataHandler.formatToolDefinitions(this.tools)
-          const functionDefinitions = JSON.parse(functionToolsString)
-
-          functionTools = functionDefinitions.map((def: any) => ({
-            type: "function",
-            function: {
-              name: def.name,
-              description: def.description,
-              parameters: def.parameters
-            }
-          }))
+          functionTools = this.llmDataHandler.formatToolDefinitions(this.tools) as FunctionCallingTool[];
         }
-
-
 
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
         if (typeof response !== "string") {
@@ -527,7 +515,9 @@ export abstract class AgentLoop {
   private constructPrompt(userPrompt: string, context: Record<string, any>, lastError: AgentError | null, conversationHistory: ChatEntry[], toolCallHistory: ToolResult[], keepRetry: boolean): string {
     const toolDefinitions = this.llmDataHandler.formatToolDefinitions(this.tools);
 
+    const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
     // Build the prompt using the clean PromptManager API
+
     let prompt = this.promptManager.buildPrompt(
       userPrompt,
       context,
@@ -536,7 +526,7 @@ export abstract class AgentLoop {
       toolCallHistory,
       keepRetry,
       this.FINAL_TOOL_NAME,
-      toolDefinitions
+      toolDef
     );
 
     return prompt;
@@ -572,46 +562,6 @@ export abstract class AgentLoop {
     return summary.join('. ') + '.';
   }
 
-  /**
-   * Detects if the agent may have completed the user's request and should consider termination
-   */
-  private detectPotentialCompletion(toolCallHistory: ToolResult[], userPrompt: string): boolean {
-    if (toolCallHistory.length === 0) return false;
-
-    // Check for recent operations (both successful and failed)
-    const recentCalls = toolCallHistory.slice(-5); // Look at last 5 calls
-    const recentSuccessfulCalls = recentCalls.filter(call => call.success && call.toolName !== this.FINAL_TOOL_NAME);
-    const recentFailedCalls = recentCalls.filter(call => !call.success && call.toolName !== 'run-failure');
-
-    // Check for repeated tool calls (success or failure - both indicate potential loops)
-    const allToolNameCounts = new Map<string, number>();
-    recentCalls.forEach(call => {
-      if (call.toolName !== this.FINAL_TOOL_NAME && call.toolName !== 'run-failure') {
-        allToolNameCounts.set(call.toolName, (allToolNameCounts.get(call.toolName) || 0) + 1);
-      }
-    });
-
-    // If any tool was called more than twice recently (success or failure), suggest termination
-    const hasRepeatedCalls = Array.from(allToolNameCounts.values()).some(count => count > 2);
-
-    // If we have multiple failed attempts of the same tool, suggest termination
-    const failedToolCounts = new Map<string, number>();
-    recentFailedCalls.forEach(call => {
-      failedToolCounts.set(call.toolName, (failedToolCounts.get(call.toolName) || 0) + 1);
-    });
-    const hasRepeatedFailures = Array.from(failedToolCounts.values()).some(count => count >= 2);
-
-    // If we have multiple successful operations in recent history, suggest considering termination
-    const hasMultipleSuccesses = recentSuccessfulCalls.length >= 2;
-
-    // Check if we've used most available tools (indicating thorough work)
-    const usedToolNames = new Set(toolCallHistory.filter(call => call.success).map(call => call.toolName));
-    const availableToolNames = this.tools.filter(tool => tool.name !== this.FINAL_TOOL_NAME).map(tool => tool.name);
-    const toolUsageRatio = usedToolNames.size / Math.max(availableToolNames.length, 1);
-    const hasUsedMostTools = toolUsageRatio > 0.6; // Used more than 60% of tools
-
-    return hasRepeatedCalls || hasRepeatedFailures || (hasMultipleSuccesses && hasUsedMostTools);
-  }
 
   protected sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
