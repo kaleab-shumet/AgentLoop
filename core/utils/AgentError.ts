@@ -37,15 +37,27 @@ export enum AgentErrorType {
     public getUserMessage(): string {
       switch (this.type) {
         case AgentErrorType.TOOL_NOT_FOUND:
-          return `The requested tool '${this.context.toolName}' is not available.`;
+          return `The requested tool '${this.context.toolName}' is not available. Available tools: ${this.context.availableTools?.join(', ') || 'none'}`;
         case AgentErrorType.TOOL_TIMEOUT_ERROR:
-          return `The tool '${this.context.toolName}' took too long to respond.`;
+          return `The tool '${this.context.toolName}' took too long to respond (timeout: ${this.context.timeout}ms).`;
         case AgentErrorType.MAX_ITERATIONS_REACHED:
           return 'The agent reached its maximum number of iterations without completing the task.';
         case AgentErrorType.STAGNATION_ERROR:
           return 'The agent got stuck in a loop and couldn\'t make progress.';
         case AgentErrorType.CONFIGURATION_ERROR:
-          return 'There was a configuration error. Please check your agent setup.';
+          return `Configuration error: ${this.message}${this.context.service ? ` (Service: ${this.context.service})` : ''}`;
+        case AgentErrorType.INVALID_INPUT:
+          return `Invalid input provided for tool '${this.context.toolName}': ${this.message}`;
+        case AgentErrorType.INVALID_RESPONSE:
+          return `Invalid response format: ${this.message}${this.context.responseType ? ` (received: ${this.context.responseType})` : ''}`;
+        case AgentErrorType.DUPLICATE_TOOL_NAME:
+          return `Tool name '${this.context.toolName}' is already in use.`;
+        case AgentErrorType.INVALID_TOOL_NAME:
+          return `Invalid tool name '${this.context.toolName}': ${this.message}`;
+        case AgentErrorType.MALFORMED_TOOL_FOUND:
+          return `Malformed tool found${this.context.toolName ? ` '${this.context.toolName}'` : ''}: ${this.message}`;
+        case AgentErrorType.INVALID_SCHEMA:
+          return `Invalid schema${this.context.toolName ? ` for tool '${this.context.toolName}'` : ''}: ${this.message}`;
         default:
           return this.message;
       }

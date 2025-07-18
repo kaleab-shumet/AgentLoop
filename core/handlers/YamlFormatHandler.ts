@@ -33,7 +33,11 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
   // Look for YAML blocks in the response
   const yamlMatch = response.match(/```ya?ml\s*\n([\s\S]+?)\n?```/);
   if (!yamlMatch) {
-    throw new AgentError("No YAML block found in response", AgentErrorType.INVALID_RESPONSE);
+    throw new AgentError(
+      "No YAML block found in response", 
+      AgentErrorType.INVALID_RESPONSE,
+      { response: response.substring(0, 500) + (response.length > 500 ? '...' : '') }
+    );
   }
 
   const yamlContent = yamlMatch[1].trim();
@@ -57,18 +61,30 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
       // Single tool call object
       toolCalls = [parsedYaml];
     } else {
-      throw new AgentError("Invalid YAML structure for tool calls", AgentErrorType.INVALID_RESPONSE);
+      throw new AgentError(
+        "Invalid YAML structure for tool calls - expected array of tools or single tool with 'name' field", 
+        AgentErrorType.INVALID_RESPONSE,
+        { parsedYaml, expectedStructure: 'array of tools or single tool with name field' }
+      );
     }
 
     const pendingToolCalls: PendingToolCall[] = toolCalls.map((toolCall: any) => {
       if (!toolCall.name || typeof toolCall.name !== 'string') {
-        throw new AgentError("Tool call missing required 'name' field", AgentErrorType.INVALID_RESPONSE);
+        throw new AgentError(
+          "Tool call missing required 'name' field", 
+          AgentErrorType.INVALID_RESPONSE,
+          { toolCall, expectedFormat: 'object with string name field' }
+        );
       }
 
       const toolName = toolCall.name;
       const correspondingTool = tools.find(t => t.name === toolName);
       if (!correspondingTool) {
-        throw new AgentError(`No tool found for name: ${toolName}`, AgentErrorType.TOOL_NOT_FOUND);
+        throw new AgentError(
+          `No tool found for name: ${toolName}`, 
+          AgentErrorType.TOOL_NOT_FOUND,
+          { toolName, availableTools: tools.map(t => t.name) }
+        );
       }
 
       // Extract arguments (everything except 'name')
@@ -84,7 +100,13 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
       if (!result.success) {
         throw new AgentError(
           `Invalid arguments for tool "${toolName}": ${JSON.stringify(result.error.issues)}`,
-          AgentErrorType.INVALID_SCHEMA
+          AgentErrorType.INVALID_INPUT,
+          { 
+            toolName, 
+            validationErrors: result.error.issues,
+            receivedArgs: toolArgs,
+            expectedSchema: correspondingTool.argsSchema
+          }
         );
       }
 
@@ -102,7 +124,11 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
     }
     throw new AgentError(
       `Failed to parse YAML response: ${error instanceof Error ? error.message : String(error)}`,
-      AgentErrorType.INVALID_RESPONSE
+      AgentErrorType.INVALID_RESPONSE,
+      { 
+        originalError: error instanceof Error ? error.message : String(error),
+        yamlContent: yamlContent.substring(0, 500) + (yamlContent.length > 500 ? '...' : '')
+      }
     );
   }
 }

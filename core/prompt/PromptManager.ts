@@ -1,5 +1,5 @@
 import { Tool, ChatEntry, ToolResult } from '../types/types';
-import { AgentError } from '../utils/AgentError';
+import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
 import { PromptTemplateInterface, PromptOptions } from './PromptTemplateInterface';
 import { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
@@ -82,7 +82,11 @@ export class PromptManager {
    */
   setResponseFormat(format: FormatType): PromptManager {
     if (this.isCustomTemplate) {
-      throw new Error('Cannot set response format when using a custom template. Custom templates manage their own format.');
+      throw new AgentError(
+        'Cannot set response format when using a custom template. Custom templates manage their own format.',
+        AgentErrorType.CONFIGURATION_ERROR,
+        { currentTemplate: 'custom', attemptedFormat: format }
+      );
     }
     (this.template as DefaultPromptTemplate).setResponseFormat(format);
     return this;
@@ -211,7 +215,11 @@ export class PromptManager {
 
   setTemplateType(type: string): PromptManager {
     if (type === 'custom') {
-      throw new Error('Use setCustomTemplate() to set a custom template');
+      throw new AgentError(
+        'Use setCustomTemplate() to set a custom template',
+        AgentErrorType.CONFIGURATION_ERROR,
+        { attemptedType: type, correctMethod: 'setCustomTemplate()' }
+      );
     }
     
     if (this.isCustomTemplate) {
