@@ -51,7 +51,7 @@ export interface ToolResult {
  * but has not yet been executed.
  */
 export interface PendingToolCall {
-  name: string;
+  toolName: string;
   [key: string]: any;
 }
 
@@ -147,5 +147,5 @@ export interface TypedPaths {
  */
 export interface FormatHandler {
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[];
-  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string;
+  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string | FunctionCallingTool[];
 }

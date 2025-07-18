@@ -55,11 +55,11 @@ export class DefaultAIProvider implements AIProvider {
 
             const model = this.getModel();
 
-            // Convert tools to AI-SDK format
+            // Convert tools to AI-SDK format using the Zod schemas directly
             const aiTools = tools.length > 0 ? tools.reduce((acc, functionTool) => {
                 acc[functionTool.function.name] = tool({
                     description: functionTool.function.description,
-                    parameters: this.convertToZodSchema(functionTool.function.parameters)
+                    parameters: functionTool.function.parameters // Use Zod schema directly
                 });
                 return acc;
             }, {} as Record<string, any>) : undefined;
@@ -208,7 +208,11 @@ export class DefaultAIProvider implements AIProvider {
 
             switch (prop.type) {
                 case 'string':
-                    zodSchema = z.string();
+                    if (prop.enum) {
+                        zodSchema = z.enum(prop.enum);
+                    } else {
+                        zodSchema = z.string();
+                    }
                     break;
                 case 'number':
                     zodSchema = z.number();
@@ -217,7 +221,29 @@ export class DefaultAIProvider implements AIProvider {
                     zodSchema = z.boolean();
                     break;
                 case 'array':
-                    zodSchema = z.array(z.any());
+                    // Handle array items properly
+                    if (prop.items) {
+                        let itemSchema: z.ZodSchema;
+                        switch (prop.items.type) {
+                            case 'string':
+                                itemSchema = z.string();
+                                break;
+                            case 'number':
+                                itemSchema = z.number();
+                                break;
+                            case 'boolean':
+                                itemSchema = z.boolean();
+                                break;
+                            case 'object':
+                                itemSchema = z.object({});
+                                break;
+                            default:
+                                itemSchema = z.any();
+                        }
+                        zodSchema = z.array(itemSchema);
+                    } else {
+                        zodSchema = z.array(z.any());
+                    }
                     break;
                 case 'object':
                     zodSchema = z.object({});

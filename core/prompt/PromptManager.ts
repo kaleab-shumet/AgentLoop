@@ -176,9 +176,6 @@ export class PromptManager {
     return this.getFormatInstructions(finalToolName);
   }
 
-  buildToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
-    return tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n');
-  }
 
   setConfig(config: any): void {
     // Convert legacy config to new options format

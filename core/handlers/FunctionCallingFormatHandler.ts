@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatHandler, FunctionCall, FunctionDefinition } from "../types/types";
+import { Tool, PendingToolCall, FormatHandler, FunctionCall, FunctionDefinition, FunctionCallingTool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from 'zod-to-json-schema';
 
@@ -45,8 +45,7 @@ export class FunctionCallingFormatHandler implements FormatHandler {
       );
     }
 
-    candidatePendingTool.name = functionName;
-
+    candidatePendingTool.toolName = functionName;
 
     return candidatePendingTool;
 
@@ -87,40 +86,18 @@ export class FunctionCallingFormatHandler implements FormatHandler {
 
   }
 
-  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
-    const functionDefinitions: FunctionDefinition[] = tools.map(tool => {
-      const jsonSchema = zodToJsonSchema(tool.argsSchema, tool.name) as any;
-
-      // Extract the actual schema from definitions if using $ref structure
-      let actualSchema = jsonSchema;
-      if (jsonSchema.$ref && jsonSchema.definitions && jsonSchema.definitions[tool.name]) {
-        actualSchema = jsonSchema.definitions[tool.name];
-      }
-
-      // Remove the 'name' property from parameters since it's handled separately
-      const properties = { ...actualSchema.properties || {} };
-      if (properties.name) {
-        delete properties.name;
-      }
-
-      let required = actualSchema.required || [];
-      if (Array.isArray(required)) {
-        required = required.filter((req: string) => req !== 'name');
-      }
-
-      return {
+  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): FunctionCallingTool[] {
+    return tools.map(tool => ({
+      type: "function",
+      function: {
         name: tool.name,
         description: tool.description,
-        parameters: {
-          type: "object",
-          properties: properties,
-          required: required
-        }
-      };
-    });
+        parameters: tool.argsSchema // Keep original Zod schema for direct use
+      }
+    }));
 
-    return JSON.stringify(functionDefinitions, null, 2);
   }
+
 
   getFormatInstructions(finalToolName: string): string {
     // Format instructions are now centralized in PromptTemplates

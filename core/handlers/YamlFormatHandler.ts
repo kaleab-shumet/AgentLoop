@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatHandler } from "../types/types";
+import { Tool, PendingToolCall, FormatHandler, FunctionCallingTool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { parse as parseYaml } from "yaml";
 import zodToJsonSchema from "zod-to-json-schema";
@@ -89,7 +89,7 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
       }
 
       return {
-        name: toolName,
+        toolName: toolName,
         ...toolArgs
       };
     });
