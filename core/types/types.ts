@@ -30,21 +30,46 @@ export interface FunctionDefinition {
   };
 }
 
-/**
- * Represents the result of a single tool execution.
- * This is stored in the agent's history.
- */
-export interface ToolResult {
+// User prompt input to the agent
+export type UserPrompt = {
+  taskId: string;
+  type: "user_prompt";
+  timestamp: string;
+  context: string;
+};
+
+// Response message from the agent
+export type AgentResponse = {
+  taskId: string;
+  type: "agent_response";
+  timestamp: string;
+  context: any;
+};
+
+// Context structure used inside tool_call events
+export type ToolCallContext = {
   toolName: string;
   success: boolean;
-  // 'output' for successful results, 'error' for failures.
-  output?: any;
-  [key: string]: any;
-
-
+  [key: string]: any
   error?: string;
-  errorContext?: Record<string, any>;
-}
+};
+
+// Tool call event (uses ToolCallContext)
+export type ToolCall = {
+  taskId: string;
+  type: "tool_call";
+  timestamp: string;
+  context: ToolCallContext;
+};
+
+// Union of all possible event types
+export type Interaction =
+  | UserPrompt
+  | ToolCall
+  | AgentResponse;
+
+
+
 
 /**
  * Represents a tool call that has been parsed from the LLM's response
@@ -57,8 +82,7 @@ export interface PendingToolCall {
 
 export interface AgentRunInput {
   userPrompt: string;
-  conversationHistory: ChatEntry[];
-  toolCallHistory: ToolResult[];
+  interactionHistory: [];
   context?: Record<string, any>;
 }
 
@@ -68,9 +92,9 @@ export interface AgentRunInput {
  */
 export interface AgentRunOutput {
   /** The final tool call history after this turn. */
-  toolCallHistory: ToolResult[];
+  interactionList: Interaction[];
   /** The final answer from the 'final' tool, if it was called. */
-  finalAnswer?: ToolResult;
+  finalAnswer?: AgentResponse;
 }
 
 /**
@@ -102,7 +126,7 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   argsSchema: T;
   /** The handler function that executes the tool's logic. */
   dependencies?: string[];
-  handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolResult | Promise<ToolResult>;
+  handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolCallContext | Promise<ToolCallContext>;
 };
 
 // Essential types only
@@ -128,7 +152,7 @@ export interface LLMConfig {
   max_tokens?: number;
 
   tools?: FunctionCallingTool[];
-  
+
 
 
 }

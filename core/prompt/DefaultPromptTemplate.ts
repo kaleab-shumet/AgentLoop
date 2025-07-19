@@ -1,4 +1,4 @@
-import { ChatEntry, PromptOptions, ToolResult } from '../types/types';
+import { Interaction, ChatEntry, PromptOptions } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 /**
@@ -218,11 +218,11 @@ ${this.getSharedBatchingRules()}`;
 
   buildPrompt(
     systemPrompt: string,
-    userPrompt: string,
+    userPrompt: string,        
     context: Record<string, any>,
+    oldAgentEventHistory: Interaction[],
+    agentEventList: Interaction[],
     lastError: AgentError | null,
-    conversationHistory: ChatEntry[],
-    toolCallHistory: ToolResult[],
     keepRetry: boolean,
     finalToolName: string,
     toolDefinitions: string,
@@ -251,13 +251,13 @@ ${this.getSharedBatchingRules()}`;
     }
 
     // 5. Conversation history
-    if (options.includeConversationHistory && conversationHistory.length > 0) {
-      sections.push(this.buildConversationSection(conversationHistory, options));
+    if (options.includeConversationHistory && oldAgentEventHistory.length > 0) {
+      sections.push(this.buildAgentEventHistory(oldAgentEventHistory, options));
     }
 
     // 6. Tool call history
     if (options.includeToolHistory) {
-      sections.push(this.buildToolHistorySection(toolCallHistory, options));
+      sections.push(this.buildAgentEventList(agentEventList));
     }
 
     // 7. Error recovery
@@ -290,33 +290,19 @@ ${this.getSharedBatchingRules()}`;
     return `# CONTEXT\n${contextLog}`;
   }
 
-  buildConversationSection(conversationHistory: ChatEntry[], options: PromptOptions): string {
-    return `# CONVERSATION HISTORY\n${JSON.stringify(conversationHistory, null, 2)}`;
+  buildAgentEventHistory(agentEventHistory: Interaction[], options: PromptOptions): string {
+    const entries = options.maxHistoryEntries
+      ? agentEventHistory.slice(-options.maxHistoryEntries)
+      : agentEventHistory;
+
+    return `# OLD Tasks Interaction HISTORY\n${JSON.stringify(entries, null, 2)}`;
   }
 
-  buildToolHistorySection(toolCallHistory: ToolResult[], options: PromptOptions): string {
-    const entries = options.maxHistoryEntries
-      ? toolCallHistory.slice(-options.maxHistoryEntries)
-      : toolCallHistory;
+  buildAgentEventList(agentEventList: Interaction[]): string {
 
-    if (entries.length === 0) {
-      return '# TOOL CALL HISTORY\nNo tool calls have been made yet.';
-    }
+    const historyLog = JSON.stringify(agentEventList, null, 2);
 
-    const successfulTools = entries.filter(entry => entry.success);
-    const failedTools = entries.filter(entry => !entry.success);
-
-    let statusSummary = '';
-    if (successfulTools.length > 0) {
-      statusSummary += `\n**SUCCESSFUL OPERATIONS (${successfulTools.length}):** ${successfulTools.map(t => t.toolName).join(', ')}`;
-    }
-    if (failedTools.length > 0) {
-      statusSummary += `\n**FAILED OPERATIONS (${failedTools.length}):** ${failedTools.map(t => t.toolName).join(', ')}`;
-    }
-
-    const historyLog = JSON.stringify(entries, null, 2);
-
-    return `# TOOL CALL HISTORY${statusSummary}\n\n${historyLog}`;
+    return `# Current Task Agent Interaction List:\n${historyLog}`;
   }
 
   buildErrorRecoverySection(

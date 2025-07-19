@@ -1,4 +1,4 @@
-import { Tool, ChatEntry, ToolResult, PromptOptions } from '../types/types';
+import { PromptOptions, Interaction } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
 import { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
@@ -137,10 +137,10 @@ export class PromptManager {
    */
   buildPrompt(
     userPrompt: string,
-    context: Record<string, any>,
+    context: Record<string, any>,    
+    oldAgentEventHistory: Interaction[],
+    agentEventList: Interaction[],
     lastError: AgentError | null,
-    conversationHistory: ChatEntry[],
-    toolCallHistory: ToolResult[],
     keepRetry: boolean,
     finalToolName: string,
     toolDefinitions: string
@@ -149,9 +149,11 @@ export class PromptManager {
       this.systemPrompt,
       userPrompt,
       context,
+      
+      oldAgentEventHistory,
+      agentEventList,
+
       lastError,
-      conversationHistory,
-      toolCallHistory,
       keepRetry,
       finalToolName,
       toolDefinitions,
