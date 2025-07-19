@@ -210,7 +210,7 @@ export abstract class AgentLoop {
           // Check for stagnation before executing tools
           if (parsedToolCalls.length > 0) {
             for (const call of parsedToolCalls) {
-              const stagnationResult = this.stagnationDetector.isStagnant(call, oldTasksInteractionHistory, i + 1);
+              const stagnationResult = this.stagnationDetector.isStagnant(call, [...oldTasksInteractionHistory, ...currentTaskInteractionList], i + 1);
               if (stagnationResult.isStagnant && stagnationResult.confidence > 0.7) {
                 this.logger.warn(`[AgentLoop] Stagnation detected (${stagnationResult.confidence.toFixed(2)}): ${stagnationResult.reason}`);
 
@@ -222,13 +222,14 @@ export abstract class AgentLoop {
                   timestamp: Date.now().toString(),
                   type: 'tool_call',
                   context: {
-                    //stagnationReason: stagnationResult.reason,
-                    toolName: call.toolName,
+                    stagnationReason: stagnationResult.reason,
+                    toolName: 'stagnation-detector',
                     error: `Stagnation detected: ${stagnationResult.reason}. ${stagnationResult.confidence >= 0.90 ? 'Forcing termination.' : 'Consider using the final tool.'}`,
                     success: false,
                     confidence: stagnationResult.confidence,
                     iteration: i + 1,
-                    diagnostics: this.stagnationDetector.getDiagnostics(currentTaskInteractionList)
+                    diagnostics: this.stagnationDetector.getDiagnostics(currentTaskInteractionList),
+                    originalToolName: call.toolName
                   },
                 };
                 currentTaskInteractionList.push(stagnationWarning);
@@ -243,7 +244,9 @@ export abstract class AgentLoop {
                     context: {
                       success: true,
                       toolName: this.FINAL_TOOL_NAME,
-                      value: `Task terminated due to critical stagnation: ${stagnationResult.reason}. The agent was repeating the same actions without making progress. Based on the work completed so far: ${this.summarizeProgress(oldTasksInteractionHistory)}`
+                      output: {
+                        value: `Task terminated due to critical stagnation: ${stagnationResult.reason}. The agent was repeating the same actions without making progress. Based on the work completed so far: ${this.summarizeProgress(oldTasksInteractionHistory)}`
+                      }
                     },
                     type: 'agent_response'
                   };
@@ -270,7 +273,7 @@ export abstract class AgentLoop {
           // executeToolCalls now directly adds results to toolCallHistory
           const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
-          oldTasksInteractionHistory.push(...iterationResults)
+          currentTaskInteractionList.push(...iterationResults)
 
           const failedTools = iterationResults.filter(r => !r.context.success);
           if (failedTools.length > 0) {
@@ -292,7 +295,7 @@ export abstract class AgentLoop {
 
             await this.hooks.onFinalAnswer?.(agentResponse);
             //this.logger.info(`[AgentLoop] Run complete. Final answer: ${finalResult.output?.value?.substring(0, 120)}`);
-            const output: AgentRunOutput = { interactionList: oldTasksInteractionHistory, finalAnswer: agentResponse };
+            const output: AgentRunOutput = { interactionList: currentTaskInteractionList, finalAnswer: agentResponse };
             await this.hooks.onRunEnd?.(output);
             return output;
           }
@@ -360,7 +363,20 @@ export abstract class AgentLoop {
         }
       };
       currentTaskInteractionList.push(failureResult); // Ensure final failure is logged
-      const output: AgentRunOutput = { interactionList: currentTaskInteractionList, finalAnswer: undefined };
+      
+      // Create a final answer for error cases
+      const finalAnswer: AgentResponse = {
+        taskId,
+        type: "agent_response",
+        timestamp: Date.now().toString(),
+        context: {
+          success: false,
+          error: agentError.getUserMessage(),
+          errorType: agentError.type
+        }
+      };
+      
+      const output: AgentRunOutput = { interactionList: currentTaskInteractionList, finalAnswer };
       await this.hooks.onRunEnd?.(output);
       return output;
     }
@@ -505,7 +521,7 @@ export abstract class AgentLoop {
       });
     });
     const ready = toolCalls.map(c => c.toolName).filter(name => (pending.get(name)?.size || 0) === 0);
-    return { pending, dependents, ready: [...new Set(ready)] };
+    return { pending, dependents, ready: Array.from(new Set(ready)) };
   }
 
   private detectCircularDependencies(toolCalls: PendingToolCall[], toolList: Tool<ZodTypeAny>[]): string[] {
@@ -747,7 +763,9 @@ export abstract class AgentLoop {
       toolName: toolName,
       success: false,
       error: error.getUserMessage(),
-      context: { errorType: error.type, originalError: error.message, ...error.context }
+      errorType: error.type,
+      originalError: error.message,
+      ...error.context
     };
   }
 }

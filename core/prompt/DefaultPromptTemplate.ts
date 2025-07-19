@@ -46,12 +46,12 @@ export class DefaultPromptTemplate {
 5. If you get stuck in a loop or cannot make progress, use '${finalToolName}' to explain the issue.
 
 **WORKFLOW:**
-1. Carefully read the user's request and the tool call history.
-2. Determine what the next logical step is to answer the request.
-3. If the task is complete, call the '${finalToolName}' tool with a summary of the results.
+1. Carefully read the user's request, old interaction history and new interaction histroy.
+2. Determine what the next logical step is to answer the user request.
+3. If you have executed tool and have enough data to answer the user task, call the '${finalToolName}' tool with a summary of the results.
 4. If the task is NOT complete, call the necessary tool(s) to make progress. Do not call '${finalToolName}'.
 
-**WARNING:** Repeating successful operations will trigger stagnation detection!`;
+**WARNING:** Repeating same exact tool over and over continously will activate the stagnation detector`;
   }
 
   /**
@@ -143,6 +143,7 @@ ${this.getSharedBatchingRules()}
 - If the string contains quotes, backslashes, or newlines, escape all special characters properly inside the quotes.
 - Never wrap arbitrary text in double quotes without escaping — this causes invalid YAML.
 - To include multi-line text (e.g. a message or CODE ), use the | block scalar style. This preserves newlines and formatting exactly as written.
+- if you use the | block scalar style u do not need to escape characters
 - Parameter names are case-sensitive and must match schema exactly
 - Use proper YAML indentation (2 spaces)
 - Arrays use YAML list syntax with dashes
@@ -158,7 +159,7 @@ tool_calls:
         This is a multi-line string.
         It preserves all line breaks,
         spaces, and formatting exactly.
-        you can write a code here.
+        You can write a code here.
 
 
 

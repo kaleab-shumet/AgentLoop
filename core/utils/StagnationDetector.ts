@@ -1,6 +1,6 @@
 // StagnationDetector.ts
-import { ToolResult, PendingToolCall } from '../types/types';
-import crypto from 'crypto';
+import { Interaction, PendingToolCall } from '../types/types';
+import * as crypto from 'crypto';
 
 interface StagnationPattern {
   pattern: string;
@@ -49,7 +49,7 @@ export class StagnationDetector {
    */
   isStagnant(
     currentCall: PendingToolCall,
-    toolCallHistory: ToolResult[],
+    toolCallHistory: Interaction[],
     currentIteration: number
   ): {
     isStagnant: boolean;
@@ -85,15 +85,15 @@ export class StagnationDetector {
   /**
    * Build call signature history from tool results and current call (stateless)
    */
-  private buildCallHistoryFromResults(toolCallHistory: ToolResult[], currentCall: PendingToolCall): ToolCallSignature[] {
+  private buildCallHistoryFromResults(toolCallHistory: Interaction[], currentCall: PendingToolCall): ToolCallSignature[] {
     const callHistory: ToolCallSignature[] = [];
     
     // Convert tool results to call signatures (approximate timestamps)
     let baseTime = Date.now() - (toolCallHistory.length * 10000); // Assume 10s between calls
     for (const result of toolCallHistory) {
-      if (result.toolName !== 'final' && result.toolName !== 'run-failure') {
+      if (result.context.toolName !== 'final' && result.context.toolName !== 'run-failure') {
         callHistory.push({
-          toolName: result.toolName,
+          toolName: result.context.toolName,
           argsHash: this.hashResultAsCall(result),
           timestamp: baseTime
         });
@@ -128,7 +128,7 @@ export class StagnationDetector {
       callCounts.set(key, (callCounts.get(key) || 0) + 1);
     }
     
-    for (const [key, count] of callCounts) {
+    for (const [key, count] of Array.from(callCounts)) {
       if (count >= this.repeatedCallThreshold) {
         // Graduated confidence based on threshold
         const confidence = count === this.repeatedCallThreshold ? 0.75 : Math.min(count / (this.repeatedCallThreshold + 1), 1);
@@ -171,19 +171,21 @@ export class StagnationDetector {
   /**
    * Check if the agent is making no meaningful progress
    */
-  private checkNoProgress(toolCallHistory: ToolResult[]): { isStagnant: boolean; reason?: string; confidence: number } {
+  private checkNoProgress(toolCallHistory: Interaction[]): { isStagnant: boolean; reason?: string; confidence: number } {
     if (toolCallHistory.length < 5) {
       return { isStagnant: false, confidence: 0 };
     }
     
     const recentResults = toolCallHistory.slice(-5);
-    const successRate = recentResults.filter(r => r.success).length / recentResults.length;
+    const successRate = recentResults.filter(r => 
+      r.type === 'tool_call' && r.context.success
+    ).length / recentResults.length;
     
     // If mostly failures and similar outputs
     if (successRate < 0.4) {
       const outputs = recentResults
-        .filter(r => r.output)
-        .map(r => JSON.stringify(r.output));
+        .filter(r => r.type === 'tool_call' && r.context.output)
+        .map(r => JSON.stringify(r.context.output));
       
       const uniqueOutputs = new Set(outputs).size;
       const outputDiversity = uniqueOutputs / Math.max(outputs.length, 1);
@@ -203,10 +205,10 @@ export class StagnationDetector {
   /**
    * Check for error loops
    */
-  private checkErrorLoops(toolCallHistory: ToolResult[]): { isStagnant: boolean; reason?: string; confidence: number } {
+  private checkErrorLoops(toolCallHistory: Interaction[]): { isStagnant: boolean; reason?: string; confidence: number } {
     const recentErrors = toolCallHistory
       .slice(-8)
-      .filter(r => !r.success && r.error);
+      .filter(r => r.type === 'tool_call' && !r.context.success && r.context.error);
     
     if (recentErrors.length < 3) {
       return { isStagnant: false, confidence: 0 };
@@ -221,7 +223,7 @@ export class StagnationDetector {
         const confidence = group.length === this.errorLoopThreshold ? 0.85 : Math.min(group.length / this.errorLoopThreshold, 1);
         return {
           isStagnant: true,
-          reason: `Repeated error pattern: ${group[0].error?.substring(0, 50)}...`,
+          reason: `Repeated error pattern: ${group[0].type === 'tool_call' ? group[0].context.error?.substring(0, 50) : 'Unknown'}...`,
           confidence
         };
       }
@@ -266,9 +268,9 @@ export class StagnationDetector {
   /**
    * Helper: Hash tool result as if it were a call (for comparing patterns)
    */
-  private hashResultAsCall(result: ToolResult): string {
+  private hashResultAsCall(result: Interaction): string {
     // Use output or context as basis for hash, fallback to error
-    const content = result.output || result.context || result.error || '{}';
+    const content = result.context.output || result.context.context || result.context.error || '{}';
     const normalized = JSON.stringify(content, Object.keys(content as any).sort());
     return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 8);
   }
@@ -312,8 +314,8 @@ export class StagnationDetector {
   /**
    * Helper: Group similar errors using string similarity
    */
-  private groupSimilarErrors(errors: ToolResult[]): ToolResult[][] {
-    const groups: ToolResult[][] = [];
+  private groupSimilarErrors(errors: Interaction[]): Interaction[][] {
+    const groups: Interaction[][] = [];
     
     for (const error of errors) {
       let addedToGroup = false;
@@ -337,12 +339,13 @@ export class StagnationDetector {
   /**
    * Helper: Check if two errors are similar
    */
-  private areSimilarErrors(a: ToolResult, b: ToolResult): boolean {
-    if (!a.error || !b.error) return false;
-    if (a.toolName !== b.toolName) return false;
+  private areSimilarErrors(a: Interaction, b: Interaction): boolean {
+    if (a.type !== 'tool_call' || b.type !== 'tool_call') return false;
+    if (!a.context.error || !b.context.error) return false;
+    if (a.context.toolName !== b.context.toolName) return false;
     
     // Simple similarity check - you could use more sophisticated algorithms
-    const similarity = this.calculateStringSimilarity(a.error, b.error);
+    const similarity = this.calculateStringSimilarity(a.context.error, b.context.error);
     return similarity > this.similarityThreshold;
   }
   
@@ -353,8 +356,8 @@ export class StagnationDetector {
     const wordsA = new Set(a.toLowerCase().split(/\s+/));
     const wordsB = new Set(b.toLowerCase().split(/\s+/));
     
-    const intersection = new Set([...wordsA].filter(x => wordsB.has(x)));
-    const union = new Set([...wordsA, ...wordsB]);
+    const intersection = new Set(Array.from(wordsA).filter(x => wordsB.has(x)));
+    const union = new Set([...Array.from(wordsA), ...Array.from(wordsB)]);
     
     return intersection.size / union.size;
   }
@@ -362,23 +365,28 @@ export class StagnationDetector {
   /**
    * Get diagnostic information from tool call history (stateless)
    */
-  getDiagnostics(toolCallHistory: ToolResult[]): {
+  getDiagnostics(toolCallHistory: Interaction[]): {
     recentCalls: string[];
     callFrequency: Map<string, number>;
     successRate: number;
   } {
-    const recentCalls = toolCallHistory.slice(-10).map(r => 
-      `${r.toolName}(${r.success ? '✓' : '✗'})`
-    );
+    const recentCalls = toolCallHistory.slice(-10).map(r => {
+      if (r.type === 'tool_call') {
+        return `${r.context.toolName}(${r.context.success ? '✓' : '✗'})`;
+      }
+      return `${r.type}`;
+    });
     
     const callFrequency = new Map<string, number>();
     for (const result of toolCallHistory) {
-      if (result.toolName !== 'final' && result.toolName !== 'run-failure') {
-        callFrequency.set(result.toolName, (callFrequency.get(result.toolName) || 0) + 1);
+      if (result.context.toolName !== 'final' && result.context.toolName !== 'run-failure') {
+        callFrequency.set(result.context.toolName, (callFrequency.get(result.context.toolName) || 0) + 1);
       }
     }
     
-    const successCount = toolCallHistory.filter(r => r.success).length;
+    const successCount = toolCallHistory.filter(r => 
+      r.type === 'tool_call' && r.context.success
+    ).length;
     const successRate = toolCallHistory.length > 0 ? successCount / toolCallHistory.length : 1;
     
     return {

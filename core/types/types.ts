@@ -82,7 +82,7 @@ export interface PendingToolCall {
 
 export interface AgentRunInput {
   userPrompt: string;
-  interactionHistory: [];
+  interactionHistory: Interaction[];
   context?: Record<string, any>;
 }
 
@@ -126,7 +126,7 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   argsSchema: T;
   /** The handler function that executes the tool's logic. */
   dependencies?: string[];
-  handler: (name: string, args: z.infer<T>, toolChainData: ToolChainData) => ToolCallContext | Promise<ToolCallContext>;
+  handler: (name: string, args: z.infer<T>, turnState: TurnState) => ToolCallContext | Promise<ToolCallContext>;
 };
 
 // Essential types only
