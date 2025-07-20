@@ -90,7 +90,7 @@ export class FileManagerConsole {
 
         const result = await this.agent.run({
           userPrompt: input,
-          interactionHistory: this.conversationHistory,
+          prevInteractionHistory: this.conversationHistory,
           context: {
             workingDirectory: process.cwd(),
             timestamp: new Date().toISOString()

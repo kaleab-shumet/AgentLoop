@@ -139,11 +139,11 @@ class FileManagerAgentTest {
     console.log('\n🤖 Testing Agent with Real AI...');
 
     const testPrompts = [
-      'list this directory',
-      'Please create a file called hello.txt and inside write hello world',
-      'read hello.txt',
-      'list this directory again',
-      'Please delete the file hello.txt'
+      'List this directory, then create a file called hello.txt with content "Hello World", then list the directory again to confirm the file was created',
+      'Read the hello.txt file, then create a second file called world.txt with content "World Hello", then read both files to verify their contents',
+      'Create a file called config.json with some sample JSON configuration data, then list the directory to see all files, then read the config.json to verify the content was written correctly',
+      'Create a subdirectory structure by first creating a file at "subdir/nested.txt" with content "nested content", then list the root directory, then list the subdir directory to see the nested file',
+      'Clean up by first listing all files in the directory, then deleting hello.txt, then deleting world.txt, then deleting config.json, then deleting the nested.txt file, and finally list the directory to confirm all files are removed'
     ];
 
     try {
@@ -155,18 +155,28 @@ class FileManagerAgentTest {
         
         const result = await this.agent.run({
           userPrompt: prompt,
-          interactionHistory: conversationHistory,
+          prevInteractionHistory: conversationHistory,
           context: { workingDirectory: this.testDir }
         });
+        
+        this.assertTrue(!!result.agentResponse, `Should get agent response for: ${prompt}`);
+        console.log(`   📋 Agent response: ${JSON.stringify(result.agentResponse?.context)}`);
+        
+        // Show tool calls from this iteration
+        const currentToolCalls = result.interactionHistory?.filter(h => h.type === 'tool_call').map(h => h.context.toolName) || [];
+        console.log(`   🔧 Tool calls made: ${currentToolCalls.join(', ') || 'none'}`);
+        console.log(`   📊 Total interactions in this run: ${result.interactionHistory?.length || 0}`);
+        
+        // Debug: show all interaction types
+        if (result.interactionHistory) {
+          const interactionTypes = result.interactionHistory.map(h => `${h.type}:${h.context?.toolName || 'no-tool'}`);
+          console.log(`   🔍 Debug - All interactions: ${interactionTypes.join(', ')}`);
+        }
         
         // Update conversation history for next iteration
         if (result.interactionHistory) {
           conversationHistory.push(...result.interactionHistory);
         }
-        
-        this.assertTrue(!!result.agentResponse, `Should get agent response for: ${prompt}`);
-        console.log(`   📋 Agent response: ${JSON.stringify(result.agentResponse?.context)}`);
-        console.log(`   🔧 Tool calls made: ${result.interactionHistory?.filter(h => h.type === 'tool_call').map(h => h.context.toolName).join(', ') || 'none'}`);
         
         // Additional verification for create file
         if (prompt.includes('create a file')) {

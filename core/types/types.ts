@@ -82,7 +82,7 @@ export interface PendingToolCall {
 
 export interface AgentRunInput {
   userPrompt: string;
-  interactionHistory: Interaction[];
+  prevInteractionHistory: Interaction[];
   context?: Record<string, any>;
 }
 

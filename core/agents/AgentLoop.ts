@@ -40,6 +40,8 @@ export interface AgentLifecycleHooks {
   onError?: (error: AgentError) => Promise<void>;
 }
 
+export type OutcomeRecord = {args: PendingToolCall, toolCall: ToolCall};
+
 export enum FailureHandlingMode {
   FAIL_FAST = 'fail_fast',           // Stop on first failure (current sequential behavior)
   FAIL_AT_END = 'fail_at_end',       // Execute all, then fail if any failed (current parallel behavior)
@@ -206,11 +208,7 @@ export abstract class AgentLoop {
 
 
 
-    const previousTaskHistory: Interaction[] = input.interactionHistory;
     const currentInteractionHistory: Interaction[] = []
-
-
-
 
     const turnState = new TurnState();
 
@@ -232,6 +230,10 @@ export abstract class AgentLoop {
 
     currentInteractionHistory.push(userPromptInteraction)
 
+    const stagnationTracker: OutcomeRecord[] = []
+
+    const saveStagnationRecord = (outcomeRecord: OutcomeRecord) => stagnationTracker.push(outcomeRecord)
+
     try {
       this.initializePromptManager();
       this.initializeFinalTool();
@@ -241,7 +243,7 @@ export abstract class AgentLoop {
 
 
         try {
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, previousTaskHistory, lastError, keepRetry);
+          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
 
 
@@ -252,68 +254,71 @@ export abstract class AgentLoop {
           numRetries = 0; // Reset retries on successful LLM response
 
           // executeToolCalls now directly adds results to toolCallHistory
-          const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
+          const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState, saveStagnationRecord);
 
-          currentInteractionHistory.push(...iterationResults)
+          currentInteractionHistory.push(...iterationResults.filter(r => (r.context.toolName !== this.FINAL_TOOL_NAME)))
 
-          // Check for stagnation AFTER executing tools (with complete data)
-          if (parsedToolCalls.length > 0) {
-            for (const call of parsedToolCalls) {
-              const stagnationResult = this.stagnationDetector.isStagnant(call, currentInteractionHistory, i + 1);
-              if (stagnationResult.isStagnant && stagnationResult.confidence > 0.7) {
-                this.logger.warn(`[AgentLoop] Stagnation detected (${stagnationResult.confidence.toFixed(2)}): ${stagnationResult.reason}`);
 
-                keepRetry = false;
+          // Enhanced stagnation detection using outcome data
+          if (stagnationTracker.length > 0) {
+            const stagnationResult = this.stagnationDetector.detectStagnationFromOutcomes(stagnationTracker, i + 1);
+            if (stagnationResult.isStagnant && stagnationResult.confidence > 0.7) {
+              this.logger.warn(`[AgentLoop] Stagnation detected (${stagnationResult.confidence.toFixed(2)}): ${stagnationResult.reason}`);
+              
+              if (stagnationResult.patterns && stagnationResult.patterns.length > 1) {
+                this.logger.warn(`[AgentLoop] Multiple stagnation patterns: ${stagnationResult.patterns.join('; ')}`);
+              }
 
-                // Create stagnation warning result
-                const stagnationWarning: ToolCall = {
+              keepRetry = false;
+
+              // Create enhanced stagnation warning result
+              const stagnationWarning: ToolCall = {
+                taskId,
+                timestamp: Date.now().toString(),
+                type: 'tool_call',
+                context: {
+                  stagnationReason: stagnationResult.reason,
+                  toolName: 'stagnation-detector',
+                  error: `Stagnation detected: ${stagnationResult.reason}. ${stagnationResult.confidence >= 0.90 ? 'Forcing termination.' : 'Consider using the final tool.'}`,
+                  success: false,
+                  confidence: stagnationResult.confidence,
+                  iteration: i + 1,
+                  patterns: stagnationResult.patterns,
+                  diagnostics: this.stagnationDetector.getDiagnostics(currentInteractionHistory),
+                  outcomeCount: stagnationTracker.length
+                },
+              };
+              currentInteractionHistory.push(stagnationWarning);
+
+              // For very high confidence stagnation (>=90%), force termination
+              if (stagnationResult.confidence >= 0.90) {
+                this.logger.error(`[AgentLoop] Critical stagnation detected. Forcing termination with final tool.`);
+
+                const forcedTermination: AgentResponse = {
                   taskId,
                   timestamp: Date.now().toString(),
-                  type: 'tool_call',
                   context: {
-                    stagnationReason: stagnationResult.reason,
-                    toolName: 'stagnation-detector',
-                    error: `Stagnation detected: ${stagnationResult.reason}. ${stagnationResult.confidence >= 0.90 ? 'Forcing termination.' : 'Consider using the final tool.'}`,
-                    success: false,
-                    confidence: stagnationResult.confidence,
-                    iteration: i + 1,
-                    diagnostics: this.stagnationDetector.getDiagnostics(currentInteractionHistory),
-                    originalToolName: call.toolName
+                    success: true,
+                    toolName: this.FINAL_TOOL_NAME,
+                    output: `Task terminated due to critical stagnation: ${stagnationResult.reason}. The agent was repeating the same actions without making progress. Based on the work completed so far: ${this.summarizeProgress(currentInteractionHistory)}`
                   },
+                  type: 'agent_response'
                 };
-                currentInteractionHistory.push(stagnationWarning);
 
-                // For very high confidence stagnation (>=90%), force termination
-                if (stagnationResult.confidence >= 0.90) {
-                  this.logger.error(`[AgentLoop] Critical stagnation detected. Forcing termination with final tool.`);
+                currentInteractionHistory.push(forcedTermination);
+                await this.hooks.onAgentFinalResponse?.(forcedTermination);
 
-                  const forcedTermination: AgentResponse = {
-                    taskId,
-                    timestamp: Date.now().toString(),
-                    context: {
-                      success: true,
-                      toolName: this.FINAL_TOOL_NAME,
-                      output: `Task terminated due to critical stagnation: ${stagnationResult.reason}. The agent was repeating the same actions without making progress. Based on the work completed so far: ${this.summarizeProgress(currentInteractionHistory)}`
-                    },
-                    type: 'agent_response'
-                  };
-
-                  currentInteractionHistory.push(forcedTermination);
-                  await this.hooks.onAgentFinalResponse?.(forcedTermination);
-
-                  const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse: forcedTermination };
-                  await this.hooks.onRunEnd?.(output);
-                  return output;
-                }
-
-                // For high confidence stagnation (70-89%), set error context but continue
-                lastError = new AgentError(
-                  `Stagnation detected: ${stagnationResult.reason}. Consider completing the task to avoid loops.`,
-                  AgentErrorType.TOOL_EXECUTION_ERROR,
-                  { stagnation: stagnationResult }
-                );
-                break; // Only warn once per iteration
+                const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse: forcedTermination };
+                await this.hooks.onRunEnd?.(output);
+                return output;
               }
+
+              // For high confidence stagnation (70-89%), set error context but continue
+              lastError = new AgentError(
+                `Stagnation detected: ${stagnationResult.reason}. Consider using an alternative approach to complete the task and avoid potential loops.`,
+                AgentErrorType.TOOL_EXECUTION_ERROR,
+                { stagnation: stagnationResult, patterns: stagnationResult.patterns }
+              );
             }
           }
 
@@ -330,7 +335,7 @@ export abstract class AgentLoop {
           }
 
           lastError = null;
-          const finalResult = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
+          const finalResult: ToolCall | undefined = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
           if (finalResult) {
 
             const agentResponse: AgentResponse = {
@@ -341,12 +346,16 @@ export abstract class AgentLoop {
 
             }
 
+            currentInteractionHistory.push(agentResponse)
+
             await this.hooks.onAgentFinalResponse?.(agentResponse);
             //this.logger.info(`[AgentLoop] Run complete. Final answer: ${finalResult.output?.value?.substring(0, 120)}`);
             const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse };
             await this.hooks.onRunEnd?.(output);
             return output;
           }
+
+
 
         } catch (error) {
           const agentError = error instanceof AgentError ? error : new AgentError(String(error), AgentErrorType.UNKNOWN, { originalError: error });
@@ -455,11 +464,11 @@ export abstract class AgentLoop {
 
   }
 
-  private async executeToolCalls(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState): Promise<ToolCall[]> {
+  private async executeToolCalls(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState, saveStagnationRecord: (outcomeRecord: OutcomeRecord) => void): Promise<ToolCall[]> {
     const iterationResults: ToolCall[] = []; // Collect results for this iteration to return
 
     if (this.parallelExecution) {
-      const results = await this.executeToolCallsWithDependencies(taskId, toolCalls, turnState);
+      const results = await this.executeToolCallsWithDependencies(taskId, toolCalls, turnState, saveStagnationRecord);
       iterationResults.push(...results);
     } else {
       // Sequential execution
@@ -480,7 +489,7 @@ export abstract class AgentLoop {
           await this.hooks.onToolCallEnd?.(resultToolCall);
           break;
         }
-        const result = await this._executeTool(taskId, tool, call, turnState);
+        const result = await this._executeTool(taskId, tool, call, turnState, saveStagnationRecord);
         iterationResults.push(result);
 
         // Apply failure handling mode for sequential execution
@@ -494,7 +503,7 @@ export abstract class AgentLoop {
 
 
 
-  private async executeToolCallsWithDependencies(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState): Promise<ToolCall[]> {
+  private async executeToolCallsWithDependencies(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState, saveStagnationRecord: (outcomeRecord: OutcomeRecord) => void): Promise<ToolCall[]> {
     const iterationResults: ToolCall[] = []; // Collect results for this iteration to return
     const executionLock = new Map<string, boolean>(); // Prevent race conditions in dependency triggering
 
@@ -514,19 +523,6 @@ export abstract class AgentLoop {
     });
 
     if (validToolCalls.length === 0) return iterationResults;
-
-    const circularDeps = this.detectCircularDependencies(validToolCalls, this.tools);
-    if (circularDeps.length > 0) {
-      const error = new AgentError(`Circular dependencies detected: ${circularDeps.join(' -> ')}`, AgentErrorType.TOOL_EXECUTION_ERROR, { circularDependencies: circularDeps });
-      const result = this.createFailureToolCallContext("unknown-tool", error);
-      iterationResults.push({
-        taskId,
-        timestamp: Date.now().toString(),
-        type: "tool_call",
-        context: result
-      });
-      return iterationResults;
-    }
 
     const { pending, dependents, ready } = this.buildDependencyGraph(validToolCalls);
     const executed = new Map<string, Promise<void>>();
@@ -564,7 +560,7 @@ export abstract class AgentLoop {
 
       try {
         // Execute all calls for this specific tool concurrently
-        const results = await Promise.all(callsForTool.map(call => this._executeTool(taskId, tool, call, turnState)));
+        const results = await Promise.all(callsForTool.map(call => this._executeTool(taskId, tool, call, turnState, saveStagnationRecord)));
 
         // Thread-safe result addition - push each result individually to avoid race conditions
         for (const result of results) {
@@ -624,14 +620,13 @@ export abstract class AgentLoop {
     return { pending, dependents, ready: Array.from(new Set(ready)) };
   }
 
-  private detectCircularDependencies(toolCalls: PendingToolCall[], toolList: Tool<ZodTypeAny>[]): string[] {
-    const callNames = new Set(toolCalls.map(call => call.toolName));
+  public detectCircularDependencies(tools: Tool<ZodTypeAny>[]): string[] {
     const adjList = new Map<string, string[]>();
 
-    for (const call of toolCalls) {
-      const tool = toolList.find(t => t.name === call.toolName);
-      const deps = (tool?.dependencies || []).filter(dep => callNames.has(dep));
-      adjList.set(call.toolName, deps);
+    // Build adjacency list from tool dependencies
+    for (const tool of tools) {
+      const deps = tool.dependencies || [];
+      adjList.set(tool.name, deps);
     }
 
     const visited = new Set<string>();
@@ -643,6 +638,9 @@ export abstract class AgentLoop {
       path.push(toolName);
       const neighbors = adjList.get(toolName) || [];
       for (const neighbor of neighbors) {
+        // Only check dependencies that exist in the tool list
+        if (!adjList.has(neighbor)) continue;
+        
         if (!visited.has(neighbor)) {
           const cycle = dfs(neighbor, path);
           if (cycle) return cycle;
@@ -654,9 +652,10 @@ export abstract class AgentLoop {
       path.pop();
       return null;
     };
-    for (const call of toolCalls) {
-      if (!visited.has(call.toolName)) {
-        const cycle = dfs(call.toolName, []);
+
+    for (const tool of tools) {
+      if (!visited.has(tool.name)) {
+        const cycle = dfs(tool.name, []);
         if (cycle) return cycle;
       }
     }
@@ -699,7 +698,7 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[],  previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean): string {
+  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
@@ -707,7 +706,7 @@ export abstract class AgentLoop {
 
     let prompt = this.promptManager.buildPrompt(
       userPrompt,
-      context,      
+      context,
       currentInteractionHistory,
       previousTaskHistory,
       lastError,
@@ -754,7 +753,7 @@ export abstract class AgentLoop {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private async _executeTool(taskId: string, tool: Tool<ZodTypeAny>, call: PendingToolCall, turnState: TurnState): Promise<ToolCall> {
+  private async _executeTool(taskId: string, tool: Tool<ZodTypeAny>, call: PendingToolCall, turnState: TurnState, saveStagnationRecord: (outcomeRecord: OutcomeRecord) => void): Promise<ToolCall> {
     await this.hooks.onToolCallStart?.(call);
     const toolTimeout = tool.timeout || this.toolTimeoutMs;
 
@@ -769,14 +768,9 @@ export abstract class AgentLoop {
 
     let result: ToolCall;
     try {
-      const validation = tool.argsSchema.safeParse(call);
-      if (!validation.success) {
-        throw new AgentError(`Invalid arguments for tool '${tool.name}': ${validation.error.message}`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolName: tool.name, validationError: validation.error });
-      }
-
       // The handler now returns the full ToolResult object directly.
       const toolCallContext = await Promise.race([
-        tool.handler({ name: tool.name, args: validation.data, turnState }),
+        tool.handler({ name: tool.name, args: call, turnState }),
         timeoutPromise,
       ]);
 
@@ -803,10 +797,51 @@ export abstract class AgentLoop {
       }
     }
 
+    saveStagnationRecord({args: call, toolCall: result})
+
     await this.hooks.onToolCallEnd?.(result);
     return result;
   }
 
+
+  /**
+   * Validates a tool definition for correctness and checks for circular dependencies
+   */
+  public validateToolDefinition(tool: Tool<ZodTypeAny>): { isValid: boolean; errors: string[]; circularDependencies: string[] } {
+    const errors: string[] = [];
+    let circularDependencies: string[] = [];
+
+    // Check for duplicate tool names
+    if (this.tools.some(t => t.name === tool.name)) {
+      errors.push(`A tool with the name '${tool.name}' is already defined.`);
+    }
+
+    // Validate tool name format
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tool.name)) {
+      errors.push(`Tool name '${tool.name}' must start with a letter or underscore and contain only letters, numbers, and underscores.`);
+    }
+
+    // Validate schema type
+    if (!(tool.argsSchema instanceof ZodObject)) {
+      errors.push(`The argsSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`);
+    }
+
+    // Validate timeout
+    const toolTimeout = tool.timeout || this.toolTimeoutMs;
+    if (toolTimeout > this.toolTimeoutMs) {
+      errors.push(`Tool '${tool.name}' timeout (${toolTimeout}ms) exceeds global timeout (${this.toolTimeoutMs}ms).`);
+    }
+
+    // Check for circular dependencies by creating a temporary tool list with the new tool
+    const tempTools = [...this.tools, tool];
+    circularDependencies = this.detectCircularDependencies(tempTools);
+
+    return {
+      isValid: errors.length === 0 && circularDependencies.length === 0,
+      errors,
+      circularDependencies
+    };
+  }
 
   private _addTool<T extends ZodTypeAny>(tool: Tool<T>): void {
     if (this.tools.some(t => t.name === tool.name)) {
