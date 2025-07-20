@@ -71,54 +71,67 @@ export interface AgentLoopOptions {
  * in the output, making it scalable and easy to integrate.
  */
 export abstract class AgentLoop {
-  protected logger: Logger;
-  protected maxIterations: number;
-  protected toolTimeoutMs: number;
-  protected retryAttempts: number;
-  protected retryDelay: number;
-  protected parallelExecution: boolean;
-  protected failureHandlingMode: FailureHandlingMode;
-  protected failureTolerance: number;
-  protected hooks: AgentLifecycleHooks;
-  protected sleepBetweenIterationsMs: number;
+  protected logger!: Logger;
+  protected maxIterations!: number;
+  protected toolTimeoutMs!: number;
+  protected retryAttempts!: number;
+  protected retryDelay!: number;
+  protected parallelExecution!: boolean;
+  protected failureHandlingMode!: FailureHandlingMode;
+  protected failureTolerance!: number;
+  protected hooks!: AgentLifecycleHooks;
+  protected sleepBetweenIterationsMs!: number;
 
   protected abstract systemPrompt: string;
   public tools: Tool<ZodTypeAny>[] = [];
   protected aiProvider: AIProvider;
   protected aiDataHandler: AIDataHandler;
-  protected promptManager: PromptManager;
-  protected stagnationDetector: StagnationDetector;
+  protected promptManager!: PromptManager;
+  protected stagnationDetector!: StagnationDetector;
 
   protected temperature?: number;
   protected max_tokens?: number;
 
   private readonly FINAL_TOOL_NAME = 'final';
-  formatMode: FormatMode;
+  formatMode!: FormatMode;
 
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
     this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.FUNCTION_CALLING);
-    this.logger = options.logger || console;
-    this.maxIterations = options.maxIterations || 100;
-    this.toolTimeoutMs = options.toolTimeoutMs || 30000;
-    this.retryAttempts = options.retryAttempts || 3;
-    this.retryDelay = options.retryDelay || 1000;
-    this.parallelExecution = options.parallelExecution ?? true;
-    this.failureHandlingMode = options.failureHandlingMode || (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
-    this.failureTolerance = options.failureTolerance ?? 0.0;
-    this.hooks = options.hooks || {};
-    this.formatMode = options.formatMode || FormatMode.FUNCTION_CALLING;
-    this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs ?? 2000;
+    // Use the setter to initialize all options and defaults
+    this.setAgentLoopOptions(options);
+  }
 
-    // Initialize prompt manager - will be properly set up in initializePromptManager
-    this.promptManager = options.promptManager || new PromptManager(
-      '',
-      options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.formatMode)
-    );
+  /**
+   * Updates the AgentLoop's options after construction.
+   * Only provided options will be updated; others remain unchanged.
+   */
+  public setAgentLoopOptions(options: AgentLoopOptions): void {
+    if (options.logger) this.logger = options.logger;
+    if (options.maxIterations !== undefined) this.maxIterations = options.maxIterations;
+    if (options.toolTimeoutMs !== undefined) this.toolTimeoutMs = options.toolTimeoutMs;
+    if (options.retryAttempts !== undefined) this.retryAttempts = options.retryAttempts;
+    if (options.retryDelay !== undefined) this.retryDelay = options.retryDelay;
+    if (options.parallelExecution !== undefined) this.parallelExecution = options.parallelExecution;
+    if (options.failureHandlingMode) this.failureHandlingMode = options.failureHandlingMode;
+    if (options.failureTolerance !== undefined) this.failureTolerance = options.failureTolerance;
+    if (options.hooks) this.hooks = options.hooks;
+    if (options.formatMode) this.formatMode = options.formatMode;
+    if (options.sleepBetweenIterationsMs !== undefined) this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs;
 
-    // Initialize stagnation detector
-    this.stagnationDetector = new StagnationDetector(options.stagnationDetector);
+    // Update promptManager if provided, or update config if promptManagerConfig/formatMode changes
+    if (options.promptManager) {
+      this.promptManager = options.promptManager;
+    } else if (options.promptManagerConfig || options.formatMode) {
+      const config = options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.formatMode || this.formatMode);
+      this.promptManager = new PromptManager(this.systemPrompt, config);
+    }
+
+    // Update stagnationDetector if config provided
+    if (options.stagnationDetector) {
+      this.stagnationDetector = new StagnationDetector(options.stagnationDetector);
+    }
   }
 
   /**
@@ -134,7 +147,7 @@ export abstract class AgentLoop {
       promptOptions: {
         includeContext: true,
         includePreviousTaskHistory: true,
-        maxPreviousTaskEntries: 10,
+        maxPreviousTaskEntries: 50,
         parallelExecution: this.parallelExecution
       }
     };
