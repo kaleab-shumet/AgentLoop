@@ -1,4 +1,4 @@
-import { FunctionCallingTool, LLMConfig, ServiceName } from "../types";
+import { FunctionCallTool, AIConfig, ServiceName } from "../types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { AIProvider } from "./AIProvider";
 import { generateText, tool } from "ai";
@@ -23,9 +23,9 @@ import { z } from "zod";
  * - Manual configuration required
  */
 export class DefaultAIProvider implements AIProvider {
-    private config: LLMConfig;
+    private config: AIConfig;
 
-    constructor(config: LLMConfig) {
+    constructor(config: AIConfig) {
 
         // Validate required configuration
         if (!config.apiKey) {
@@ -51,7 +51,7 @@ export class DefaultAIProvider implements AIProvider {
     /**
      * Get completion - stateless operation
      */
-    async getCompletion(prompt: string, tools: FunctionCallingTool[] = [], options = {}): Promise<string> {
+    async getCompletion(prompt: string, tools: FunctionCallTool[] = [], options = {}): Promise<string> {
         try {
 
 
@@ -105,7 +105,7 @@ export class DefaultAIProvider implements AIProvider {
     /**
      * Get current configuration (read-only)
      */
-    getConfig(): Readonly<LLMConfig> {
+    getConfig(): Readonly<AIConfig> {
         return { ...this.config };
     }
 
@@ -202,74 +202,75 @@ export class DefaultAIProvider implements AIProvider {
      * Convert JSON schema to Zod schema for AI-SDK compatibility
      */
     private convertToZodSchema(jsonSchema: any): z.ZodSchema {
-        if (!jsonSchema || !jsonSchema.properties) {
+        if (!jsonSchema || typeof jsonSchema !== 'object') {
+            return z.any();
+        }
+
+        if (!jsonSchema.properties) {
             return z.object({});
         }
 
         const zodObj: Record<string, z.ZodSchema> = {};
 
-        for (const [key, value] of Object.entries(jsonSchema.properties)) {
-            const prop = value as any;
-            let zodSchema: z.ZodSchema;
+        try {
+            for (const [key, value] of Object.entries(jsonSchema.properties)) {
+                const prop = value as any;
+                let zodSchema: z.ZodSchema;
 
-            switch (prop.type) {
-                case 'string':
-                    if (prop.enum) {
-                        zodSchema = z.enum(prop.enum);
-                    } else {
-                        zodSchema = z.string();
-                    }
-                    break;
-                case 'number':
-                    zodSchema = z.number();
-                    break;
-                case 'boolean':
-                    zodSchema = z.boolean();
-                    break;
-                case 'array':
-                    // Handle array items properly
-                    if (prop.items) {
-                        let itemSchema: z.ZodSchema;
-                        switch (prop.items.type) {
-                            case 'string':
-                                itemSchema = z.string();
-                                break;
-                            case 'number':
-                                itemSchema = z.number();
-                                break;
-                            case 'boolean':
-                                itemSchema = z.boolean();
-                                break;
-                            case 'object':
-                                itemSchema = z.object({});
-                                break;
-                            default:
-                                itemSchema = z.any();
+                switch (prop.type) {
+                    case 'string':
+                        if (prop.enum && Array.isArray(prop.enum)) {
+                            zodSchema = z.enum(prop.enum as [string, ...string[]]);
+                        } else {
+                            zodSchema = z.string();
                         }
-                        zodSchema = z.array(itemSchema);
-                    } else {
-                        zodSchema = z.array(z.any());
-                    }
-                    break;
-                case 'object':
-                    zodSchema = z.object({});
-                    break;
-                default:
-                    zodSchema = z.any();
+                        break;
+                    case 'number':
+                        zodSchema = z.number();
+                        break;
+                    case 'integer':
+                        zodSchema = z.number().int();
+                        break;
+                    case 'boolean':
+                        zodSchema = z.boolean();
+                        break;
+                    case 'array':
+                        // Handle array items properly with recursion
+                        if (prop.items) {
+                            const itemSchema = this.convertToZodSchema(prop.items);
+                            zodSchema = z.array(itemSchema);
+                        } else {
+                            zodSchema = z.array(z.any());
+                        }
+                        break;
+                    case 'object':
+                        // Recursive object handling
+                        if (prop.properties) {
+                            zodSchema = this.convertToZodSchema(prop);
+                        } else {
+                            zodSchema = z.object({});
+                        }
+                        break;
+                    default:
+                        zodSchema = z.any();
+                }
+
+                if (prop.description && typeof prop.description === 'string') {
+                    zodSchema = zodSchema.describe(prop.description);
+                }
+
+                if (!jsonSchema.required?.includes(key)) {
+                    zodSchema = zodSchema.optional();
+                }
+
+                zodObj[key] = zodSchema;
             }
 
-            if (prop.description) {
-                zodSchema = zodSchema.describe(prop.description);
-            }
-
-            if (!jsonSchema.required?.includes(key)) {
-                zodSchema = zodSchema.optional();
-            }
-
-            zodObj[key] = zodSchema;
+            return z.object(zodObj);
+        } catch (error) {
+            // Fallback to any schema if conversion fails
+            return z.any();
         }
-
-        return z.object(zodObj);
     }
 
     /**

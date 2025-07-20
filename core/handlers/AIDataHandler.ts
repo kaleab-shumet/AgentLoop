@@ -1,19 +1,19 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatMode, FormatHandler, FunctionCallingTool } from "../types/types";
+import { Tool, PendingToolCall, FormatMode, FormatHandler, FunctionCallTool } from "../types/types";
 import { FormatHandlerFactory } from "./FormatHandlerFactory";
 
 /**
- * LLMDataHandler that uses function calling format
+ * AIDataHandler that processes AI responses and tool definitions
  */
-export class LLMDataHandler {
+export class AIDataHandler {
   private formatHandler: FormatHandler;
 
   constructor(formatMode: FormatMode = FormatMode.FUNCTION_CALLING) {
     this.formatHandler = FormatHandlerFactory.getHandler(formatMode);
   }
 
-  parseAndValidate(llmResponse: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
-    return this.formatHandler.parseResponse(llmResponse, tools);
+  parseAndValidate(aiResponse: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
+    return this.formatHandler.parseResponse(aiResponse, tools);
   }
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]){

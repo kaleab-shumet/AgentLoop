@@ -39,9 +39,9 @@ export class PromptManager {
     this.systemPrompt = systemPrompt;
     this.promptOptions = {
       includeContext: true,
-      includeConversationHistory: true,
-      includeToolHistory: true,
-      maxHistoryEntries: 10,
+      includePreviousTaskHistory: true,
+      includeCurrentTaskHistory: true,
+      maxPreviousTaskEntries: 10,
       parallelExecution: false,
       ...config.promptOptions
     };
@@ -173,9 +173,9 @@ export class PromptManager {
   setConfig(config: any): void {
     // Convert legacy config to new options format
     if (config.includeContext !== undefined) this.promptOptions.includeContext = config.includeContext;
-    if (config.includeConversationHistory !== undefined) this.promptOptions.includeConversationHistory = config.includeConversationHistory;
-    if (config.includeToolHistory !== undefined) this.promptOptions.includeToolHistory = config.includeToolHistory;
-    if (config.maxHistoryEntries !== undefined) this.promptOptions.maxHistoryEntries = config.maxHistoryEntries;
+    if (config.includeConversationHistory !== undefined) this.promptOptions.includePreviousTaskHistory = config.includeConversationHistory;
+    if (config.includeToolHistory !== undefined) this.promptOptions.includeCurrentTaskHistory = config.includeToolHistory;
+    if (config.maxHistoryEntries !== undefined) this.promptOptions.maxPreviousTaskEntries = config.maxHistoryEntries;
     if (config.customSections !== undefined) this.promptOptions.customSections = config.customSections;
     if (config.errorRecoveryInstructions !== undefined) this.setErrorRecoveryInstructions(config.errorRecoveryInstructions);
   }
@@ -183,9 +183,9 @@ export class PromptManager {
   getConfig(): any {
     return {
       includeContext: this.promptOptions.includeContext,
-      includeConversationHistory: this.promptOptions.includeConversationHistory,
-      includeToolHistory: this.promptOptions.includeToolHistory,
-      maxHistoryEntries: this.promptOptions.maxHistoryEntries
+      includeConversationHistory: this.promptOptions.includePreviousTaskHistory,
+      includeToolHistory: this.promptOptions.includeCurrentTaskHistory,
+      maxHistoryEntries: this.promptOptions.maxPreviousTaskEntries
     };
   }
 

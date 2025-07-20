@@ -6,7 +6,7 @@ import { TurnState } from "../agents/TurnState";
  */
 export enum FormatMode {
   FUNCTION_CALLING = "function_calling",
-  YAML_MODE = "yaml_mode"
+  YAML = "yaml"
 }
 
 /**
@@ -92,9 +92,9 @@ export interface AgentRunInput {
  */
 export interface AgentRunOutput {
   /** The final tool call history after this turn. */
-  interactionList: Interaction[];
+  interactionHistory: Interaction[];
   /** The final answer from the 'final' tool, if it was called. */
-  finalAnswer?: AgentResponse;
+  agentResponse?: AgentResponse;
 }
 
 /**
@@ -105,12 +105,14 @@ export interface ToolChainData {
   [key: string]: any
 }
 
+
 /**
- * Represents a single entry in the high-level conversation history.
+ * Parameters passed to a tool handler function
  */
-export interface ChatEntry {
-  sender: "ai" | "user" | "system";
-  message: string;
+export interface HandlerParams<T extends ZodTypeAny = ZodTypeAny> {
+  name: string;
+  args: z.infer<T>;
+  turnState: TurnState;
 }
 
 /**
@@ -126,20 +128,20 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   argsSchema: T;
   /** The handler function that executes the tool's logic. */
   dependencies?: string[];
-  handler: (name: string, args: z.infer<T>, turnState: TurnState) => ToolCallContext | Promise<ToolCallContext>;
+  handler: (params: HandlerParams<ZodTypeAny>) => ToolCallContext | Promise<ToolCallContext>;
 };
 
 // Essential types only
 export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'cohere' | 'groq' | 'fireworks' | 'deepseek' | 'perplexity';
 
 
-export interface FunctionCallingTool {
+export interface FunctionCallTool {
   function: { description: string; name: string; parameters: any };
   type: "function";
 }
 
-// Simple LLMConfig - only essential fields
-export interface LLMConfig {
+// Simple AIConfig - only essential fields
+export interface AIConfig {
   /** Service to use */
   service: ServiceName;
   /** API Key for the service */
@@ -151,7 +153,7 @@ export interface LLMConfig {
   /** Maximum number of tokens to generate */
   max_tokens?: number;
 
-  tools?: FunctionCallingTool[];
+  tools?: FunctionCallTool[];
 
 
 
@@ -171,15 +173,14 @@ export interface TypedPaths {
  */
 export interface FormatHandler {
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[];
-  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string | FunctionCallingTool[];
+  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string | FunctionCallTool[];
 }
 
 export interface PromptOptions {
   includeContext?: boolean;
-  includeConversationHistory?: boolean;
-  includeToolHistory?: boolean;
-  maxHistoryEntries?: number;
+  includePreviousTaskHistory?: boolean;
+  includeCurrentTaskHistory?: boolean;
+  maxPreviousTaskEntries?: number;
   customSections?: Record<string, string>;
   parallelExecution?: boolean;
-  includeExecutionStrategy?: boolean;
 }

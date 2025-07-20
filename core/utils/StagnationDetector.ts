@@ -259,8 +259,7 @@ export class StagnationDetector {
    * Helper: Hash arguments for comparison
    */
   private hashArgs(call: PendingToolCall): string {
-    const args = { ...call };
-    delete (args as any).name; // Remove name from args
+    const { toolName, ...args } = call;
     const normalized = JSON.stringify(args, Object.keys(args).sort());
     return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 8);
   }

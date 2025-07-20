@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatHandler, FunctionCall, FunctionDefinition, FunctionCallingTool } from "../types/types";
+import { Tool, PendingToolCall, FormatHandler, FunctionCall, FunctionDefinition, FunctionCallTool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from 'zod-to-json-schema';
 
@@ -104,7 +104,7 @@ export class FunctionCallingFormatHandler implements FormatHandler {
 
   }
 
-  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): FunctionCallingTool[] {
+  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): FunctionCallTool[] {
     return tools.map(tool => ({
       type: "function",
       function: {
@@ -126,20 +126,31 @@ export class FunctionCallingFormatHandler implements FormatHandler {
 
 
   parseWithRetry(jsonStr: string): any {
-
-    let jsVal = JSON.stringify(jsonStr)
-    let c = 0;
-    while (typeof jsVal === "string" && c < 2) {
+    try {
+      // First, try to parse the string directly
+      return JSON.parse(jsonStr);
+    } catch (error) {
+      // If that fails, check if it's already a JavaScript object
+      if (typeof jsonStr !== 'string') {
+        return jsonStr;
+      }
+      
+      // Try to handle double-encoded JSON (string inside string)
       try {
-        jsVal = JSON.parse(jsVal)
+        const parsed = JSON.parse(jsonStr);
+        if (typeof parsed === 'string') {
+          return JSON.parse(parsed);
+        }
+        return parsed;
+      } catch (secondError) {
+        // If all parsing attempts fail, throw the original error
+        throw new AgentError(
+          `Failed to parse JSON arguments: ${error instanceof Error ? error.message : String(error)}`,
+          AgentErrorType.INVALID_RESPONSE,
+          { originalInput: jsonStr, parseError: error }
+        );
       }
-      catch {
-        break;
-      }
-      c++;
     }
-    return jsVal;
-
   }
 
 

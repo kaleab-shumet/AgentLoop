@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatHandler, FunctionCallingTool } from "../types/types";
+import { Tool, PendingToolCall, FormatHandler, FunctionCallTool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { parse as parseYaml } from "yaml";
 import zodToJsonSchema from "zod-to-json-schema";
@@ -10,7 +10,7 @@ import zodToJsonSchema from "zod-to-json-schema";
 export class YamlFormatHandler implements FormatHandler {
   
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
-    const schemMap = tools.map(t => {
+    const schemaMap = tools.map(t => {
 
       const zodSchema = zodToJsonSchema(t.argsSchema, t.name)
 
@@ -24,7 +24,7 @@ export class YamlFormatHandler implements FormatHandler {
       `)
     }).join("\n\n")
 
-    return schemMap
+    return schemaMap
 
   }
 
@@ -132,6 +132,4 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
     );
   }
 }
-
-
 }

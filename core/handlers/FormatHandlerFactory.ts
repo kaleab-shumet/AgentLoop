@@ -18,7 +18,7 @@ export class FormatHandlerFactory {
         case FormatMode.FUNCTION_CALLING:
           this.handlers.set(mode, new FunctionCallingFormatHandler());
           break;
-        case FormatMode.YAML_MODE:
+        case FormatMode.YAML:
           this.handlers.set(mode, new YamlFormatHandler());
           break;
         default:
