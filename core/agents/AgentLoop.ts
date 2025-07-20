@@ -108,17 +108,17 @@ export abstract class AgentLoop {
    * Only provided options will be updated; others remain unchanged.
    */
   public setAgentLoopOptions(options: AgentLoopOptions): void {
-    if (options.logger) this.logger = options.logger;
-    if (options.maxIterations !== undefined) this.maxIterations = options.maxIterations;
-    if (options.toolTimeoutMs !== undefined) this.toolTimeoutMs = options.toolTimeoutMs;
-    if (options.retryAttempts !== undefined) this.retryAttempts = options.retryAttempts;
-    if (options.retryDelay !== undefined) this.retryDelay = options.retryDelay;
-    if (options.parallelExecution !== undefined) this.parallelExecution = options.parallelExecution;
-    if (options.failureHandlingMode) this.failureHandlingMode = options.failureHandlingMode;
-    if (options.failureTolerance !== undefined) this.failureTolerance = options.failureTolerance;
-    if (options.hooks) this.hooks = options.hooks;
-    if (options.formatMode) this.formatMode = options.formatMode;
-    if (options.sleepBetweenIterationsMs !== undefined) this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs;
+    this.logger = options.logger || console;
+    this.maxIterations = options.maxIterations !== undefined ? options.maxIterations : 100;
+    this.toolTimeoutMs = options.toolTimeoutMs !== undefined ? options.toolTimeoutMs : 30000;
+    this.retryAttempts = options.retryAttempts !== undefined ? options.retryAttempts : 3;
+    this.retryDelay = options.retryDelay !== undefined ? options.retryDelay : 1000;
+    this.parallelExecution = options.parallelExecution !== undefined ? options.parallelExecution : true;
+    this.failureHandlingMode = options.failureHandlingMode || (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
+    this.failureTolerance = options.failureTolerance !== undefined ? options.failureTolerance : 0.0;
+    this.hooks = options.hooks || {};
+    this.formatMode = options.formatMode || FormatMode.FUNCTION_CALLING;
+    this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
 
     // Update promptManager if provided, or update config if promptManagerConfig/formatMode changes
     if (options.promptManager) {
@@ -126,11 +126,16 @@ export abstract class AgentLoop {
     } else if (options.promptManagerConfig || options.formatMode) {
       const config = options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.formatMode || this.formatMode);
       this.promptManager = new PromptManager(this.systemPrompt, config);
+    } else if (!this.promptManager) {
+      // If promptManager is still not set, set a default
+      this.promptManager = new PromptManager('', this.getDefaultPromptManagerConfig(this.formatMode));
     }
 
     // Update stagnationDetector if config provided
     if (options.stagnationDetector) {
       this.stagnationDetector = new StagnationDetector(options.stagnationDetector);
+    } else if (!this.stagnationDetector) {
+      this.stagnationDetector = new StagnationDetector();
     }
   }
 
