@@ -72,7 +72,7 @@ export type Interaction =
 
 
 /**
- * Represents a tool call that has been parsed from the LLM's response
+ * Represents a tool call that has been parsed from the AI's response
  * but has not yet been executed.
  */
 export interface PendingToolCall {
@@ -122,7 +122,7 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   timeout?: number;
   /** The unique name of the tool. Must not contain spaces or special characters. */
   name: string;
-  /** A clear, detailed description of what the tool does, for the LLM. */
+  /** A clear, detailed description of what the tool does, for the AI. */
   description: string;
   /** A Zod schema defining the arguments the tool expects. */
   argsSchema: T;
@@ -179,7 +179,6 @@ export interface FormatHandler {
 export interface PromptOptions {
   includeContext?: boolean;
   includePreviousTaskHistory?: boolean;
-  includeCurrentTaskHistory?: boolean;
   maxPreviousTaskEntries?: number;
   customSections?: Record<string, string>;
   parallelExecution?: boolean;

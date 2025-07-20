@@ -43,6 +43,7 @@
     "@ai-sdk/perplexity": "^1.1.9",
     "ai": "^4.3.19",
     "dotenv": "^17.2.0",
+    "nanoid": "^3.3.11",
     "yaml": "^2.8.0",
     "zod": "^3.25.75",
     "zod-to-json-schema": "^3.24.6"

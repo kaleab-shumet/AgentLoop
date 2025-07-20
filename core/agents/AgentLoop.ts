@@ -1,6 +1,7 @@
 // AgentLoop.ts
 import z, { ZodTypeAny, ZodObject } from 'zod';
-import * as crypto from 'crypto';
+import { nanoid } from 'nanoid';
+import { createHash } from 'crypto';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { AIDataHandler } from '../handlers/AIDataHandler';
 import { Logger } from '../utils/Logger';
@@ -16,7 +17,7 @@ import {
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
-import { PromptManager, PromptManagerConfig, ResponseFormat } from '../prompt/PromptManager';
+import { PromptManager, PromptManagerConfig, FormatType } from '../prompt/PromptManager';
 import { StagnationDetector, StagnationDetectorConfig } from '../utils/StagnationDetector';
 
 
@@ -124,15 +125,14 @@ export abstract class AgentLoop {
    */
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
     const responseFormat = formatMode === FormatMode.YAML
-      ? ResponseFormat.YAML
-      : ResponseFormat.FUNCTION_CALLING;
+      ? FormatType.YAML
+      : FormatType.FUNCTION_CALLING;
 
     return {
       responseFormat,
       promptOptions: {
         includeContext: true,
         includePreviousTaskHistory: true,
-        includeCurrentTaskHistory: true,
         maxPreviousTaskEntries: 10,
         parallelExecution: this.parallelExecution
       }
@@ -200,7 +200,7 @@ export abstract class AgentLoop {
     let numRetries = 0;
     let keepRetry = true;
 
-    const taskId = crypto.randomUUID ? crypto.randomUUID() : `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const taskId = nanoid();
 
     try {
       this.initializePromptManager();
@@ -339,7 +339,7 @@ export abstract class AgentLoop {
 
             // Create unique error identifier including tool name and error type
             const errorKey = `${agentError.context?.toolName || 'unknown'}:${agentError.type}:${agentError.message}`;
-            const errorHash = crypto.createHash('md5').update(errorKey).digest('hex').substring(0, 8);
+            const errorHash = createHash('md5').update(errorKey).digest('hex').substring(0, 8);
 
             const now = Date.now();
             const existing = errorTracker.get(errorHash);
@@ -648,7 +648,7 @@ export abstract class AgentLoop {
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
         if (typeof response !== "string") {
           throw new AgentError(
-            "LLM provider returned undefined or non-string response.",
+            "AI provider returned undefined or non-string response.",
             AgentErrorType.INVALID_RESPONSE,
             { responseType: typeof response, expectedType: 'string' }
           );
@@ -657,7 +657,7 @@ export abstract class AgentLoop {
         return response;
       } catch (error) {
         lastError = error as Error;
-        this.logger.warn(`[AgentLoop] LLM retry ${attempt + 1}: ${lastError.message}`);
+        this.logger.warn(`[AgentLoop] AI retry ${attempt + 1}: ${lastError.message}`);
         if (attempt < this.retryAttempts - 1) await this.sleep(this.retryDelay * Math.pow(2, attempt));
       }
     }

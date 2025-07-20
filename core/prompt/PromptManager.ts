@@ -40,7 +40,6 @@ export class PromptManager {
     this.promptOptions = {
       includeContext: true,
       includePreviousTaskHistory: true,
-      includeCurrentTaskHistory: true,
       maxPreviousTaskEntries: 10,
       parallelExecution: false,
       ...config.promptOptions
@@ -137,7 +136,7 @@ export class PromptManager {
    */
   buildPrompt(
     userPrompt: string,
-    context: Record<string, any>,    
+    context: Record<string, any>,
     oldAgentEventHistory: Interaction[],
     agentEventList: Interaction[],
     lastError: AgentError | null,
@@ -149,7 +148,7 @@ export class PromptManager {
       this.systemPrompt,
       userPrompt,
       context,
-      
+
       oldAgentEventHistory,
       agentEventList,
 
@@ -162,67 +161,6 @@ export class PromptManager {
     );
   }
 
-  /**
-   * Get the response format as a string for compatibility with handlers
-   */
-  getResponseFormatString(): 'function' {
-    return 'function';
-  }
-
-
-  setConfig(config: any): void {
-    // Convert legacy config to new options format
-    if (config.includeContext !== undefined) this.promptOptions.includeContext = config.includeContext;
-    if (config.includeConversationHistory !== undefined) this.promptOptions.includePreviousTaskHistory = config.includeConversationHistory;
-    if (config.includeToolHistory !== undefined) this.promptOptions.includeCurrentTaskHistory = config.includeToolHistory;
-    if (config.maxHistoryEntries !== undefined) this.promptOptions.maxPreviousTaskEntries = config.maxHistoryEntries;
-    if (config.customSections !== undefined) this.promptOptions.customSections = config.customSections;
-    if (config.errorRecoveryInstructions !== undefined) this.setErrorRecoveryInstructions(config.errorRecoveryInstructions);
-  }
-
-  getConfig(): any {
-    return {
-      includeContext: this.promptOptions.includeContext,
-      includeConversationHistory: this.promptOptions.includePreviousTaskHistory,
-      includeToolHistory: this.promptOptions.includeCurrentTaskHistory,
-      maxHistoryEntries: this.promptOptions.maxPreviousTaskEntries
-    };
-  }
-
-  // Legacy template type methods (for backward compatibility)
-  getTemplateType(): string {
-    if (this.isCustomTemplate) {
-      return 'custom';
-    }
-    const format = (this.template as DefaultPromptTemplate).getResponseFormat();
-    return 'functionCalling';
-  }
-
-  getTemplateTypeString(): 'function' {
-    return this.getResponseFormatString();
-  }
-
-  setTemplateType(type: string): PromptManager {
-    if (type === 'custom') {
-      throw new AgentError(
-        'Use setCustomTemplate() to set a custom template',
-        AgentErrorType.CONFIGURATION_ERROR,
-        { attemptedType: type, correctMethod: 'setCustomTemplate()' }
-      );
-    }
-    
-    if (this.isCustomTemplate) {
-      // Switch back to default template
-      const format = FormatType.FUNCTION_CALLING;
-      this.setDefaultTemplate(format);
-    } else {
-      // Update existing default template
-      const format = FormatType.FUNCTION_CALLING;
-      this.setResponseFormat(format);
-    }
-    
-    return this;
-  }
 }
 
-export { DefaultPromptTemplate, FormatType as ResponseFormat } from './DefaultPromptTemplate';
+export { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';

@@ -209,9 +209,8 @@ tool_calls:
     }
 
     // 6. Current task history
-    if (options.includeCurrentTaskHistory) {
       sections.push(this.buildCurrentTaskHistory(agentEventList));
-    }
+    
 
     // 7. Error recovery
     if (lastError) {
