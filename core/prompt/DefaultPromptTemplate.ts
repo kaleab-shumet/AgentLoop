@@ -1,4 +1,4 @@
-import { Interaction, ChatEntry, PromptOptions } from '../types/types';
+import { Interaction, PromptOptions } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 /**
@@ -39,14 +39,23 @@ export class DefaultPromptTemplate {
    */
   private getWorkflowRules(finalToolName: string): string {
     return `**DECISION PROCESS:**
-1. Review the interaction history to see what has been done
-2. If the task is complete and you have the answer, use '${finalToolName}' to provide the final result
-3. If the task needs more work, call the appropriate tool(s) to make progress
-4. Avoid repeating identical tool calls - this triggers stagnation detection
+1. Each conversation has a unique task ID - different task IDs mean completely separate conversations
+2. Focus on CURRENT TASK HISTORY (same task ID) for immediate context
+3. PREVIOUS TASK HISTORY is provided for reference only - use it when users explicitly refer to past conversations
+4. When users request an action, use the appropriate tools to perform it NOW
+5. Always use tools to get current, real-time information - never assume or guess
+6. If the task is complete and you have the answer, use '${finalToolName}' to provide the final result
+
+**IMPORTANT RULES:**
+- ALWAYS use tools when users request actions that require tool usage
+- Never say "already done".
+- Use previous task history for general information (names, preferences, context) even without explicit reference
+- For action requests, focus on current task but use previous history as context to answer general info
+- Each user request should trigger actual tool usage to get fresh, current results
 
 **WHEN TO USE '${finalToolName}':**
-- All required information has been gathered
-- The user's request can be fully answered
+- All required information has been gathered from tools
+- The user's request can be fully answered with current results
 - You're stuck and need to explain the limitation`;
   }
 
@@ -174,10 +183,10 @@ tool_calls:
 
   buildPrompt(
     systemPrompt: string,
-    userPrompt: string,        
+    userPrompt: string,
     context: Record<string, any>,
-    oldAgentEventHistory: Interaction[],
-    agentEventList: Interaction[],
+    currentInteractionHistory: Interaction[],
+    prevInteractionHistory: Interaction[],
     lastError: AgentError | null,
     keepRetry: boolean,
     finalToolName: string,
@@ -204,13 +213,13 @@ tool_calls:
     }
 
     // 5. Previous task history
-    if (options.includePreviousTaskHistory && oldAgentEventHistory.length > 0) {
-      sections.push(this.buildPreviousTaskHistory(oldAgentEventHistory, options));
+    if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) {
+      sections.push(this.buildPreviousTaskHistory(prevInteractionHistory, options));
     }
 
     // 6. Current task history
-      sections.push(this.buildCurrentTaskHistory(agentEventList));
-    
+    sections.push(this.buildCurrentTaskHistory(currentInteractionHistory));
+
 
     // 7. Error recovery
     if (lastError) {
@@ -242,17 +251,20 @@ tool_calls:
     return `# CONTEXT\n${contextLog}`;
   }
 
-  buildPreviousTaskHistory(agentEventHistory: Interaction[], options: PromptOptions): string {
+  buildPreviousTaskHistory(prevInteractionHistory: Interaction[], options: PromptOptions): string {
     const entries = options.maxPreviousTaskEntries
-      ? agentEventHistory.slice(-options.maxPreviousTaskEntries)
-      : agentEventHistory;
+      ? prevInteractionHistory.slice(-options.maxPreviousTaskEntries)
+      : prevInteractionHistory;
 
     return `# PREVIOUS TASK HISTORY\n${JSON.stringify(entries, null, 2)}`;
   }
 
-  buildCurrentTaskHistory(agentEventList: Interaction[]): string {
-    const historyLog = JSON.stringify(agentEventList, null, 2);
-    return `# CURRENT TASK HISTORY\n${historyLog}`;
+  buildCurrentTaskHistory(currentTaskInteraction: Interaction[]): string {
+    const historyLog = JSON.stringify(currentTaskInteraction, null, 2);
+    return `# CURRENT TASK HISTORY
+${historyLog}
+
+**IMPORTANT:** When tool results show "success": true, the operation completed successfully.`;
   }
 
   buildErrorRecoverySection(

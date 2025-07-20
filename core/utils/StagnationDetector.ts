@@ -33,15 +33,16 @@ export class StagnationDetector {
   
   // Fixed thresholds
   private readonly SEQUENCE_LENGTH_CHECK = 3;
-  private readonly TIME_WINDOW_MS = 60000; // 1 minute
+  private readonly TIME_WINDOW_MS = 30000; // 30 seconds for rapid calls
+  private readonly RAPID_CALL_THRESHOLD = 5; // 5 calls in time window
   
   constructor(config: StagnationDetectorConfig = {}) {
-    this.windowSize = config.windowSize || 12;
-    this.similarityThreshold = config.similarityThreshold || 0.75;
+    this.windowSize = config.windowSize || 15;
+    this.similarityThreshold = config.similarityThreshold || 0.6;
     this.enableTimeBasedDetection = config.enableTimeBasedDetection ?? true;
-    this.repeatedCallThreshold = config.repeatedCallThreshold || 4;
-    this.errorLoopThreshold = config.errorLoopThreshold || 4;
-    this.cyclicPatternThreshold = config.cyclicPatternThreshold || 4;
+    this.repeatedCallThreshold = config.repeatedCallThreshold || 3;
+    this.errorLoopThreshold = config.errorLoopThreshold || 3;
+    this.cyclicPatternThreshold = config.cyclicPatternThreshold || 2;
   }
   
   /**
@@ -88,16 +89,20 @@ export class StagnationDetector {
   private buildCallHistoryFromResults(toolCallHistory: Interaction[], currentCall: PendingToolCall): ToolCallSignature[] {
     const callHistory: ToolCallSignature[] = [];
     
-    // Convert tool results to call signatures (approximate timestamps)
-    let baseTime = Date.now() - (toolCallHistory.length * 10000); // Assume 10s between calls
+    // Convert tool results to call signatures using actual timestamps
     for (const result of toolCallHistory) {
-      if (result.context.toolName !== 'final' && result.context.toolName !== 'run-failure') {
+      if (result.context.toolName !== 'final' && result.context.toolName !== 'run-failure' && result.context.toolName !== 'stagnation-detector') {
+        const timestamp = result.timestamp ? parseInt(result.timestamp) : Date.now();
+        
+        // Extract arguments from the result context for hashing
+        const argsForHashing = this.extractArgsFromResult(result);
+        const argsHash = this.hashObject(argsForHashing);
+        
         callHistory.push({
           toolName: result.context.toolName,
-          argsHash: this.hashResultAsCall(result),
-          timestamp: baseTime
+          argsHash,
+          timestamp
         });
-        baseTime += 10000;
       }
     }
     
@@ -113,28 +118,29 @@ export class StagnationDetector {
   }
   
   /**
-   * Check for repeated identical calls
+   * Check for repeated identical calls (tool + arguments)
    */
   private checkRepeatedCalls(callHistory: ToolCallSignature[]): { isStagnant: boolean; reason?: string; confidence: number } {
-    if (callHistory.length < 3) {
+    if (callHistory.length < this.repeatedCallThreshold) {
       return { isStagnant: false, confidence: 0 };
     }
     
-    const recentCalls = callHistory.slice(-5);
-    const callCounts = new Map<string, number>();
+    // Count identical calls (tool name + arguments)
+    const callSignatures = new Map<string, number>();
     
-    for (const call of recentCalls) {
-      const key = `${call.toolName}:${call.argsHash}`;
-      callCounts.set(key, (callCounts.get(key) || 0) + 1);
+    for (const call of callHistory) {
+      const signature = `${call.toolName}:${call.argsHash}`;
+      callSignatures.set(signature, (callSignatures.get(signature) || 0) + 1);
     }
     
-    for (const [key, count] of Array.from(callCounts)) {
+    for (const [signature, count] of Array.from(callSignatures)) {
       if (count >= this.repeatedCallThreshold) {
-        // Graduated confidence based on threshold
-        const confidence = count === this.repeatedCallThreshold ? 0.75 : Math.min(count / (this.repeatedCallThreshold + 1), 1);
+        // Monotonic confidence: starts at 0.8 and increases
+        const confidence = Math.min(0.8 + (count - this.repeatedCallThreshold) * 0.05, 1.0);
+        const toolName = signature.split(':')[0];
         return {
           isStagnant: true,
-          reason: `Tool call ${key.split(':')[0]} repeated ${count} times with same arguments`,
+          reason: `Tool '${toolName}' called ${count} times with identical arguments`,
           confidence
         };
       }
@@ -144,23 +150,23 @@ export class StagnationDetector {
   }
   
   /**
-   * Check for cyclic patterns (e.g., A→B→C→A→B→C)
+   * Check for cyclic patterns (e.g., A→B→C→A→B→C) using sliding window
    */
   private checkCyclicPatterns(callHistory: ToolCallSignature[]): { isStagnant: boolean; reason?: string; confidence: number } {
-    if (callHistory.length < 6) {
+    if (callHistory.length < 4) {
       return { isStagnant: false, confidence: 0 };
     }
     
-    const recent = callHistory.slice(-this.windowSize);
-    
     // Check for patterns of length 2-4
-    for (let patternLength = 2; patternLength <= 4; patternLength++) {
-      const pattern = this.detectPattern(recent, patternLength);
-      if (pattern) {
+    for (let patternLength = 2; patternLength <= Math.min(4, Math.floor(callHistory.length / 2)); patternLength++) {
+      const pattern = this.detectPatternSlidingWindow(callHistory, patternLength);
+      if (pattern && pattern.count >= this.cyclicPatternThreshold) {
+        // Monotonic confidence: starts at 0.75 and increases
+        const confidence = Math.min(0.75 + (pattern.count - this.cyclicPatternThreshold) * 0.05, 1.0);
         return {
           isStagnant: true,
-          reason: `Cyclic pattern detected: ${pattern.pattern}`,
-          confidence: Math.min(pattern.count / this.cyclicPatternThreshold, 1)
+          reason: `Cyclic pattern detected: ${pattern.pattern} (${pattern.count} repetitions)`,
+          confidence
         };
       }
     }
@@ -207,10 +213,10 @@ export class StagnationDetector {
    */
   private checkErrorLoops(toolCallHistory: Interaction[]): { isStagnant: boolean; reason?: string; confidence: number } {
     const recentErrors = toolCallHistory
-      .slice(-8)
+      .slice(-this.windowSize)
       .filter(r => r.type === 'tool_call' && !r.context.success && r.context.error);
     
-    if (recentErrors.length < 3) {
+    if (recentErrors.length < this.errorLoopThreshold) {
       return { isStagnant: false, confidence: 0 };
     }
     
@@ -219,11 +225,15 @@ export class StagnationDetector {
     
     for (const group of errorGroups) {
       if (group.length >= this.errorLoopThreshold) {
-        // Lower threshold for error loops - they're more critical
-        const confidence = group.length === this.errorLoopThreshold ? 0.85 : Math.min(group.length / this.errorLoopThreshold, 1);
+        // Monotonic confidence for error loops - they're critical
+        const confidence = Math.min(0.85 + (group.length - this.errorLoopThreshold) * 0.03, 1.0);
+        const errorPreview = group[0].type === 'tool_call' && group[0].context.error 
+          ? group[0].context.error.substring(0, 50) 
+          : 'Unknown error';
+        
         return {
           isStagnant: true,
-          reason: `Repeated error pattern: ${group[0].type === 'tool_call' ? group[0].context.error?.substring(0, 50) : 'Unknown'}...`,
+          reason: `Repeated error pattern (${group.length}x): ${errorPreview}...`,
           confidence
         };
       }
@@ -236,19 +246,22 @@ export class StagnationDetector {
    * Check if calls are happening too rapidly (panic mode)
    */
   private checkTimeBasedStagnation(callHistory: ToolCallSignature[]): { isStagnant: boolean; reason?: string; confidence: number } {
-    if (callHistory.length < 5) {
+    if (callHistory.length < this.RAPID_CALL_THRESHOLD) {
       return { isStagnant: false, confidence: 0 };
     }
     
-    const recentCalls = callHistory.slice(-5);
+    const recentCalls = callHistory.slice(-this.RAPID_CALL_THRESHOLD);
     const timeSpan = recentCalls[recentCalls.length - 1].timestamp - recentCalls[0].timestamp;
     
-    // If 5 calls in less than 5 seconds, might be in a tight loop
-    if (timeSpan < 5000) {
+    // If RAPID_CALL_THRESHOLD calls within TIME_WINDOW_MS, likely in tight loop
+    if (timeSpan <= this.TIME_WINDOW_MS) {
+      const callsPerSecond = this.RAPID_CALL_THRESHOLD / (timeSpan / 1000);
+      const confidence = Math.min(0.7 + (callsPerSecond - 1) * 0.05, 0.9);
+      
       return {
         isStagnant: true,
-        reason: 'Rapid-fire tool calls detected',
-        confidence: 0.7
+        reason: `Rapid tool calls: ${this.RAPID_CALL_THRESHOLD} calls in ${Math.round(timeSpan/1000)}s`,
+        confidence
       };
     }
     
@@ -260,54 +273,81 @@ export class StagnationDetector {
    */
   private hashArgs(call: PendingToolCall): string {
     const { toolName, ...args } = call;
-    const normalized = JSON.stringify(args, Object.keys(args).sort());
+    return this.hashObject(args);
+  }
+  
+  
+  /**
+   * Helper: Extract arguments from a tool result for hashing
+   */
+  private extractArgsFromResult(result: Interaction): any {
+    // Try to extract original arguments from the result context
+    // This is best effort since we don't always have original args
+    const context = result.context;
+    
+    // Remove non-argument fields
+    const { toolName, success, error, timestamp, output, ...potentialArgs } = context;
+    
+    return potentialArgs;
+  }
+
+  /**
+   * Helper: Hash any object consistently
+   */
+  private hashObject(obj: any): string {
+    const normalized = JSON.stringify(obj, Object.keys(obj || {}).sort());
     return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 8);
   }
   
   /**
-   * Helper: Hash tool result as if it were a call (for comparing patterns)
+   * Helper: Detect repeating patterns using sliding window approach
    */
-  private hashResultAsCall(result: Interaction): string {
-    // Use output or context as basis for hash, fallback to error
-    const content = result.context.output || result.context.context || result.context.error || '{}';
-    const normalized = JSON.stringify(content, Object.keys(content as any).sort());
-    return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 8);
-  }
-  
-  /**
-   * Helper: Detect repeating patterns
-   */
-  private detectPattern(calls: ToolCallSignature[], patternLength: number): StagnationPattern | null {
+  private detectPatternSlidingWindow(calls: ToolCallSignature[], patternLength: number): StagnationPattern | null {
     if (calls.length < patternLength * 2) return null;
     
-    for (let i = 0; i <= calls.length - patternLength * 2; i++) {
+    const patternCounts = new Map<string, { count: number; firstSeen: number }>();
+    
+    // Sliding window to detect all possible patterns
+    for (let i = 0; i <= calls.length - patternLength; i++) {
       const pattern = calls.slice(i, i + patternLength)
-        .map(c => c.toolName)
+        .map(c => `${c.toolName}:${c.argsHash}`)
         .join('→');
       
-      let matches = 1;
-      for (let j = i + patternLength; j <= calls.length - patternLength; j += patternLength) {
+      if (!patternCounts.has(pattern)) {
+        patternCounts.set(pattern, { count: 0, firstSeen: i });
+      }
+      
+      // Count overlapping occurrences
+      let occurrences = 1;
+      for (let j = i + 1; j <= calls.length - patternLength; j++) {
         const nextPattern = calls.slice(j, j + patternLength)
-          .map(c => c.toolName)
+          .map(c => `${c.toolName}:${c.argsHash}`)
           .join('→');
         
         if (pattern === nextPattern) {
-          matches++;
-        } else {
-          break;
+          occurrences++;
         }
       }
       
-      if (matches >= this.cyclicPatternThreshold) {
-        return {
-          pattern,
-          count: matches,
-          firstSeen: i
-        };
+      const entry = patternCounts.get(pattern)!;
+      entry.count = Math.max(entry.count, occurrences);
+    }
+    
+    // Find the pattern with highest count that meets threshold
+    let bestPattern: StagnationPattern | null = null;
+    for (const [pattern, data] of patternCounts) {
+      if (data.count >= this.cyclicPatternThreshold) {
+        if (!bestPattern || data.count > bestPattern.count) {
+          bestPattern = {
+            pattern: pattern.replace(/:[^→]+/g, ''), // Remove hash for display
+            count: data.count,
+            firstSeen: data.firstSeen
+          };
+        }
       }
     }
     
-    return null;
+    return bestPattern;
   }
   
   /**
@@ -343,7 +383,7 @@ export class StagnationDetector {
     if (!a.context.error || !b.context.error) return false;
     if (a.context.toolName !== b.context.toolName) return false;
     
-    // Simple similarity check - you could use more sophisticated algorithms
+    // Use more sophisticated similarity check
     const similarity = this.calculateStringSimilarity(a.context.error, b.context.error);
     return similarity > this.similarityThreshold;
   }

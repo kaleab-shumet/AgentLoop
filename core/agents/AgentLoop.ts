@@ -13,7 +13,8 @@ import {
   Interaction,
   AgentResponse,
   ToolCallContext,
-  HandlerParams
+  HandlerParams,
+  UserPrompt
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
@@ -99,7 +100,7 @@ export abstract class AgentLoop {
     this.aiProvider = provider;
     this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.FUNCTION_CALLING);
     this.logger = options.logger || console;
-    this.maxIterations = options.maxIterations || 10;
+    this.maxIterations = options.maxIterations || 100;
     this.toolTimeoutMs = options.toolTimeoutMs || 30000;
     this.retryAttempts = options.retryAttempts || 3;
     this.retryDelay = options.retryDelay || 1000;
@@ -191,6 +192,8 @@ export abstract class AgentLoop {
     const currentInteractionHistory: Interaction[] = []
 
 
+
+
     const turnState = new TurnState();
 
 
@@ -201,6 +204,15 @@ export abstract class AgentLoop {
     let keepRetry = true;
 
     const taskId = nanoid();
+
+    const userPromptInteraction: UserPrompt = {
+      taskId,
+      timestamp: Date.now().toString(),
+      type: "user_prompt",
+      context: userPrompt
+    }
+
+    currentInteractionHistory.push(userPromptInteraction)
 
     try {
       this.initializePromptManager();
@@ -313,7 +325,7 @@ export abstract class AgentLoop {
 
             await this.hooks.onAgentFinalResponse?.(agentResponse);
             //this.logger.info(`[AgentLoop] Run complete. Final answer: ${finalResult.output?.value?.substring(0, 120)}`);
-            const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse: agentResponse };
+            const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse };
             await this.hooks.onRunEnd?.(output);
             return output;
           }
@@ -669,7 +681,7 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, any>, previousTaskHistory: Interaction[], currentInteractionHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean): string {
+  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[],  previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
@@ -677,9 +689,9 @@ export abstract class AgentLoop {
 
     let prompt = this.promptManager.buildPrompt(
       userPrompt,
-      context,
-      previousTaskHistory,
+      context,      
       currentInteractionHistory,
+      previousTaskHistory,
       lastError,
       keepRetry,
       this.FINAL_TOOL_NAME,
@@ -729,7 +741,7 @@ export abstract class AgentLoop {
     const toolTimeout = tool.timeout || this.toolTimeoutMs;
 
     // Create cancellable timeout
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() =>
         reject(new AgentError(`Tool '${tool.name}' exceeded timeout of ${toolTimeout}ms.`, AgentErrorType.TOOL_TIMEOUT_ERROR, { toolName: tool.name, timeout: toolTimeout })),
@@ -829,7 +841,7 @@ export abstract class AgentLoop {
           return {
             toolName: name,
             success: true,
-            output: args,
+            ...args,
           };
         },
       }));

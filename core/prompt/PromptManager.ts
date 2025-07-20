@@ -137,8 +137,8 @@ export class PromptManager {
   buildPrompt(
     userPrompt: string,
     context: Record<string, any>,
-    oldAgentEventHistory: Interaction[],
-    agentEventList: Interaction[],
+    currentTaskInteractionHistory: Interaction[],
+    prevTasksInteractionHistory: Interaction[],
     lastError: AgentError | null,
     keepRetry: boolean,
     finalToolName: string,
@@ -148,9 +148,8 @@ export class PromptManager {
       this.systemPrompt,
       userPrompt,
       context,
-
-      oldAgentEventHistory,
-      agentEventList,
+      currentTaskInteractionHistory,
+      prevTasksInteractionHistory,
 
       lastError,
       keepRetry,
