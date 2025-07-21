@@ -1,5 +1,6 @@
 import z, { ZodTypeAny } from "zod";
 import { TurnState } from "../agents/TurnState";
+import { AgentError } from "../utils/AgentError";
 
 /**
  * Format mode for the agent - function calling and YAML mode are supported
@@ -44,6 +45,7 @@ export type AgentResponse = {
   type: "agent_response";
   timestamp: string;
   context: any;
+  error?: string;
 };
 
 // Context structure used inside tool_call events

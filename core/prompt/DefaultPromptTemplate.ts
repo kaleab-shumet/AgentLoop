@@ -38,25 +38,31 @@ export class DefaultPromptTemplate {
    * Generate clear, concise workflow and termination rules
    */
   private getWorkflowRules(finalToolName: string): string {
-    return `**DECISION PROCESS:**
-1. Each conversation has a unique task ID - different task IDs mean completely separate conversations
-2. Focus on CURRENT TASK HISTORY (same task ID) for immediate context
-3. PREVIOUS TASK HISTORY is provided for reference only - use it when users explicitly refer to past conversations
-4. When users request an action, use the appropriate tools to perform it NOW
-5. Always use tools to get current, real-time information - never assume or guess
-6. If the task is complete and you have the answer, use '${finalToolName}' to provide the final result
+    return `## DECISION FRAMEWORK
 
-**IMPORTANT RULES:**
-- ALWAYS use tools when users request actions that require tool usage
-- Never say "already done".
-- Use previous task history for general information (names, preferences, context) even without explicit reference
-- For action requests, focus on current task but use previous history as context to answer general info
-- Each user request should trigger actual tool usage to get fresh, current results
+### Task Context Understanding
+1. **Task ID Separation**: Each task has a unique ID. Different task IDs = completely separate conversations.
+2. **History Priority**: 
+   - PRIMARY: Current task history (same task ID) - your immediate working context
+   - SECONDARY: Previous task history - reference only, unless user explicitly mentions past conversations
 
-**WHEN TO USE '${finalToolName}':**
-- All required information has been gathered from tools
-- The user's request can be fully answered with current results
-- You're stuck and need to explain the limitation`;
+### Execution Requirements
+3. **Action Protocol**: When user requests an action → execute tools immediately
+4. **Information Gathering**: Always use tools for current/real-time data - never assume or guess
+5. **Tool Usage Mandate**: Every user action request MUST trigger tool usage for fresh results
+
+### Completion Criteria
+6. **Task Completion**: Use '${finalToolName}' ONLY when:
+   - ✅ User's request is completely fulfilled
+   - ✅ You have all necessary information
+   - ✅ All required operations are finished
+   - ⚠️ You cannot proceed and need to explain why
+
+### CRITICAL CONSTRAINTS
+- ❌ NEVER use '${finalToolName}' with other tools in same response
+- ❌ NEVER say "already done" - always execute fresh tool calls
+- ✅ '${finalToolName}' terminates the conversation - use standalone only
+- ✅ Use previous history for context (names, preferences) when relevant`;
   }
 
   /**
@@ -64,9 +70,17 @@ export class DefaultPromptTemplate {
    */
   private getExecutionStrategy(parallelExecution: boolean): string {
     if (parallelExecution) {
-      return `**EXECUTION:** Tools run in parallel - you can call multiple tools in one response for efficiency`;
+      return `### EXECUTION STRATEGY
+**Parallel Mode**: Tools execute concurrently
+- ✅ Call multiple tools in single response for efficiency
+- ✅ Tools with dependencies will wait for prerequisites  
+- ✅ Independent tools run simultaneously`;
     } else {
-      return `**EXECUTION:** Tools run sequentially - you can still call multiple tools in one response`;
+      return `### EXECUTION STRATEGY
+**Sequential Mode**: Tools execute in order
+- ✅ Call multiple tools in single response
+- ✅ Tools execute one after another
+- ✅ Each tool waits for previous completion`;
     }
   }
 
@@ -83,14 +97,16 @@ export class DefaultPromptTemplate {
 
 
   private getFunctionCallingFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    return `## FUNCTION CALLING FORMAT
-Respond using JSON format in code blocks.
+    return `# RESPONSE FORMAT: JSON FUNCTION CALLING
 
 ${this.getWorkflowRules(finalToolName)}
 
 ${this.getExecutionStrategy(parallelExecution)}
 
-**Single tool call:**
+## OUTPUT FORMAT REQUIREMENTS
+You MUST respond with JSON in code blocks. Follow these patterns exactly:
+
+### Single Tool Execution
 \`\`\`json
 {
   "functionCall": {
@@ -100,7 +116,7 @@ ${this.getExecutionStrategy(parallelExecution)}
 }
 \`\`\`
 
-**Multiple tool calls:**
+### Multiple Tool Execution
 \`\`\`json
 {
   "functionCalls": [
@@ -116,68 +132,100 @@ ${this.getExecutionStrategy(parallelExecution)}
 }
 \`\`\`
 
-**Task completion:**
+### Task Completion (STANDALONE ONLY)
 \`\`\`json
 {
   "functionCall": {
     "name": "${finalToolName}",
-    "arguments": "{\\"value\\": \\"Task completed. [Brief summary]\\"}"
+    "arguments": "{\\"value\\": \\"[Complete summary of results and accomplishments]\\"}"
   }
 }
-\`\`\``;
+\`\`\`
+
+### ⚠️ CRITICAL FORMATTING RULES
+- ❌ NEVER combine "${finalToolName}" with other tools
+- ✅ Use "functionCall" (singular) for one tool
+- ✅ Use "functionCalls" (plural) for multiple tools  
+- ✅ Arguments must be JSON strings (escaped quotes)
+- ✅ Include ALL required parameters from tool schemas`;
   }
 
   private getYamlFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    return `## YAML FORMAT
-Respond using YAML format in code blocks.
+    return `# ⚠️ MANDATORY RESPONSE FORMAT: YAML TOOL CALLS ONLY ⚠️
 
 ${this.getWorkflowRules(finalToolName)}
 
 ${this.getExecutionStrategy(parallelExecution)}
 
-**Schema Requirements:**
-- Use exact parameter names from tool schemas (case-sensitive)
-- Include all required parameters
-- Use correct data types (strings in quotes, numbers without quotes)
-- For multi-line content, use the | block style
+## 🚨 CRITICAL: YOU MUST ONLY RESPOND WITH YAML CODE BLOCKS - NO PLAIN TEXT 🚨
 
-**Single tool call:**
-\`\`\`yaml
-tool_calls:
-  - name: tool_name
-    args:
-      param1: "value1"
-      param2: "value2"
-\`\`\`
+### ✅ REQUIRED FORMAT - USE THIS EXACT STRUCTURE:
 
-**Multiple tool calls:**
-\`\`\`yaml
-tool_calls:
-  - name: tool_name_1
-    args:
-      param1: "value1"
-  - name: tool_name_2
-    args:
-      param2: "value2"
-\`\`\`
-
-**Multi-line content:**
-\`\`\`yaml
-tool_calls:
-  - name: tool_name
-    args:
-      content: |
-        This is multi-line content.
-        It preserves formatting.
-\`\`\`
-
-**Task completion:**
+For greeting or unclear requests:
 \`\`\`yaml
 tool_calls:
   - name: ${finalToolName}
     args:
-      value: "Task completed. [Brief summary]"
-\`\`\``;
+      value: |
+        Hello! I'm here to help. What would you like me to do?
+\`\`\`
+
+For tool operations:
+\`\`\`yaml
+tool_calls:
+  - name: tool_name
+    args:
+      parameter_name: |
+        parameter_value
+\`\`\`
+
+### Schema Compliance Rules
+- ✅ Use EXACT parameter names from tool schemas (case-sensitive)
+- ✅ Include ALL required parameters  
+- ✅ Use | block style for string values
+- ✅ Numbers without quotes, strings with | block syntax
+
+### Single Tool Execution
+\`\`\`yaml
+tool_calls:
+  - name: tool_name
+    args:
+      param1: |
+        value1
+      param2: |
+        value2
+\`\`\`
+
+### Multiple Tool Execution
+\`\`\`yaml
+tool_calls:
+  - name: tool_name_1
+    args:
+      param1: |
+        value1
+  - name: tool_name_2
+    args:
+      param2: |
+        value2
+\`\`\`
+
+### Task Completion (STANDALONE ONLY)
+\`\`\`yaml
+tool_calls:
+  - name: ${finalToolName}
+    args:
+      value: |
+        [Complete summary of results and accomplishments]
+\`\`\`
+
+### 🚨 ABSOLUTE REQUIREMENTS 🚨
+- ❌ NEVER respond with plain text - ALWAYS use YAML code blocks
+- ❌ NEVER combine "${finalToolName}" with other tools
+- ✅ Always use "tool_calls:" as root element
+- ✅ Each tool is array item with "name:" and "args:"
+- ✅ Use | block style for all string arguments
+- ✅ Maintain proper YAML indentation (2 spaces)
+- ✅ For greetings/unclear requests, use "${finalToolName}" tool with appropriate response`;
   }
 
 
@@ -199,11 +247,18 @@ tool_calls:
     // 1. System prompt
     sections.push(systemPrompt);
 
-    // 2. Format instructions
-    sections.push(`# RESPONSE FORMAT\n${this.getFormatInstructions(finalToolName, options.parallelExecution || false)}`);
+    // 2. Format instructions - CRITICAL FIRST
+    sections.push(`🚨 MANDATORY: You MUST respond using the exact format specified below. No exceptions. 🚨\n\n${this.getFormatInstructions(finalToolName, options.parallelExecution || false)}`);
 
     // 3. Tool definitions
-    sections.push(`# AVAILABLE TOOLS\nFollow the tool schemas exactly - parameter names are case-sensitive and all required parameters must be included.\n\n${toolDefinitions}`);
+    sections.push(`# AVAILABLE TOOLS
+📋 **Schema Compliance Requirements:**
+- Parameter names are CASE-SENSITIVE
+- ALL required parameters MUST be included
+- Follow exact data types specified in schemas
+- Review tool descriptions for usage context
+
+${toolDefinitions}`);
 
     // Execution strategy is now included in format instructions
 
@@ -241,14 +296,21 @@ tool_calls:
 
   buildContextSection(context: Record<string, any>, options: PromptOptions): string {
     if (Object.keys(context).length === 0) {
-      return '# CONTEXT\nNo background context provided.';
+      return `# CONTEXT
+📋 No additional context provided for this task.`;
     }
 
-    const contextLog = Object.entries(context)
-      .map(([key, value]) => `**${key}**:\n${JSON.stringify(value)}`)
+    const contextEntries = Object.entries(context)
+      .map(([key, value]) => {
+        const displayValue = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+        return `### ${key}\n${displayValue}`;
+      })
       .join('\n\n');
 
-    return `# CONTEXT\n${contextLog}`;
+    return `# CONTEXT
+🔍 **Available Context Data:**
+
+${contextEntries}`;
   }
 
   buildPreviousTaskHistory(prevInteractionHistory: Interaction[], options: PromptOptions): string {
@@ -256,15 +318,28 @@ tool_calls:
       ? prevInteractionHistory.slice(-options.maxPreviousTaskEntries)
       : prevInteractionHistory;
 
-    return `# PREVIOUS TASK HISTORY\n${JSON.stringify(entries, null, 2)}`;
+    const entryCount = entries.length;
+    const limitNote = options.maxPreviousTaskEntries 
+      ? ` (showing last ${Math.min(entryCount, options.maxPreviousTaskEntries)} entries)`
+      : '';
+
+    return `# PREVIOUS TASK HISTORY
+📚 **Reference Information from Past Conversations**${limitNote}
+⚠️ Use this for context only - focus on current task unless user explicitly references past work
+
+${JSON.stringify(entries, null, 2)}`;
   }
 
   buildCurrentTaskHistory(currentTaskInteraction: Interaction[]): string {
     const historyLog = JSON.stringify(currentTaskInteraction, null, 2);
+    const interactionCount = currentTaskInteraction.length;
+    
     return `# CURRENT TASK HISTORY
-${historyLog}
+🔄 **Your Working Memory for This Task** (${interactionCount} interactions)
+✅ **Success Indicator**: When tool results show "success": true, the operation completed successfully
+🎯 **Priority**: This is your PRIMARY context - use this to track progress and avoid repetition
 
-**IMPORTANT:** When tool results show "success": true, the operation completed successfully.`;
+${historyLog}`;
   }
 
   buildErrorRecoverySection(
@@ -275,18 +350,32 @@ ${historyLog}
   ): string {
     if (!error) return '';
 
-    const defaultRetryInstructions = "Analyze error and history, then retry with corrected approach. If same error persists, try alternatives.";
-    const maxRetryMessage = `Maximum retries reached. Use '${finalToolName}' to terminate and report what you accomplished and what failed.`;
+    const defaultRetryInstructions = "📋 **Recovery Steps:**\n1. Analyze error details and task history\n2. Identify root cause of failure\n3. Modify approach to avoid same error\n4. Retry with corrected parameters/strategy\n5. If same error persists, try alternative methods";
+    
+    const maxRetryMessage = `🚫 **Maximum Retries Exceeded**\nUse '${finalToolName}' to:\n- Summarize what was successfully accomplished\n- Explain what failed and why\n- Provide partial results if any`;
 
     const retryInstruction = keepRetry
       ? (errorRecoveryInstructions || defaultRetryInstructions)
       : maxRetryMessage;
 
-    return `# ERROR RECOVERY\n**Last Error:** ${error.message}\n**Action:** ${retryInstruction}`;
+    const errorType = error.type ? ` (${error.type})` : '';
+
+    return `# ERROR RECOVERY
+⚠️ **Last Error Encountered**${errorType}: ${error.message}
+
+${retryInstruction}`;
   }
 
   buildTaskSection(userPrompt: string, finalToolName: string): string {
     return `# CURRENT TASK
-Respond to: "${userPrompt}"`;
+🎯 **User Request:** "${userPrompt}"
+
+💡 **Your Mission:**
+1. Understand the user's specific request
+2. Execute appropriate tools to fulfill the request  
+3. Provide accurate, current information
+4. Complete the task fully before using '${finalToolName}'
+
+⚡ **Action Required:** Analyze the request and execute tools immediately - no assumptions, get fresh data!`;
   }
 }

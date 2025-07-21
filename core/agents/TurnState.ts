@@ -1,3 +1,12 @@
+/**
+ * TurnState - Thread-safe key-value store for sharing data between tools during parallel execution
+ * 
+ * Features:
+ * - Per-key locking to prevent race conditions
+ * - Type-safe get/set operations
+ * - Guaranteed undefined return for missing keys
+ * - Automatic lock cleanup and memory management
+ */
 export class TurnState {
     private store: Map<string, any> = new Map();
     private accessLock: Map<string, Promise<void>> = new Map();
@@ -24,15 +33,26 @@ export class TurnState {
       }
     }
   
+    /**
+     * Set a value for the given key. Thread-safe.
+     */
     async set(key: string, value: any): Promise<void> {
       await this.withLock(key, () => {
         this.store.set(key, value);
       });
     }
   
+    /**
+     * Get a value for the given key. Returns undefined if key doesn't exist.
+     * Thread-safe with per-key locking.
+     */
     async get<T>(key: string): Promise<T | undefined> {
       return this.withLock(key, () => {
-        return this.store.get(key) as T;
+        if (!this.store.has(key)) {
+          return undefined;
+        }
+        const value = this.store.get(key);
+        return value as T;
       });
     }
   
@@ -71,13 +91,25 @@ export class TurnState {
       this.accessLock.clear();
     }
 
-    // Synchronous versions for backward compatibility (use with caution in parallel execution)
+    /**
+     * Synchronous versions for backward compatibility (use with caution in parallel execution)
+     * These bypass the locking mechanism and should only be used when you're certain
+     * no other tools are accessing the same keys concurrently.
+     */
     setSync(key: string, value: any): void {
       this.store.set(key, value);
     }
   
+    /**
+     * Synchronous get - returns undefined if key doesn't exist.
+     * WARNING: Not thread-safe - use async get() for parallel execution.
+     */
     getSync<T>(key: string): T | undefined {
-      return this.store.get(key) as T;
+      if (!this.store.has(key)) {
+        return undefined;
+      }
+      const value = this.store.get(key);
+      return value as T;
     }
   
     hasSync(key: string): boolean {

@@ -28,7 +28,7 @@ export class FileManagerConsole {
     this.agent = new SimpleFileManagerAgent({
       service: 'google',
       apiKey: process.env.GEMINI_API_KEY,
-      model: 'gemini-1.5-flash'
+      model: 'gemini-2.0-flash'
     });
 
     // Create readline interface
@@ -105,7 +105,7 @@ export class FileManagerConsole {
         if (result.agentResponse) {
           this.conversationHistory.push(result.agentResponse);
           const context = result.agentResponse.context;
-          const response = context?.value ?? context;
+          const response = context?.value || context;
           console.log('🤖 Agent:', response);
         } else {
           console.log('🤖 Agent: Task completed, but no response was provided.');

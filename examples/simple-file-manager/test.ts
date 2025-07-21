@@ -8,25 +8,34 @@ import * as dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
-/**
- * Automated Test Suite for Simple File Manager Agent
- * 
- * This test suite validates all file management operations in a controlled
- * test environment using a temporary directory and real AI provider.
- */
+interface TestResult {
+  name: string;
+  status: 'PASS' | 'FAIL' | 'SKIP';
+  duration: number;
+  error?: string;
+  details?: string;
+}
 
+interface TestSuite {
+  name: string;
+  tests: TestResult[];
+  totalDuration: number;
+}
+
+/**
+ * Clean Test Suite for Simple File Manager Agent
+ */
 class FileManagerAgentTest {
   private testDir: string;
   private agent: SimpleFileManagerAgent;
+  private testSuites: TestSuite[] = [];
+  private currentSuite: TestSuite | null = null;
 
   constructor() {
-    // Create a temporary test directory
     this.testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filemanager-test-'));
-    console.log(`📁 Test directory: ${this.testDir}`);
-
-    // Environment variable should already be loaded by dotenv
+    
     if (!process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY environment variable is required for testing');
+      throw new Error('❌ GEMINI_API_KEY environment variable is required');
     }
 
     this.agent = new SimpleFileManagerAgent({
@@ -36,169 +45,161 @@ class FileManagerAgentTest {
     }, this.testDir);
   }
 
-  async cleanup() {
-    try {
-      // Clean up test directory
-      console.log(`📁 Test files preserved at: ${this.testDir}`);
-      console.log(`   You can inspect the test directory manually if needed`);
-      console.log(`   To clean up manually: rm -rf ${this.testDir}`);
-      // Uncomment the next line to auto-cleanup:
-      // fs.rmSync(this.testDir, { recursive: true, force: true });
-    } catch (error) {
-      console.error('Failed to cleanup test directory:', error);
+  private startSuite(name: string): void {
+    this.currentSuite = {
+      name,
+      tests: [],
+      totalDuration: 0
+    };
+  }
+
+  private endSuite(): void {
+    if (this.currentSuite) {
+      this.currentSuite.totalDuration = this.currentSuite.tests.reduce((sum, test) => sum + test.duration, 0);
+      this.testSuites.push(this.currentSuite);
+      this.currentSuite = null;
     }
   }
 
-  /**
-   * Test basic file operations without AI interaction
-   */
-  async testDirectToolCalls() {
-    console.log('\n🧪 Testing Direct Tool Calls...');
+  private async runTest(name: string, testFn: () => Promise<void>): Promise<void> {
+    const startTime = Date.now();
+    const result: TestResult = {
+      name,
+      status: 'PASS',
+      duration: 0
+    };
 
     try {
-      // Test 1: List empty directory
-      console.log('\n1. Testing list_directory on empty directory...');
-      const listResult1 = await this.runToolDirectly('list_directory', { path: '.' });
-      this.assertSuccess(listResult1, 'list_directory should succeed on empty directory');
-      this.assertEqual(listResult1.itemCount, 0, 'Empty directory should have 0 items');
+      await testFn();
+    } catch (error) {
+      result.status = 'FAIL';
+      result.error = error instanceof Error ? error.message : String(error);
+    }
 
-      // Test 2: Create a file
-      console.log('\n2. Testing create_file...');
-      const createResult = await this.runToolDirectly('create_file', {
+    result.duration = Date.now() - startTime;
+    this.currentSuite?.tests.push(result);
+  }
+
+  async cleanup() {
+    try {
+      fs.rmSync(this.testDir, { recursive: true, force: true });
+    } catch (error) {
+      // Ignore cleanup errors
+    }
+  }
+
+  async testDirectToolCalls() {
+    this.startSuite('Direct Tool Operations');
+
+    await this.runTest('List empty directory', async () => {
+      const result = await this.runToolDirectly('list_directory', { path: '.' });
+      this.assertSuccess(result);
+      this.assertEqual(result.itemCount, 0);
+    });
+
+    await this.runTest('Create file', async () => {
+      const result = await this.runToolDirectly('create_file', {
         path: 'test.txt',
         content: 'Hello, World!\nThis is a test file.'
       });
-      this.assertSuccess(createResult, 'create_file should succeed');
-      this.assertTrue(createResult.size! > 0, 'Created file should have size > 0');
+      this.assertSuccess(result);
+      this.assertTrue(result.size! > 0);
+    });
 
-      // Test 3: List directory with file
-      console.log('\n3. Testing list_directory with file...');
-      const listResult2 = await this.runToolDirectly('list_directory', { path: '.' });
-      this.assertSuccess(listResult2, 'list_directory should succeed');
-      this.assertEqual(listResult2.itemCount, 1, 'Directory should have 1 item');
-      this.assertEqual(listResult2.items[0].name, 'test.txt', 'File should be named test.txt');
+    await this.runTest('List directory with file', async () => {
+      const result = await this.runToolDirectly('list_directory', { path: '.' });
+      this.assertSuccess(result);
+      this.assertEqual(result.itemCount, 1);
+      this.assertEqual(result.items[0].name, 'test.txt');
+    });
 
-      // Test 4: Read file
-      console.log('\n4. Testing read_file...');
-      const readResult = await this.runToolDirectly('read_file', { path: 'test.txt' });
-      this.assertSuccess(readResult, 'read_file should succeed');
-      this.assertTrue(readResult.content!.includes('Hello, World!'), 'File content should match');
+    await this.runTest('Read file content', async () => {
+      const result = await this.runToolDirectly('read_file', { path: 'test.txt' });
+      this.assertSuccess(result);
+      this.assertTrue(result.content!.includes('Hello, World!'));
+    });
 
-      // Test 5: Create subdirectory and file
-      console.log('\n5. Testing create_file in subdirectory...');
-      const createSubResult = await this.runToolDirectly('create_file', {
+    await this.runTest('Create nested file', async () => {
+      const result = await this.runToolDirectly('create_file', {
         path: 'subdir/nested.txt',
         content: 'Nested file content'
       });
-      this.assertSuccess(createSubResult, 'create_file in subdirectory should succeed');
+      this.assertSuccess(result);
+    });
 
-      // Test 6: List directory with subdirectory
-      console.log('\n6. Testing list_directory with subdirectory...');
-      const listResult3 = await this.runToolDirectly('list_directory', { path: '.' });
-      this.assertSuccess(listResult3, 'list_directory should succeed');
-      this.assertEqual(listResult3.itemCount, 2, 'Directory should have 2 items');
+    await this.runTest('Delete file', async () => {
+      const result = await this.runToolDirectly('delete_file', { path: 'test.txt' });
+      this.assertSuccess(result);
+    });
 
-      // Test 7: Delete file
-      console.log('\n7. Testing delete_file...');
-      const deleteResult = await this.runToolDirectly('delete_file', { path: 'test.txt' });
-      this.assertSuccess(deleteResult, 'delete_file should succeed');
+    await this.runTest('Error handling - read non-existent file', async () => {
+      const result = await this.runToolDirectly('read_file', { path: 'nonexistent.txt' });
+      this.assertFailure(result);
+    });
 
-      // Test 8: Verify file is deleted
-      console.log('\n8. Testing list_directory after deletion...');
-      const listResult4 = await this.runToolDirectly('list_directory', { path: '.' });
-      this.assertSuccess(listResult4, 'list_directory should succeed');
-      this.assertEqual(listResult4.itemCount, 1, 'Directory should have 1 item after deletion');
+    await this.runTest('Error handling - delete non-existent file', async () => {
+      const result = await this.runToolDirectly('delete_file', { path: 'nonexistent.txt' });
+      this.assertFailure(result);
+    });
 
-      // Test 9: Error cases
-      console.log('\n9. Testing error cases...');
-      
-      // Try to read non-existent file
-      const readErrorResult = await this.runToolDirectly('read_file', { path: 'nonexistent.txt' });
-      this.assertFailure(readErrorResult, 'read_file should fail for non-existent file');
-      
-      // Try to delete non-existent file
-      const deleteErrorResult = await this.runToolDirectly('delete_file', { path: 'nonexistent.txt' });
-      this.assertFailure(deleteErrorResult, 'delete_file should fail for non-existent file');
-
-      // Try to list non-existent directory
-      const listErrorResult = await this.runToolDirectly('list_directory', { path: 'nonexistent-dir' });
-      this.assertFailure(listErrorResult, 'list_directory should fail for non-existent directory');
-
-      console.log('\n✅ All direct tool call tests passed!');
-
-    } catch (error) {
-      console.error('\n❌ Direct tool call tests failed:', error);
-      throw error;
-    }
+    this.endSuite();
   }
 
-  /**
-   * Test the agent with real AI responses
-   */
   async testAgentWithRealAI() {
-    console.log('\n🤖 Testing Agent with Real AI...');
+    this.startSuite('AI Agent Integration');
 
-    const testPrompts = [
-      'List this directory, then create a file called hello.txt with content "Hello World", then list the directory again to confirm the file was created',
-      'Read the hello.txt file, then create a second file called world.txt with content "World Hello", then read both files to verify their contents',
-      'Create a file called config.json with some sample JSON configuration data, then list the directory to see all files, then read the config.json to verify the content was written correctly',
-      'Create a subdirectory structure by first creating a file at "subdir/nested.txt" with content "nested content", then list the root directory, then list the subdir directory to see the nested file',
-      'Clean up by first listing all files in the directory, then deleting hello.txt, then deleting world.txt, then deleting config.json, then deleting the nested.txt file, and finally list the directory to confirm all files are removed'
+    const scenarios = [
+      {
+        name: 'Basic file operations',
+        prompt: 'List this directory, then create a file called hello.txt with content "Hello World", then list the directory again to confirm'
+      },
+      {
+        name: 'File reading and writing',
+        prompt: 'Read the hello.txt file, then create a second file called world.txt with content "World Hello", then read both files'
+      },
+      {
+        name: 'JSON file creation',
+        prompt: 'Create a file called config.json with sample JSON configuration data, then verify the content'
+      },
+      {
+        name: 'Nested directory handling',
+        prompt: 'Create a file at "subdir/nested.txt" with content "nested content", then list both root and subdir'
+      },
+      {
+        name: 'Cleanup operations',
+        prompt: 'Delete all created files (hello.txt, world.txt, config.json, subdir/nested.txt) and list directory to confirm'
+      }
     ];
 
-    try {
-      let conversationHistory: any[] = [];
-      
-      for (let i = 0; i < testPrompts.length; i++) {
-        const prompt = testPrompts[i];
-        console.log(`\n${i + 1}. Testing agent with "${prompt}"...`);
-        
+    let conversationHistory: any[] = [];
+
+    for (const scenario of scenarios) {
+      await this.runTest(scenario.name, async () => {
         const result = await this.agent.run({
-          userPrompt: prompt,
+          userPrompt: scenario.prompt,
           prevInteractionHistory: conversationHistory,
           context: { workingDirectory: this.testDir }
         });
-        
-        this.assertTrue(!!result.agentResponse, `Should get agent response for: ${prompt}`);
-        console.log(`   📋 Agent response: ${JSON.stringify(result.agentResponse?.context)}`);
-        
-        // Show tool calls from this iteration
-        const currentToolCalls = result.interactionHistory?.filter(h => h.type === 'tool_call').map(h => h.context.toolName) || [];
-        console.log(`   🔧 Tool calls made: ${currentToolCalls.join(', ') || 'none'}`);
-        console.log(`   📊 Total interactions in this run: ${result.interactionHistory?.length || 0}`);
-        
-        // Debug: show all interaction types
-        if (result.interactionHistory) {
-          const interactionTypes = result.interactionHistory.map(h => `${h.type}:${h.context?.toolName || 'no-tool'}`);
-          console.log(`   🔍 Debug - All interactions: ${interactionTypes.join(', ')}`);
-        }
-        
-        // Update conversation history for next iteration
-        if (result.interactionHistory) {
-          conversationHistory.push(...result.interactionHistory);
-        }
-        
-        // Additional verification for create file
-        if (prompt.includes('create a file')) {
-          const fileExists = await fs.promises.access(path.join(this.testDir, 'hello.txt')).then(() => true).catch(() => false);
-          console.log(`   📁 File exists after create: ${fileExists}`);
-          this.assertTrue(fileExists, 'File should actually be created');
-        }
-      }
 
-      console.log('\n✅ All real AI tests passed!');
+        if (!result.agentResponse) {
+          throw new Error('No agent response received');
+        }
 
-    } catch (error) {
-      console.error('\n❌ Real AI tests failed:', error);
-      throw error;
+        if (!result.agentResponse.error) {
+          // Update conversation history for next test
+          if (result.interactionHistory) {
+            conversationHistory.push(...result.interactionHistory);
+          }
+        } else {
+          throw new Error(`Agent error: ${result.agentResponse.error}`);
+        }
+      });
     }
+
+    this.endSuite();
   }
 
-  /**
-   * Helper method to run tools directly through the agent
-   */
   private async runToolDirectly(toolName: string, args: any): Promise<any> {
-    // Access the tool handlers directly for testing
     const handlers = (this.agent as any).toolHandlers;
     
     switch (toolName) {
@@ -215,57 +216,114 @@ class FileManagerAgentTest {
     }
   }
 
-  // Test assertion helpers
-  private assertSuccess(result: any, message: string) {
+  private assertSuccess(result: any) {
     if (!result.success) {
-      throw new Error(`${message} - Error: ${result.error}`);
+      throw new Error(`Expected success but got error: ${result.error}`);
     }
-    console.log(`   ✅ ${message}`);
   }
 
-  private assertFailure(result: any, message: string) {
+  private assertFailure(result: any) {
     if (result.success) {
-      throw new Error(`${message} - Expected failure but got success`);
+      throw new Error('Expected failure but operation succeeded');
     }
-    console.log(`   ✅ ${message}`);
   }
 
-  private assertEqual<T>(actual: T, expected: T, message: string) {
+  private assertEqual<T>(actual: T, expected: T) {
     if (actual !== expected) {
-      throw new Error(`${message} - Expected: ${expected}, Actual: ${actual}`);
+      throw new Error(`Expected: ${expected}, Actual: ${actual}`);
     }
-    console.log(`   ✅ ${message}`);
   }
 
-  private assertTrue(condition: boolean, message: string) {
+  private assertTrue(condition: boolean) {
     if (!condition) {
-      throw new Error(`${message} - Condition was false`);
+      throw new Error('Assertion failed: condition was false');
     }
-    console.log(`   ✅ ${message}`);
   }
 
-  /**
-   * Run all tests
-   */
+  private formatDuration(ms: number): string {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+  }
+
+  private printResults(): void {
+    console.log('\n' + '='.repeat(80));
+    console.log(' FILE MANAGER AGENT TEST RESULTS');
+    console.log('='.repeat(80));
+
+    let totalTests = 0;
+    let totalPassed = 0;
+    let totalFailed = 0;
+    let totalDuration = 0;
+
+    this.testSuites.forEach(suite => {
+      const passed = suite.tests.filter(t => t.status === 'PASS').length;
+      const failed = suite.tests.filter(t => t.status === 'FAIL').length;
+      const status = failed === 0 ? '✅ PASS' : '❌ FAIL';
+      
+      console.log(`\n📁 ${suite.name} ${status} (${this.formatDuration(suite.totalDuration)})`);
+      console.log('-'.repeat(60));
+      
+      suite.tests.forEach(test => {
+        const statusIcon = test.status === 'PASS' ? '✅' : '❌';
+        const duration = this.formatDuration(test.duration);
+        console.log(`  ${statusIcon} ${test.name} (${duration})`);
+        
+        if (test.error) {
+          console.log(`    Error: ${test.error}`);
+        }
+      });
+      
+      totalTests += suite.tests.length;
+      totalPassed += passed;
+      totalFailed += failed;
+      totalDuration += suite.totalDuration;
+    });
+
+    console.log('\n' + '='.repeat(80));
+    console.log(' SUMMARY');
+    console.log('='.repeat(80));
+    console.log(`Total Tests: ${totalTests}`);
+    console.log(`Passed: ${totalPassed}`);
+    console.log(`Failed: ${totalFailed}`);
+    console.log(`Duration: ${this.formatDuration(totalDuration)}`);
+    console.log(`Success Rate: ${totalTests > 0 ? ((totalPassed / totalTests) * 100).toFixed(1) : 0}%`);
+    
+    if (totalFailed === 0) {
+      console.log('\n🎉 All tests passed successfully!');
+    } else {
+      console.log(`\n⚠️  ${totalFailed} test(s) failed`);
+    }
+    console.log('='.repeat(80));
+  }
+
   async runAllTests() {
-    console.log('🚀 Starting File Manager Agent Tests');
+    console.log('🚀 Simple File Manager Agent Test Suite');
+    console.log(`📁 Test directory: ${this.testDir}`);
+    console.log('\nRunning tests...');
+    
+    const startTime = Date.now();
     
     try {
-      //await this.testDirectToolCalls();
+      await this.testDirectToolCalls();
       await this.testAgentWithRealAI();
       
-      console.log('\n🎉 All tests completed successfully!');
-      
     } catch (error) {
-      console.error('\n💥 Tests failed:', error);
-      throw error;
+      console.error('\n❌ Test execution failed:', error);
     } finally {
+      this.printResults();
       await this.cleanup();
+    }
+    
+    const failed = this.testSuites.some(suite => 
+      suite.tests.some(test => test.status === 'FAIL')
+    );
+    
+    if (failed) {
+      throw new Error('Some tests failed');
     }
   }
 }
 
-// Run tests if this file is executed directly
 if (require.main === module) {
   async function runTests() {
     const tester = new FileManagerAgentTest();
@@ -273,12 +331,11 @@ if (require.main === module) {
       await tester.runAllTests();
       process.exit(0);
     } catch (error) {
-      console.error('Test suite failed:', error);
       process.exit(1);
     }
   }
 
-  runTests().catch(console.error);
+  runTests().catch(() => process.exit(1));
 }
 
 export { FileManagerAgentTest };

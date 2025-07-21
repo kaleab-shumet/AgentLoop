@@ -25,12 +25,12 @@ export class ToolHandlers {
    */
   private resolvePath(inputPath: string): string {
     const resolved = path.resolve(this.basePath, inputPath);
-    
+
     // Security check: ensure the resolved path is within or equal to basePath
     if (!resolved.startsWith(this.basePath)) {
       throw new Error(`Access denied: Path '${inputPath}' is outside the allowed directory`);
     }
-    
+
     return resolved;
   }
 
@@ -54,7 +54,7 @@ export class ToolHandlers {
 
       // Read directory contents
       const entries = await fs.promises.readdir(fullPath, { withFileTypes: true });
-      
+
       const items = await Promise.all(entries.map(async (entry) => {
         const entryPath = path.join(fullPath, entry.name);
         try {
@@ -135,6 +135,25 @@ export class ToolHandlers {
     }
   }
 
+  async handleFinal(params: HandlerParams): Promise<ToolCallContext> {
+    const display = await params.turnState.get("display")
+    if (display !== undefined) {
+      return {
+        toolName: params.name,
+        display,
+        ...params.args,
+        success: true
+      };
+    } else {
+      return {
+        toolName: params.name,
+        ...params.args,
+        success: true
+      };
+    }
+
+  }
+
   /**
    * Read file contents
    */
@@ -155,6 +174,7 @@ export class ToolHandlers {
 
       // Read file content
       const content = await fs.promises.readFile(fullPath, 'utf8');
+      await params.turnState.set("display", content)
 
       return {
         toolName: 'read_file',
@@ -162,6 +182,7 @@ export class ToolHandlers {
         path: path.relative(this.basePath, fullPath),
         size: stats.size,
         content,
+        message: "The content is attached for you to display it",
         encoding: 'utf8'
       };
 

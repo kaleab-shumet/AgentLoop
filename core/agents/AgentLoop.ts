@@ -19,7 +19,6 @@ import {
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
 import { PromptManager, PromptManagerConfig, FormatType } from '../prompt/PromptManager';
-import { StagnationDetector, StagnationDetectorConfig } from '../utils/StagnationDetector';
 
 
 
@@ -40,7 +39,7 @@ export interface AgentLifecycleHooks {
   onError?: (error: AgentError) => Promise<void>;
 }
 
-export type OutcomeRecord = {args: PendingToolCall, toolCall: ToolCall};
+export type OutcomeRecord = { args: PendingToolCall, toolCall: ToolCall };
 
 export enum FailureHandlingMode {
   FAIL_FAST = 'fail_fast',           // Stop on first failure (current sequential behavior)
@@ -62,7 +61,6 @@ export interface AgentLoopOptions {
   formatMode?: FormatMode;
   promptManager?: PromptManager;
   promptManagerConfig?: PromptManagerConfig;
-  stagnationDetector?: StagnationDetectorConfig;
   sleepBetweenIterationsMs?: number;
 }
 
@@ -89,7 +87,6 @@ export abstract class AgentLoop {
   protected aiProvider: AIProvider;
   protected aiDataHandler: AIDataHandler;
   protected promptManager!: PromptManager;
-  protected stagnationDetector!: StagnationDetector;
 
   protected temperature?: number;
   protected max_tokens?: number;
@@ -111,7 +108,7 @@ export abstract class AgentLoop {
    */
   public setAgentLoopOptions(options: AgentLoopOptions): void {
     this.logger = options.logger || console;
-    this.maxIterations = options.maxIterations !== undefined ? options.maxIterations : 100;
+    this.maxIterations = options.maxIterations !== undefined ? options.maxIterations : 15;
     this.toolTimeoutMs = options.toolTimeoutMs !== undefined ? options.toolTimeoutMs : 30000;
     this.retryAttempts = options.retryAttempts !== undefined ? options.retryAttempts : 3;
     this.retryDelay = options.retryDelay !== undefined ? options.retryDelay : 1000;
@@ -130,15 +127,9 @@ export abstract class AgentLoop {
       this.promptManager = new PromptManager(this.systemPrompt, config);
     } else if (!this.promptManager) {
       // If promptManager is still not set, set a default
-      this.promptManager = new PromptManager('', this.getDefaultPromptManagerConfig(this.formatMode));
+      this.promptManager = new PromptManager(this.systemPrompt, this.getDefaultPromptManagerConfig(this.formatMode));
     }
 
-    // Update stagnationDetector if config provided
-    if (options.stagnationDetector) {
-      this.stagnationDetector = new StagnationDetector(options.stagnationDetector);
-    } else if (!this.stagnationDetector) {
-      this.stagnationDetector = new StagnationDetector();
-    }
   }
 
   /**
@@ -203,24 +194,17 @@ export abstract class AgentLoop {
    */
   public async run(input: AgentRunInput): Promise<AgentRunOutput> {
     await this.hooks.onRunStart?.(input);
-
     const { userPrompt, context = {} } = input;
-
-
-
     const currentInteractionHistory: Interaction[] = []
-
     const turnState = new TurnState();
-
-
-
-    const errorTracker = new Map<string, { count: number, lastSeen: number, errorHash: string }>();
     let lastError: AgentError | null = null;
-    let numRetries = 0;
     let keepRetry = true;
 
-    const taskId = nanoid();
+    let connectionAndParsingRetryCount = 0;
+    let toolExecRetryCount = 0;
 
+
+    const taskId = nanoid();
     const userPromptInteraction: UserPrompt = {
       taskId,
       timestamp: Date.now().toString(),
@@ -230,245 +214,117 @@ export abstract class AgentLoop {
 
     currentInteractionHistory.push(userPromptInteraction)
 
-    const stagnationTracker: OutcomeRecord[] = []
-
-    const saveStagnationRecord = (outcomeRecord: OutcomeRecord) => stagnationTracker.push(outcomeRecord)
-
     try {
       this.initializePromptManager();
       this.initializeFinalTool();
-      //this.logger.info(`[AgentLoop] Run started`);
-
       for (let i = 0; i < this.maxIterations; i++) {
 
-
         try {
+
+
           let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
-
-
-
           const aiResponse = await this.getAIResponseWithRetry(prompt);
           const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse, this.tools);
-
-          numRetries = 0; // Reset retries on successful LLM response
+          connectionAndParsingRetryCount = 0; // Reset retries on successful LLM response
 
           // executeToolCalls now directly adds results to toolCallHistory
-          const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState, saveStagnationRecord);
+          const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
           currentInteractionHistory.push(...iterationResults.filter(r => (r.context.toolName !== this.FINAL_TOOL_NAME)))
 
 
-          // Enhanced stagnation detection using outcome data
-          if (stagnationTracker.length > 0) {
-            const stagnationResult = this.stagnationDetector.detectStagnationFromOutcomes(stagnationTracker, i + 1);
-            if (stagnationResult.isStagnant && stagnationResult.confidence > 0.7) {
-              this.logger.warn(`[AgentLoop] Stagnation detected (${stagnationResult.confidence.toFixed(2)}): ${stagnationResult.reason}`);
-              
-              if (stagnationResult.patterns && stagnationResult.patterns.length > 1) {
-                this.logger.warn(`[AgentLoop] Multiple stagnation patterns: ${stagnationResult.patterns.join('; ')}`);
-              }
-
-              keepRetry = false;
-
-              // Create enhanced stagnation warning result
-              const stagnationWarning: ToolCall = {
-                taskId,
-                timestamp: Date.now().toString(),
-                type: 'tool_call',
-                context: {
-                  stagnationReason: stagnationResult.reason,
-                  toolName: 'stagnation-detector',
-                  error: `Stagnation detected: ${stagnationResult.reason}. ${stagnationResult.confidence >= 0.90 ? 'Forcing termination.' : 'Consider using the final tool.'}`,
-                  success: false,
-                  confidence: stagnationResult.confidence,
-                  iteration: i + 1,
-                  patterns: stagnationResult.patterns,
-                  diagnostics: this.stagnationDetector.getDiagnostics(currentInteractionHistory),
-                  outcomeCount: stagnationTracker.length
-                },
-              };
-              currentInteractionHistory.push(stagnationWarning);
-
-              // For very high confidence stagnation (>=90%), force termination
-              if (stagnationResult.confidence >= 0.90) {
-                this.logger.error(`[AgentLoop] Critical stagnation detected. Forcing termination with final tool.`);
-
-                const forcedTermination: AgentResponse = {
-                  taskId,
-                  timestamp: Date.now().toString(),
-                  context: {
-                    success: true,
-                    toolName: this.FINAL_TOOL_NAME,
-                    output: `Task terminated due to critical stagnation: ${stagnationResult.reason}. The agent was repeating the same actions without making progress. Based on the work completed so far: ${this.summarizeProgress(currentInteractionHistory)}`
-                  },
-                  type: 'agent_response'
-                };
-
-                currentInteractionHistory.push(forcedTermination);
-                await this.hooks.onAgentFinalResponse?.(forcedTermination);
-
-                const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse: forcedTermination };
-                await this.hooks.onRunEnd?.(output);
-                return output;
-              }
-
-              // For high confidence stagnation (70-89%), set error context but continue
-              lastError = new AgentError(
-                `Stagnation detected: ${stagnationResult.reason}. Consider using an alternative approach to complete the task and avoid potential loops.`,
-                AgentErrorType.TOOL_EXECUTION_ERROR,
-                { stagnation: stagnationResult, patterns: stagnationResult.patterns }
-              );
-            }
-          }
-
           // Apply failure handling mode
           const failedTools = iterationResults.filter(r => !r.context.success);
-          const shouldThrowError = this.shouldThrowForFailures(failedTools, iterationResults);
 
-          if (shouldThrowError) {
+          if (failedTools.length > 0) {
             const errorMessage = failedTools.map(f => `Tool: ${f.context.toolName}\n  Error: ${f.context?.error ?? 'Unknown error'}`).join('\n');
-            throw new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR, { userPrompt, failedTools });
-          } else if (failedTools.length > 0) {
-            // Log failures but continue execution
-            this.logger.warn(`[AgentLoop] ${failedTools.length} tool(s) failed but continuing due to failure handling mode: ${this.failureHandlingMode}`);
-          }
+            const failedToolsError = new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR, { userPrompt, failedTools });
 
-          lastError = null;
-          const finalResult: ToolCall | undefined = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
-          if (finalResult) {
+            throw failedToolsError;
 
-            const agentResponse: AgentResponse = {
-              taskId,
-              timestamp: finalResult.timestamp,
-              type: "agent_response",
-              context: finalResult.context
+          } else {
+            toolExecRetryCount = 0
+            lastError = null;
+            const finalResult: ToolCall | undefined = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
+            if (finalResult) {
 
+
+              const agentResponse: AgentResponse = {
+                taskId,
+                timestamp: finalResult.timestamp,
+                type: "agent_response",
+                context: finalResult.context
+
+              }
+
+              currentInteractionHistory.push(agentResponse)
+
+              await this.hooks.onAgentFinalResponse?.(agentResponse);
+              //this.logger.info(`[AgentLoop] Run complete. Final answer: ${finalResult.output?.value?.substring(0, 120)}`);
+              const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse };
+              await this.hooks.onRunEnd?.(output);
+              return output;
             }
 
-            currentInteractionHistory.push(agentResponse)
-
-            await this.hooks.onAgentFinalResponse?.(agentResponse);
-            //this.logger.info(`[AgentLoop] Run complete. Final answer: ${finalResult.output?.value?.substring(0, 120)}`);
-            const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse };
-            await this.hooks.onRunEnd?.(output);
-            return output;
           }
-
 
 
         } catch (error) {
-          const agentError = error instanceof AgentError ? error : new AgentError(String(error), AgentErrorType.UNKNOWN, { originalError: error });
-          await this.hooks.onError?.(agentError);
-          lastError = agentError;
-          this.logger.error(`[AgentLoop] Iteration error: ${agentError.getUserMessage()}`);
-          if (agentError.type === AgentErrorType.TOOL_EXECUTION_ERROR) {
-            // Add failed tool results to history so agent can see them
-            if (agentError.context?.failedTools) {
-              currentInteractionHistory.push(...agentError.context.failedTools);
-            } else {
-              const errResult = this.createFailureToolCallContext("unknown-error", agentError);
-              currentInteractionHistory.push({
-                taskId,
-                timestamp: Date.now().toString(),
-                context: errResult,
-                type: "tool_call"
-              });
+          const err = error instanceof AgentError ? error : new AgentError((error as Error).message, AgentErrorType.UNKNOWN);
+          lastError = err;
+          if (err.type === AgentErrorType.TOOL_EXECUTION_ERROR) {
+            i = i - 1;
+            toolExecRetryCount++
+            if (toolExecRetryCount >= this.retryAttempts) {
+              throw new AgentError(`Maximum tool execution retry attempts: ${err.getUserMessage()}`, AgentErrorType.STAGNATION_ERROR, { userPrompt, error: err });
             }
 
-            // Create unique error identifier including tool name and error type
-            const errorKey = `${agentError.context?.toolName || 'unknown'}:${agentError.type}:${agentError.message}`;
-            const errorHash = createHash('md5').update(errorKey).digest('hex').substring(0, 8);
-
-            const now = Date.now();
-            const existing = errorTracker.get(errorHash);
-
-            if (existing) {
-              existing.count++;
-              existing.lastSeen = now;
-            } else {
-              errorTracker.set(errorHash, { count: 1, lastSeen: now, errorHash });
-            }
-
-            const retryCount = existing ? existing.count : 1;
-
-            // Clean up old error tracking (errors older than 5 minutes)
-            const fiveMinutesAgo = now - 5 * 60 * 1000;
-            for (const [hash, tracker] of errorTracker.entries()) {
-              if (tracker.lastSeen < fiveMinutesAgo) {
-                errorTracker.delete(hash);
-              }
-            }
-
-            if (retryCount > this.retryAttempts - 1) keepRetry = false;
-            if (retryCount >= this.retryAttempts) {
-              throw new AgentError(`Maximum retry attempts (${this.retryAttempts}) reached for error: ${agentError.getUserMessage()}`, AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt, error: agentError, retryCount });
-            }
-          } else {
-            const errResult = this.createFailureToolCallContext(agentError.context?.toolName ?? "unknown-tool", agentError);
-
-            currentInteractionHistory.push({
-              taskId,
-              timestamp: Date.now().toString(),
-              context: errResult,
-              type: "tool_call"
-            })
-            // Handle LLM or parsing errors
-            if (numRetries >= this.retryAttempts) {
-              throw new AgentError(`Maximum retry attempts for LLM response error: ${agentError.getUserMessage()}`, AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt, error: agentError });
-            }
-            numRetries++;
           }
-        } finally {
-          if (i < this.maxIterations - 1) { // Don't wait after the last iteration
-            await this.sleep(this.sleepBetweenIterationsMs);
+          else {
+            connectionAndParsingRetryCount++;
+            if (connectionAndParsingRetryCount >= this.retryAttempts) {
+              throw new AgentError(`Maximum retry attempts for response error: ${err.getUserMessage()}`, AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt, error: err });
+            }
           }
         }
+
+        await this.sleep(this.sleepBetweenIterationsMs);
       }
 
       throw new AgentError("Maximum iterations reached", AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt });
     } catch (error) {
-      const agentError = error instanceof AgentError ? error : new AgentError(String(error), AgentErrorType.UNKNOWN, { originalError: error, userPrompt });
-      await this.hooks.onError?.(agentError);
-      const failureResult: ToolCall = {
-        taskId,
-        type: "tool_call",
-        timestamp: Date.now().toString(),
-        context: {
-          toolName: agentError.context?.toolName || 'run-failure',
-          success: false,
-          error: agentError.getUserMessage(),
-          errorType: agentError.type,
-          originalError: agentError.message,
-          ...(agentError.context || {})
-        }
-      };
-      currentInteractionHistory.push(failureResult); // Ensure final failure is logged
+      const err = error instanceof AgentError ? error : new AgentError((error as Error).message, AgentErrorType.UNKNOWN);
+      await this.hooks.onError?.(err);
 
-      // Create a final answer for error cases
+      // Use the lastError if available, otherwise use caught error
+      const finalError = lastError || err;
+
       const agentResponse: AgentResponse = {
         taskId,
-        type: "agent_response",
         timestamp: Date.now().toString(),
-        context: {
-          success: false,
-          error: agentError.getUserMessage(),
-          errorType: agentError.type
-        }
+        type: "agent_response",
+        context: undefined,
+        error: finalError.getUserMessage()
       };
 
-      const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse: agentResponse };
+      currentInteractionHistory.push(agentResponse);
+
+      const output: AgentRunOutput = {
+        interactionHistory: currentInteractionHistory,
+        agentResponse
+      };
+
       await this.hooks.onRunEnd?.(output);
       return output;
     }
-
   }
 
-  private async executeToolCalls(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState, saveStagnationRecord: (outcomeRecord: OutcomeRecord) => void): Promise<ToolCall[]> {
+  private async executeToolCalls(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState): Promise<ToolCall[]> {
     const iterationResults: ToolCall[] = []; // Collect results for this iteration to return
 
     if (this.parallelExecution) {
-      const results = await this.executeToolCallsWithDependencies(taskId, toolCalls, turnState, saveStagnationRecord);
+      const results = await this.executeToolCallsWithDependencies(taskId, toolCalls, turnState);
       iterationResults.push(...results);
     } else {
       // Sequential execution
@@ -489,7 +345,7 @@ export abstract class AgentLoop {
           await this.hooks.onToolCallEnd?.(resultToolCall);
           break;
         }
-        const result = await this._executeTool(taskId, tool, call, turnState, saveStagnationRecord);
+        const result = await this._executeTool(taskId, tool, call, turnState);
         iterationResults.push(result);
 
         // Apply failure handling mode for sequential execution
@@ -503,7 +359,7 @@ export abstract class AgentLoop {
 
 
 
-  private async executeToolCallsWithDependencies(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState, saveStagnationRecord: (outcomeRecord: OutcomeRecord) => void): Promise<ToolCall[]> {
+  private async executeToolCallsWithDependencies(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState): Promise<ToolCall[]> {
     const iterationResults: ToolCall[] = []; // Collect results for this iteration to return
     const executionLock = new Map<string, boolean>(); // Prevent race conditions in dependency triggering
 
@@ -560,7 +416,7 @@ export abstract class AgentLoop {
 
       try {
         // Execute all calls for this specific tool concurrently
-        const results = await Promise.all(callsForTool.map(call => this._executeTool(taskId, tool, call, turnState, saveStagnationRecord)));
+        const results = await Promise.all(callsForTool.map(call => this._executeTool(taskId, tool, call, turnState)));
 
         // Thread-safe result addition - push each result individually to avoid race conditions
         for (const result of results) {
@@ -640,7 +496,7 @@ export abstract class AgentLoop {
       for (const neighbor of neighbors) {
         // Only check dependencies that exist in the tool list
         if (!adjList.has(neighbor)) continue;
-        
+
         if (!visited.has(neighbor)) {
           const cycle = dfs(neighbor, path);
           if (cycle) return cycle;
@@ -753,7 +609,7 @@ export abstract class AgentLoop {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  private async _executeTool(taskId: string, tool: Tool<ZodTypeAny>, call: PendingToolCall, turnState: TurnState, saveStagnationRecord: (outcomeRecord: OutcomeRecord) => void): Promise<ToolCall> {
+  private async _executeTool(taskId: string, tool: Tool<ZodTypeAny>, call: PendingToolCall, turnState: TurnState): Promise<ToolCall> {
     await this.hooks.onToolCallStart?.(call);
     const toolTimeout = tool.timeout || this.toolTimeoutMs;
 
@@ -796,8 +652,6 @@ export abstract class AgentLoop {
         clearTimeout(timeoutId);
       }
     }
-
-    saveStagnationRecord({args: call, toolCall: result})
 
     await this.hooks.onToolCallEnd?.(result);
     return result;
@@ -903,31 +757,6 @@ export abstract class AgentLoop {
 
   public getAvailableTools(): string[] {
     return this.tools.map(tool => tool.name);
-  }
-
-  /**
-   * Determines if execution should throw an error based on failure handling mode
-   */
-  private shouldThrowForFailures(failedTools: ToolCall[], allResults: ToolCall[]): boolean {
-    if (failedTools.length === 0) return false;
-
-    switch (this.failureHandlingMode) {
-      case FailureHandlingMode.FAIL_FAST:
-        return true; // Always throw on any failure
-
-      case FailureHandlingMode.FAIL_AT_END:
-        return true; // Always throw if any failures (current parallel behavior)
-
-      case FailureHandlingMode.CONTINUE_ON_FAILURE:
-        return false; // Never throw, just log and continue
-
-      case FailureHandlingMode.PARTIAL_SUCCESS:
-        const failureRate = failedTools.length / allResults.length;
-        return failureRate > this.failureTolerance; // Throw only if failure rate exceeds tolerance
-
-      default:
-        return true; // Default to safe behavior
-    }
   }
 
   /**

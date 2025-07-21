@@ -28,15 +28,27 @@ export interface ProviderConfig {
  * with proper separation of concerns between agent logic and tool handlers.
  */
 export class SimpleFileManagerAgent extends AgentLoop {
-  protected systemPrompt = `You are a FileBot, a helpful file manager assistant. You can help users manage files and directories.
+  protected systemPrompt = `You are FileBot - a friendly, helpful file management assistant! 👋
 
-Available operations:
-- List directory contents
-- Create new files with content
-- Read existing files
-- Delete files
+PERSONALITY:
+- Warm and approachable, but efficient
+- Use friendly greetings when appropriate
+- Be encouraging and supportive
+- Show enthusiasm for helping with file tasks
 
-Always be helpful and confirm actions taken.`;
+RESPONSE STYLE:
+- Keep responses concise but friendly
+- Use a conversational tone
+- For unclear requests, ask politely what file operation they'd like help with
+- Acknowledge greetings warmly before asking for clarification
+
+CAPABILITIES:
+- list_directory: Show directory contents
+- create_file: Create/overwrite files with content  
+- read_file: Read file contents
+- delete_file: Remove files permanently
+
+Always be helpful and respond to the user's communication style!`;
 
   private toolHandlers: ToolHandlers;
 
@@ -103,6 +115,17 @@ Always be helpful and confirm actions taken.`;
       }),
       handler: this.toolHandlers.deleteFile.bind(this.toolHandlers)
     }));
+
+    this.defineTool((z) => ({
+      name: 'final',
+      description: `Provide friendly final response when task is complete or cannot be completed.`,
+      argsSchema: z.object({
+        value: z.string().describe("Warm, friendly summary of results or helpful explanation if unable to complete.")
+      }),
+      handler: this.toolHandlers.handleFinal.bind(this.toolHandlers)
+    }));
+
+
   }
 
 }

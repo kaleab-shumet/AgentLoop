@@ -97,7 +97,7 @@ export class FunctionCallingFormatHandler implements FormatHandler {
     }
 
     throw new AgentError(
-      "No function call json found in response", 
+      "No function calling json found in response", 
       AgentErrorType.INVALID_RESPONSE,
       { response: response.substring(0, 500) + (response.length > 500 ? '...' : '') }
     );
