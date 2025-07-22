@@ -142,7 +142,7 @@ export class PromptManager {
     lastError: AgentError | null,
     keepRetry: boolean,
     finalToolName: string,
-    toolDefinitions: string
+    toolDefinitions: string,
   ): string {
     return this.template.buildPrompt(
       this.systemPrompt,
@@ -150,13 +150,12 @@ export class PromptManager {
       context,
       currentTaskInteractionHistory,
       prevTasksInteractionHistory,
-
       lastError,
       keepRetry,
       finalToolName,
       toolDefinitions,
       this.promptOptions,
-      this.errorRecoveryInstructions
+      this.errorRecoveryInstructions,
     );
   }
 

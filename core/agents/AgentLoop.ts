@@ -10,6 +10,7 @@ import {
   AgentRunInput, AgentRunOutput, FormatMode,
   FunctionCallTool,
   ToolCall,
+  ToolCallReport,
   Interaction,
   AgentResponse,
   ToolCallContext,
@@ -92,6 +93,7 @@ export abstract class AgentLoop {
   protected max_tokens?: number;
 
   private readonly FINAL_TOOL_NAME = 'final';
+  private readonly REPORT_TOOL_NAME = 'report';
   formatMode!: FormatMode;
 
 
@@ -217,6 +219,7 @@ export abstract class AgentLoop {
     try {
       this.initializePromptManager();
       this.initializeFinalTool();
+      this.initializeReportTool();
       for (let i = 0; i < this.maxIterations; i++) {
 
         try {
@@ -231,7 +234,45 @@ export abstract class AgentLoop {
           // executeToolCalls now directly adds results to toolCallHistory
           const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
-          currentInteractionHistory.push(...iterationResults.filter(r => (r.context.toolName !== this.FINAL_TOOL_NAME)))
+          // Handle report creation for both regular tools and final tool
+          const reportResult = iterationResults.find(r => r.context.toolName === this.REPORT_TOOL_NAME);
+          const finalResult = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
+          
+          if (reportResult && reportResult.context.success) {
+            // Regular tool execution with report tool
+            const reportText = reportResult.context.report || "";
+            
+            // Get other tool calls executed in this iteration (excluding report and final)
+            const otherToolResults = iterationResults.filter(r => 
+              r.context.toolName !== this.REPORT_TOOL_NAME && 
+              r.context.toolName !== this.FINAL_TOOL_NAME
+            );
+            
+            // Determine overall success and error
+            const overallSuccess = otherToolResults.every(r => r.context.success);
+            const errors = otherToolResults.filter(r => !r.context.success).map(r => r.context.error).filter(Boolean);
+            const error = errors.length > 0 ? errors.join('; ') : undefined;
+
+            // Create ToolCallReport and add to interaction history
+            const toolCallReport: ToolCallReport = {
+              report: reportText,
+              overallSuccess,
+              toolCalls: otherToolResults,
+              error
+            };
+            
+            currentInteractionHistory.push(toolCallReport);
+          } else if (finalResult && finalResult.context.success) {
+            // Final tool execution - manually set "Task completed" report
+            const toolCallReport: ToolCallReport = {
+              report: "Task completed",
+              overallSuccess: true,
+              toolCalls: [finalResult],
+              error: undefined
+            };
+            
+            currentInteractionHistory.push(toolCallReport);
+          }
 
 
           // Apply failure handling mode
@@ -574,35 +615,7 @@ export abstract class AgentLoop {
     return prompt;
   }
 
-  /**
-   * Summarizes the progress made so far for forced termination scenarios
-   */
-  private summarizeProgress(currentInteractionHistory: Interaction[]): string {
-    const successfulCalls = currentInteractionHistory.filter(r => r.context.success && r.context.toolName !== this.FINAL_TOOL_NAME && r.context.toolName !== 'stagnation-detector');
-    const failedCalls = currentInteractionHistory.filter(r => !r.context.success && r.context.toolName !== 'stagnation-detector' && r.context.toolName !== 'run-failure');
 
-    if (successfulCalls.length === 0 && failedCalls.length === 0) {
-      return "No significant progress was made.";
-    }
-
-    const summary = [];
-    if (successfulCalls.length > 0) {
-      const toolCounts = new Map<string, number>();
-      successfulCalls.forEach(call => {
-        toolCounts.set(call.context.toolName, (toolCounts.get(call.context.toolName) || 0) + 1);
-      });
-      const toolSummary = Array.from(toolCounts.entries())
-        .map(([tool, count]) => `${tool}(${count}x)`)
-        .join(', ');
-      summary.push(`Successfully executed: ${toolSummary}`);
-    }
-
-    if (failedCalls.length > 0) {
-      summary.push(`Encountered ${failedCalls.length} failed operation(s)`);
-    }
-
-    return summary.join('. ') + '.';
-  }
 
 
   protected sleep(ms: number): Promise<void> {
@@ -749,6 +762,25 @@ export abstract class AgentLoop {
             toolName: name,
             success: true,
             ...args,
+          };
+        },
+      }));
+    }
+  }
+
+  private initializeReportTool(): void {
+    if (!this.tools.some(t => t.name === this.REPORT_TOOL_NAME)) {
+      this.defineTool((z) => ({
+        name: this.REPORT_TOOL_NAME,
+        description: `Report which tools you called in this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this report.`,
+        argsSchema: z.object({
+          report: z.string().describe("State which specific tools you called in this iteration and the reason why. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'.")
+        }),
+        handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
+          return {
+            toolName: name,
+            success: true,
+            report: args.report,
           };
         },
       }));

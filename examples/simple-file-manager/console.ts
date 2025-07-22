@@ -74,7 +74,6 @@ export class FileManagerConsole {
 
       // Handle special commands
       if (input.toLowerCase() === 'memory') {
-        this.showMemory();
         this.askQuestion();
         return;
       }
@@ -122,32 +121,7 @@ export class FileManagerConsole {
   /**
    * Show conversation memory
    */
-  private showMemory() {
-    if (this.conversationHistory.length === 0) {
-      console.log('💭 Memory: No conversation history yet.');
-      return;
-    }
-
-    console.log('💭 Memory: Conversation History');
-    console.log('---');
-
-    this.conversationHistory.forEach((interaction, index) => {
-      const timestamp = new Date(parseInt(interaction.timestamp)).toLocaleTimeString();
-
-      if (interaction.type === 'user_prompt') {
-        console.log(`${index + 1}. [${timestamp}] 👤 User: ${interaction.context}`);
-      } else if (interaction.type === 'tool_call') {
-        const success = interaction.context.success ? '✅' : '❌';
-        console.log(`${index + 1}. [${timestamp}] 🔧 Tool: ${interaction.context.toolName} ${success}`);
-      } else if (interaction.type === 'agent_response') {
-        const response = interaction.context?.value || interaction.context;
-        console.log(`${index + 1}. [${timestamp}] 🤖 Agent: ${typeof response === 'string' ? response : JSON.stringify(response)}`);
-      }
-    });
-
-    console.log('---');
-    console.log(`Total interactions: ${this.conversationHistory.length}`);
-  }
+ 
 
   /**
    * Clear conversation memory

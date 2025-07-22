@@ -64,10 +64,18 @@ export type ToolCall = {
   context: ToolCallContext;
 };
 
+// Tool call report event (groups multiple tool calls with a report)
+export type ToolCallReport = {
+  report: string;
+  overallSuccess: boolean;
+  toolCalls: ToolCall[];
+  error?: string;
+};
+
 // Union of all possible event types
 export type Interaction =
   | UserPrompt
-  | ToolCall
+  | ToolCallReport
   | AgentResponse;
 
 

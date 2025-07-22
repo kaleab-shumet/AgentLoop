@@ -120,7 +120,7 @@ Always be helpful and respond to the user's communication style!`;
       name: 'final',
       description: `Provide friendly final response when task is complete or cannot be completed.`,
       argsSchema: z.object({
-        value: z.string().describe("Warm, friendly summary of results or helpful explanation if unable to complete.")
+        value: z.string().describe("Warm, friendly summary of results or helpful explanation if unable to complete. plain text only")
       }),
       handler: this.toolHandlers.handleFinal.bind(this.toolHandlers)
     }));

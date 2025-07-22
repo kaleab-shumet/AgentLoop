@@ -1,4 +1,4 @@
-import { Interaction, PromptOptions } from '../types/types';
+import { Interaction, PromptOptions, ToolCallReport } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 /**
@@ -47,22 +47,27 @@ export class DefaultPromptTemplate {
    - SECONDARY: Previous task history - reference only, unless user explicitly mentions past conversations
 
 ### Execution Requirements
-3. **Action Protocol**: When user requests an action → execute tools immediately
-4. **Information Gathering**: Always use tools for current/real-time data - never assume or guess
-5. **Tool Usage Mandate**: Every user action request MUST trigger tool usage for fresh results
+3. **Action Protocol**: When user requests information → check REPORTS AND RESULTS first
+4. **Information Gathering**: If data exists in REPORTS AND RESULTS, use 'final' tool to present it clearly
+5. **Tool Usage Mandate**: Only execute new tools if the requested data is NOT in REPORTS AND RESULTS
+6. **Report Requirement**: ALWAYS call the 'report' tool alongside every other tool execution (except 'final')
 
 ### Completion Criteria
-6. **Task Completion**: Use '${finalToolName}' ONLY when:
-   - ✅ User's request is completely fulfilled
-   - ✅ You have all necessary information
+7. **Task Completion**: Use '${finalToolName}' ONLY when:
+   - ✅ User's request is completely fulfilled with data from REPORTS AND RESULTS
+   - ✅ You have all necessary information to answer the user
    - ✅ All required operations are finished
    - ⚠️ You cannot proceed and need to explain why
+8. **Answer Source**: Base your final answer on actual results from REPORTS AND RESULTS, not assumptions
 
 ### CRITICAL CONSTRAINTS
 - ❌ NEVER use '${finalToolName}' with other tools in same response
-- ❌ NEVER say "already done" - always execute fresh tool calls
+- ❌ NEVER re-execute tools if data exists in REPORTS AND RESULTS - just present the data
+- ❌ NEVER say "I have already done this" - extract and show the actual results using '${finalToolName}'
 - ✅ '${finalToolName}' terminates the conversation - use standalone only
-- ✅ Use previous history for context (names, preferences) when relevant`;
+- ✅ Check REPORTS AND RESULTS before executing any tools
+- ✅ If user asks for data that exists in REPORTS AND RESULTS, use '${finalToolName}' to present it
+- 🚨 ALWAYS include 'report' tool with every other tool call (except '${finalToolName}')`;
   }
 
   /**
@@ -74,13 +79,15 @@ export class DefaultPromptTemplate {
 **Parallel Mode**: Tools execute concurrently
 - ✅ Call multiple tools in single response for efficiency
 - ✅ Tools with dependencies will wait for prerequisites  
-- ✅ Independent tools run simultaneously`;
+- ✅ Independent tools run simultaneously
+- 🚨 ALWAYS include 'report' tool with every tool execution`;
     } else {
       return `### EXECUTION STRATEGY
 **Sequential Mode**: Tools execute in order
 - ✅ Call multiple tools in single response
 - ✅ Tools execute one after another
-- ✅ Each tool waits for previous completion`;
+- ✅ Each tool waits for previous completion
+- 🚨 ALWAYS include 'report' tool with every tool execution`;
     }
   }
 
@@ -116,7 +123,7 @@ You MUST respond with JSON in code blocks. Follow these patterns exactly:
 }
 \`\`\`
 
-### Multiple Tool Execution
+### Multiple Tool Execution (ALWAYS include 'report' tool)
 \`\`\`json
 {
   "functionCalls": [
@@ -127,6 +134,10 @@ You MUST respond with JSON in code blocks. Follow these patterns exactly:
     {
       "name": "tool_name_2", 
       "arguments": "{\\"param2\\": \\"value2\\"}"
+    },
+    {
+      "name": "report",
+      "arguments": "{\\"report\\": \\"I have called tools tool_name_1, tool_name_2 because I need to [reason for calling these tools]\\"}"
     }
   ]
 }
@@ -144,10 +155,11 @@ You MUST respond with JSON in code blocks. Follow these patterns exactly:
 
 ### ⚠️ CRITICAL FORMATTING RULES
 - ❌ NEVER combine "${finalToolName}" with other tools
-- ✅ Use "functionCall" (singular) for one tool
-- ✅ Use "functionCalls" (plural) for multiple tools  
+- ✅ Use "functionCall" (singular) for one tool + report tool
+- ✅ Use "functionCalls" (plural) for multiple tools + report tool
 - ✅ Arguments must be JSON strings (escaped quotes)
-- ✅ Include ALL required parameters from tool schemas`;
+- ✅ Include ALL required parameters from tool schemas
+- 🚨 ALWAYS include "report" tool in every response (except when using "${finalToolName}")`;
   }
 
   private getYamlFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
@@ -161,22 +173,30 @@ ${this.getExecutionStrategy(parallelExecution)}
 
 ### ✅ REQUIRED FORMAT - USE THIS EXACT STRUCTURE:
 
-For greeting or unclear requests:
+🚨 **CRITICAL DISTINCTION**:
+- **TASK COMPLETION**: Use "${finalToolName}" when you have completed the task or need to respond without using other tools
+- **TOOL EXECUTION**: Use appropriate available tools when you need to perform actions or gather information
+
+For task completion responses:
 \`\`\`yaml
 tool_calls:
   - name: ${finalToolName}
     args:
       value: |
-        Hello! I'm here to help. What would you like me to do?
+        [Your complete response based on available data or explanation]
 \`\`\`
 
-For tool operations:
+For tool execution (example with hypothetical tools):
 \`\`\`yaml
 tool_calls:
-  - name: tool_name
+  - name: example_tool
     args:
-      parameter_name: |
-        parameter_value
+      param1: |
+        value1
+  - name: report
+    args:
+      report: |
+        I have called tools example_tool because I need to [accomplish specific goal]
 \`\`\`
 
 ### Schema Compliance Rules
@@ -196,7 +216,7 @@ tool_calls:
         value2
 \`\`\`
 
-### Multiple Tool Execution
+### Multiple Tool Execution (ALWAYS include 'report' tool)
 \`\`\`yaml
 tool_calls:
   - name: tool_name_1
@@ -207,6 +227,10 @@ tool_calls:
     args:
       param2: |
         value2
+  - name: report
+    args:
+      report: |
+        I have called tools tool_name_1, tool_name_2 because I need to [reason for calling these tools]
 \`\`\`
 
 ### Task Completion (STANDALONE ONLY)
@@ -225,7 +249,10 @@ tool_calls:
 - ✅ Each tool is array item with "name:" and "args:"
 - ✅ Use | block style for all string arguments
 - ✅ Maintain proper YAML indentation (2 spaces)
-- ✅ For greetings/unclear requests, use "${finalToolName}" tool with appropriate response`;
+- ✅ Use "${finalToolName}" when task is complete or you need to respond without other tools
+- ✅ Use available tools when you need to perform actions or gather information
+- 🚨 Always check REPORTS AND RESULTS first - use "${finalToolName}" if data already exists
+- 🚨 ALWAYS include "report" tool in every tool_calls list (except when using "${finalToolName}")`;
   }
 
 
@@ -260,21 +287,18 @@ tool_calls:
 
 ${toolDefinitions}`);
 
-    // Execution strategy is now included in format instructions
+    // 4. Reports and results (if any exist in interaction history)
+    sections.push(this.buildReportSection(currentInteractionHistory));
 
     // 5. Context
     if (options.includeContext) {
       sections.push(this.buildContextSection(context, options));
     }
 
-    // 5. Previous task history
+    // 6. Previous task history
     if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) {
       sections.push(this.buildPreviousTaskHistory(prevInteractionHistory, options));
     }
-
-    // 6. Current task history
-    sections.push(this.buildCurrentTaskHistory(currentInteractionHistory));
-
 
     // 7. Error recovery
     if (lastError) {
@@ -288,10 +312,39 @@ ${toolDefinitions}`);
       });
     }
 
-    // 9. Current task
-    sections.push(this.buildTaskSection(userPrompt, finalToolName));
+    // 9. User Request
+    sections.push(this.buildUserRequestSection(userPrompt));
 
     return sections.join('\n\n');
+  }
+
+  buildReportSection(interactionHistory: Interaction[]): string {
+    const toolCallReports = interactionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
+    
+    if (toolCallReports.length === 0) {
+      return `# REPORTS AND RESULTS
+📋 **No reports available yet.**
+🚨 **MANDATORY**: ALWAYS call the 'report' tool alongside every other tool execution`;
+    }
+
+    let formattedSection = `# REPORTS AND RESULTS
+🚨 **MANDATORY**: ALWAYS call the 'report' tool alongside every other tool execution
+📊 **IMPORTANT**: Check this section FIRST before executing any tools - data might already be here!
+
+`;
+
+    toolCallReports.forEach((reportData, index) => {
+      formattedSection += `## Report: ${reportData.report}
+   **overall success**: ${reportData.overallSuccess}
+   **error**: ${reportData.error || 'No error'}
+   **result**: ${JSON.stringify(reportData.toolCalls, null, 2)}
+
+`;
+    });
+
+    formattedSection += `💡 **Use this information to decide your next action and avoid repeating work.`;
+
+    return formattedSection;
   }
 
   buildContextSection(context: Record<string, any>, options: PromptOptions): string {
@@ -330,16 +383,17 @@ ${contextEntries}`;
 ${JSON.stringify(entries, null, 2)}`;
   }
 
-  buildCurrentTaskHistory(currentTaskInteraction: Interaction[]): string {
-    const historyLog = JSON.stringify(currentTaskInteraction, null, 2);
-    const interactionCount = currentTaskInteraction.length;
-    
-    return `# CURRENT TASK HISTORY
-🔄 **Your Working Memory for This Task** (${interactionCount} interactions)
-✅ **Success Indicator**: When tool results show "success": true, the operation completed successfully
-🎯 **Priority**: This is your PRIMARY context - use this to track progress and avoid repetition
+  buildUserRequestSection(userPrompt: string): string {
+    return `# USER REQUEST
+🎯 **What the user wants:** "${userPrompt}"
 
-${historyLog}`;
+📋 **DECISION PROCESS:**
+1. **FIRST**: Check if REPORTS AND RESULTS above contains the data the user wants
+2. **If data exists**: Use 'final' tool to extract and present the data clearly to the user
+3. **If data missing**: Execute the needed tools + 'report' tool to get the data
+4. **NEVER re-execute tools** if the data is already in REPORTS AND RESULTS
+
+⚡ **Action Required:** Make your decision based on the REPORTS AND RESULTS section above!`;
   }
 
   buildErrorRecoverySection(
@@ -366,16 +420,4 @@ ${historyLog}`;
 ${retryInstruction}`;
   }
 
-  buildTaskSection(userPrompt: string, finalToolName: string): string {
-    return `# CURRENT TASK
-🎯 **User Request:** "${userPrompt}"
-
-💡 **Your Mission:**
-1. Understand the user's specific request
-2. Execute appropriate tools to fulfill the request  
-3. Provide accurate, current information
-4. Complete the task fully before using '${finalToolName}'
-
-⚡ **Action Required:** Analyze the request and execute tools immediately - no assumptions, get fresh data!`;
-  }
 }
