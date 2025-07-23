@@ -65,7 +65,8 @@ Always be helpful and respond to the user's communication style!`;
     
     super(aiProvider, {
       formatMode: FormatMode.FUNCTION_CALLING,
-      parallelExecution: false
+      parallelExecution: false,
+      sleepBetweenIterationsMs: 3000
     });
 
     this.toolHandlers = new ToolHandlers(basePath);
