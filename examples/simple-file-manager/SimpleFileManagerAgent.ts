@@ -2,7 +2,6 @@ import { AgentLoop } from '../../core/agents/AgentLoop';
 import { FormatMode } from '../../core/types/types';
 import { DefaultAIProvider } from '../../core/providers/DefaultAIProvider';
 import { AIConfig } from '../../core/types/types';
-import z from 'zod';
 import { ToolHandlers } from './ToolHandlers';
 import * as dotenv from 'dotenv';
 
@@ -120,7 +119,7 @@ Always be helpful and respond to the user's communication style!`;
       name: 'final',
       description: `Provide friendly final response when task is complete or cannot be completed.`,
       argsSchema: z.object({
-        value: z.string().describe("Warm, friendly summary of results or helpful explanation if unable to complete. plain text only")
+        value: z.string().describe("Warm, friendly summary of results or helpful explanation if unable to complete.")
       }),
       handler: this.toolHandlers.handleFinal.bind(this.toolHandlers)
     }));

@@ -182,7 +182,6 @@ export class ToolHandlers {
         path: path.relative(this.basePath, fullPath),
         size: stats.size,
         content,
-        message: "The content is attached for you to display it",
         encoding: 'utf8'
       };
 

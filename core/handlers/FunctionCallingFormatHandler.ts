@@ -85,7 +85,7 @@ export class FunctionCallingFormatHandler implements FormatHandler {
         functionCallList = parsedJson.functionCalls;
       } else if (parsedJson.functionCall) {
         // Single function call: { "functionCall": {...} }
-        functionCallList = [parsedJson];
+        functionCallList = [parsedJson.functionCall];
       } else {
         // Assume it's a single function call object
         functionCallList = [parsedJson];

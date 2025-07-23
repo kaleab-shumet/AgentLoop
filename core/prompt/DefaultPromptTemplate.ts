@@ -35,60 +35,75 @@ export class DefaultPromptTemplate {
   }
 
   /**
-   * Generate clear, concise workflow and termination rules
+   * Generate core execution logic and decision framework
    */
   private getWorkflowRules(finalToolName: string): string {
     return `## DECISION FRAMEWORK
 
-### Task Context Understanding
-1. **Task ID Separation**: Each task has a unique ID. Different task IDs = completely separate conversations.
-2. **History Priority**: 
-   - PRIMARY: Current task history (same task ID) - your immediate working context
-   - SECONDARY: Previous task history - reference only, unless user explicitly mentions past conversations
+### Task Context & Priority
+1. **Current Request Focus**: Complete the USER REQUEST section below as primary objective
+2. **Task Separation**: Each task ID represents a separate conversation context
+3. **History Hierarchy**: Current task history takes precedence over previous task references
 
-### Execution Requirements
-3. **Action Protocol**: When user requests information → check REPORTS AND RESULTS first
-4. **Information Gathering**: If data exists in REPORTS AND RESULTS, use 'final' tool to present it clearly
-5. **Tool Usage Mandate**: Only execute new tools if the requested data is NOT in REPORTS AND RESULTS
-6. **Report Requirement**: ALWAYS call the 'report' tool alongside every other tool execution (except 'final')
+### Execution Logic
+4. **Data Assessment**: Check REPORTS AND RESULTS for current request relevance
+5. **Tool Selection**: Execute tools needed for current request, regardless of old similar data
+6. **Report Protocol**: Include 'report' tool with every execution (except '${finalToolName}')
 
-### Completion Criteria
-7. **Task Completion**: Use '${finalToolName}' ONLY when:
-   - ✅ User's request is completely fulfilled with data from REPORTS AND RESULTS
-   - ✅ You have all necessary information to answer the user
-   - ✅ All required operations are finished
-   - ⚠️ You cannot proceed and need to explain why
-8. **Answer Source**: Base your final answer on actual results from REPORTS AND RESULTS, not assumptions
+### Completion Rules
+7. **Use '${finalToolName}' ONLY when**:
+   - Complete request fulfilled with ALL steps done
+   - All information available for final answer
+   - Cannot proceed and need to explain limitations
+8. **Multi-step handling**: Complete ALL operations before using '${finalToolName}'
+9. **Capability limits**: Explain what you can/cannot do, summarize partial progress
 
-### CRITICAL CONSTRAINTS
-- ❌ NEVER use '${finalToolName}' with other tools in same response
-- ❌ NEVER re-execute tools if data exists in REPORTS AND RESULTS - just present the data
-- ❌ NEVER say "I have already done this" - extract and show the actual results using '${finalToolName}'
-- ✅ '${finalToolName}' terminates the conversation - use standalone only
-- ✅ Check REPORTS AND RESULTS before executing any tools
-- ✅ If user asks for data that exists in REPORTS AND RESULTS, use '${finalToolName}' to present it
-- 🚨 ALWAYS include 'report' tool with every other tool call (except '${finalToolName}')`;
+### Critical Constraints
+- ❌ NEVER combine '${finalToolName}' with other tools
+- ❌ NEVER re-execute successful tools from REPORTS AND RESULTS
+- ❌ NEVER use '${finalToolName}' for partial completion
+- ✅ Always check existing data before tool execution
+- ✅ Use '${finalToolName}' standalone only when complete
+
+## THINKING EXAMPLE
+**Example Request**: "Get me the weather for New York"
+
+**Step 1 - Analyze Request**: User wants weather data for New York
+**Step 2 - Check Reports**: Look at REPORTS AND RESULTS section
+  - If weather data already exists → Use '${finalToolName}' to present it
+  - If no relevant data → Continue to Step 3
+**Step 3 - Plan Tools**: Need weather API tool to get New York weather
+**Step 4 - Execute**: Call weather tool + report tool together
+**Step 5 - After Results**: Check if data is complete
+  - If complete → Use '${finalToolName}' to present weather info
+  - If incomplete → Call additional tools needed
+
+**Key Thinking**: "Do I have what the user needs? If yes → '${finalToolName}'. If no → get it first."
+
+### IMPORTANT: When No Tools Available
+If you cannot complete a task because:
+- No appropriate tools are available to perform the required action
+- No relevant information exists in REPORTS AND RESULTS
+- The task is beyond your current capabilities
+
+**→ Use '${finalToolName}' immediately to explain:**
+- What the user requested
+- Why you cannot complete it`;
   }
 
   /**
-   * Generate tool execution strategy instructions
+   * Generate execution strategy based on parallel/sequential mode
    */
   private getExecutionStrategy(parallelExecution: boolean): string {
-    if (parallelExecution) {
-      return `### EXECUTION STRATEGY
-**Parallel Mode**: Tools execute concurrently
+    const mode = parallelExecution ? 'Parallel' : 'Sequential';
+    const execution = parallelExecution 
+      ? 'Tools execute concurrently, independent tools run simultaneously'
+      : 'Tools execute in order, each waits for previous completion';
+    
+    return `### EXECUTION STRATEGY
+**${mode} Mode**: ${execution}
 - ✅ Call multiple tools in single response for efficiency
-- ✅ Tools with dependencies will wait for prerequisites  
-- ✅ Independent tools run simultaneously
-- 🚨 ALWAYS include 'report' tool with every tool execution`;
-    } else {
-      return `### EXECUTION STRATEGY
-**Sequential Mode**: Tools execute in order
-- ✅ Call multiple tools in single response
-- ✅ Tools execute one after another
-- ✅ Each tool waits for previous completion
-- 🚨 ALWAYS include 'report' tool with every tool execution`;
-    }
+- ✅ Dependencies handled automatically`;
   }
 
   private getFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
@@ -104,155 +119,94 @@ export class DefaultPromptTemplate {
 
 
   private getFunctionCallingFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    return `# RESPONSE FORMAT: JSON FUNCTION CALLING
+    return `# 🚨 CRITICAL: YOU MUST RESPOND WITH JSON CODE BLOCKS ONLY 🚨
 
 ${this.getWorkflowRules(finalToolName)}
 
 ${this.getExecutionStrategy(parallelExecution)}
 
-## OUTPUT FORMAT REQUIREMENTS
+## ⚠️ MANDATORY: NO PLAIN TEXT - ONLY JSON CODE BLOCKS ⚠️
+🚨 **CRITICAL**: You MUST NOT respond with plain text. EVERY response MUST be a JSON code block.
+🚨 **CRITICAL**: You MUST NOT write explanations outside of JSON code blocks.
+🚨 **CRITICAL**: You MUST respond with \`\`\`json at the start of your response.
+
+## 🚨 OUTPUT FORMAT REQUIREMENTS - REPORT TOOL IS MANDATORY 🚨
 You MUST respond with JSON in code blocks. Follow these patterns exactly:
 
-### Single Tool Execution
-\`\`\`json
-{
-  "functionCall": {
-    "name": "tool_name",
-    "arguments": "{\\"param1\\": \\"value1\\", \\"param2\\": \\"value2\\"}"
-  }
-}
-\`\`\`
+### JSON Format Patterns
 
-### Multiple Tool Execution (ALWAYS include 'report' tool)
+**Tool Execution** (include 'report' tool):
 \`\`\`json
 {
   "functionCalls": [
-    {
-      "name": "tool_name_1",
-      "arguments": "{\\"param1\\": \\"value1\\"}"
-    },
-    {
-      "name": "tool_name_2", 
-      "arguments": "{\\"param2\\": \\"value2\\"}"
-    },
-    {
-      "name": "report",
-      "arguments": "{\\"report\\": \\"I have called tools tool_name_1, tool_name_2 because I need to [reason for calling these tools]\\"}"
-    }
+    {"name": "your_tool", "arguments": "{\\"param\\": \\"value\\"}"},
+    {"name": "report", "arguments": "{\\"report\\": \\"Reasoning for tool usage\\"}"}
   ]
 }
 \`\`\`
 
-### Task Completion (STANDALONE ONLY)
+**Task Completion** (standalone only):
 \`\`\`json
 {
   "functionCall": {
     "name": "${finalToolName}",
-    "arguments": "{\\"value\\": \\"[Complete summary of results and accomplishments]\\"}"
+    "arguments": "{\\"value\\": \\"Complete results summary\\"}"
   }
 }
 \`\`\`
 
-### ⚠️ CRITICAL FORMATTING RULES
+### Formatting Requirements
 - ❌ NEVER combine "${finalToolName}" with other tools
-- ✅ Use "functionCall" (singular) for one tool + report tool
-- ✅ Use "functionCalls" (plural) for multiple tools + report tool
-- ✅ Arguments must be JSON strings (escaped quotes)
-- ✅ Include ALL required parameters from tool schemas
-- 🚨 ALWAYS include "report" tool in every response (except when using "${finalToolName}")`;
+- ✅ Use "functionCalls" (plural) for tool execution + report
+- ✅ Use "functionCall" (singular) for task completion only
+- ✅ Arguments as JSON strings with escaped quotes
+- ✅ Include ALL required parameters from schemas`;
   }
 
   private getYamlFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    return `# ⚠️ MANDATORY RESPONSE FORMAT: YAML TOOL CALLS ONLY ⚠️
+    return `# RESPONSE FORMAT: YAML CODE BLOCKS ONLY
 
+## Core Rules
 ${this.getWorkflowRules(finalToolName)}
 
 ${this.getExecutionStrategy(parallelExecution)}
 
-## 🚨 CRITICAL: YOU MUST ONLY RESPOND WITH YAML CODE BLOCKS - NO PLAIN TEXT 🚨
+## Output Requirements
+- ❌ NO plain text responses
+- ✅ YAML code blocks only
+- ✅ Use "${finalToolName}" for completion, other tools for execution
+- Write YAML using | for all strings and indented (not inline) key-value style.
 
-### ✅ REQUIRED FORMAT - USE THIS EXACT STRUCTURE:
+## YAML Format Patterns
 
-🚨 **CRITICAL DISTINCTION**:
-- **TASK COMPLETION**: Use "${finalToolName}" when you have completed the task or need to respond without using other tools
-- **TOOL EXECUTION**: Use appropriate available tools when you need to perform actions or gather information
-
-For task completion responses:
-\`\`\`yaml
-tool_calls:
-  - name: ${finalToolName}
-    args:
-      value: |
-        [Your complete response based on available data or explanation]
-\`\`\`
-
-For tool execution (example with hypothetical tools):
-\`\`\`yaml
-tool_calls:
-  - name: example_tool
-    args:
-      param1: |
-        value1
-  - name: report
-    args:
-      report: |
-        I have called tools example_tool because I need to [accomplish specific goal]
-\`\`\`
-
-### Schema Compliance Rules
-- ✅ Use EXACT parameter names from tool schemas (case-sensitive)
-- ✅ Include ALL required parameters  
-- ✅ Use | block style for string values
-- ✅ Numbers without quotes, strings with | block syntax
-
-### Single Tool Execution
+**Tool Execution** (always include 'report'):
 \`\`\`yaml
 tool_calls:
   - name: tool_name
     args:
-      param1: |
-        value1
-      param2: |
-        value2
-\`\`\`
-
-### Multiple Tool Execution (ALWAYS include 'report' tool)
-\`\`\`yaml
-tool_calls:
-  - name: tool_name_1
-    args:
-      param1: |
-        value1
-  - name: tool_name_2
-    args:
-      param2: |
-        value2
+      param: |
+        value
   - name: report
     args:
       report: |
-        I have called tools tool_name_1, tool_name_2 because I need to [reason for calling these tools]
+        Reasoning
 \`\`\`
 
-### Task Completion (STANDALONE ONLY)
+**Task Completion** (standalone only):
 \`\`\`yaml
 tool_calls:
   - name: ${finalToolName}
     args:
       value: |
-        [Complete summary of results and accomplishments]
+        Complete results
 \`\`\`
 
-### 🚨 ABSOLUTE REQUIREMENTS 🚨
-- ❌ NEVER respond with plain text - ALWAYS use YAML code blocks
+## Format Rules
 - ❌ NEVER combine "${finalToolName}" with other tools
-- ✅ Always use "tool_calls:" as root element
-- ✅ Each tool is array item with "name:" and "args:"
-- ✅ Use | block style for all string arguments
-- ✅ Maintain proper YAML indentation (2 spaces)
-- ✅ Use "${finalToolName}" when task is complete or you need to respond without other tools
-- ✅ Use available tools when you need to perform actions or gather information
-- 🚨 Always check REPORTS AND RESULTS first - use "${finalToolName}" if data already exists
-- 🚨 ALWAYS include "report" tool in every tool_calls list (except when using "${finalToolName}")`;
+- ✅ Use exact parameter names from schemas
+- ✅ Include ALL required parameters
+- ✅ Proper YAML indentation (2 spaces)
+- ✅ Check existing data before tool execution`;
   }
 
 
@@ -275,7 +229,9 @@ tool_calls:
     sections.push(systemPrompt);
 
     // 2. Format instructions - CRITICAL FIRST
-    sections.push(`🚨 MANDATORY: You MUST respond using the exact format specified below. No exceptions. 🚨\n\n${this.getFormatInstructions(finalToolName, options.parallelExecution || false)}`);
+    sections.push(`🚨🚨🚨 CRITICAL: RESPOND ONLY WITH JSON CODE BLOCKS - NO PLAIN TEXT ALLOWED 🚨🚨🚨
+
+${this.getFormatInstructions(finalToolName, options.parallelExecution || false)}`);
 
     // 3. Tool definitions
     sections.push(`# AVAILABLE TOOLS
@@ -288,7 +244,7 @@ tool_calls:
 ${toolDefinitions}`);
 
     // 4. Reports and results (if any exist in interaction history)
-    sections.push(this.buildReportSection(currentInteractionHistory));
+    sections.push(this.buildReportSection(currentInteractionHistory, finalToolName));
 
     // 5. Context
     if (options.includeContext) {
@@ -313,14 +269,14 @@ ${toolDefinitions}`);
     }
 
     // 9. User Request
-    sections.push(this.buildUserRequestSection(userPrompt));
+    sections.push(this.buildUserRequestSection(userPrompt, finalToolName));
 
     return sections.join('\n\n');
   }
 
-  buildReportSection(interactionHistory: Interaction[]): string {
+  buildReportSection(interactionHistory: Interaction[], finalToolName: string): string {
     const toolCallReports = interactionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    
+
     if (toolCallReports.length === 0) {
       return `# REPORTS AND RESULTS
 📋 **No reports available yet.**
@@ -328,16 +284,36 @@ ${toolDefinitions}`);
     }
 
     let formattedSection = `# REPORTS AND RESULTS
+
+This section records the internal progress of fulfilling the user's request. Each time you call a tool, the system's response is captured and accumulated here. Use the collected results to decide which tool to call next.
+
+This section is not visible to the user.
+
+Tool outputs are stored here silently as internal context.
+
+Once all necessary data has been gathered and processed, you must call the '${finalToolName}' tool to display the result to the user.
+
+Do not expose intermediate data directly—only show the final output via the appropriate tool.
+
+
 🚨 **MANDATORY**: ALWAYS call the 'report' tool alongside every other tool execution
-📊 **IMPORTANT**: Check this section FIRST before executing any tools - data might already be here!
+📊 **IMPORTANT**: Only use data from here if it's relevant to the CURRENT user request below!
+⚠️ **WARNING**: Old results may be from different requests - focus on what the current request needs!
 
 `;
 
     toolCallReports.forEach((reportData, index) => {
-      formattedSection += `## Report: ${reportData.report}
+
+      const isLast = index === toolCallReports.length - 1;
+
+      const thinking = isLast ? `Wait,  I need to analyze the JSON result above and what the user want(review USER REQUEST). Then if i have all the necessary data, i will present to the user using ${finalToolName} tool because the user have not seen it yet, otherwise i will choose the next tool to call (i don't repeat a tool, if i have the data what the user want).**` : "";
+
+      formattedSection += `## Report: ${reportData.report}, then i have found the following result. 
    **overall success**: ${reportData.overallSuccess}
    **error**: ${reportData.error || 'No error'}
    **result**: ${JSON.stringify(reportData.toolCalls, null, 2)}
+   
+   ${thinking}
 
 `;
     });
@@ -372,7 +348,7 @@ ${contextEntries}`;
       : prevInteractionHistory;
 
     const entryCount = entries.length;
-    const limitNote = options.maxPreviousTaskEntries 
+    const limitNote = options.maxPreviousTaskEntries
       ? ` (showing last ${Math.min(entryCount, options.maxPreviousTaskEntries)} entries)`
       : '';
 
@@ -383,17 +359,18 @@ ${contextEntries}`;
 ${JSON.stringify(entries, null, 2)}`;
   }
 
-  buildUserRequestSection(userPrompt: string): string {
+  buildUserRequestSection(userPrompt: string, finalToolName: string): string {
     return `# USER REQUEST
-🎯 **What the user wants:** "${userPrompt}"
+🎯 **Current request:** "${userPrompt}"
 
-📋 **DECISION PROCESS:**
-1. **FIRST**: Check if REPORTS AND RESULTS above contains the data the user wants
-2. **If data exists**: Use 'final' tool to extract and present the data clearly to the user
-3. **If data missing**: Execute the needed tools + 'report' tool to get the data
-4. **NEVER re-execute tools** if the data is already in REPORTS AND RESULTS
+📋 **Decision process:**
+1. Check if REPORTS has needed data for current request
+2. If complete: Use '${finalToolName}' tool to present results
+3. If partial: Continue with remaining steps + 'report'
+4. If no data: Execute needed tools + 'report'
+5. If lacking tools: Use '${finalToolName}' to explain limitations
 
-⚡ **Action Required:** Make your decision based on the REPORTS AND RESULTS section above!`;
+⚡ **Focus**: What does THIS request need that hasn't been done?`;
   }
 
   buildErrorRecoverySection(
@@ -405,7 +382,7 @@ ${JSON.stringify(entries, null, 2)}`;
     if (!error) return '';
 
     const defaultRetryInstructions = "📋 **Recovery Steps:**\n1. Analyze error details and task history\n2. Identify root cause of failure\n3. Modify approach to avoid same error\n4. Retry with corrected parameters/strategy\n5. If same error persists, try alternative methods";
-    
+
     const maxRetryMessage = `🚫 **Maximum Retries Exceeded**\nUse '${finalToolName}' to:\n- Summarize what was successfully accomplished\n- Explain what failed and why\n- Provide partial results if any`;
 
     const retryInstruction = keepRetry
