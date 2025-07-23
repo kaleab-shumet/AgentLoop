@@ -49,6 +49,7 @@ export class DefaultPromptTemplate {
 4. **Data Assessment**: Check REPORTS AND RESULTS for current request relevance
 5. **Tool Selection**: Execute tools needed for current request, even if similar data exists from previous different requests
 6. **Report Protocol**: Include 'report' tool with every execution (except '${finalToolName}')
+   - Format: "The user wants [user request]. I have already done [action1], [action2], [action3]..."
 
 ### Completion Rules
 7. **Use '${finalToolName}' ONLY when**:
@@ -146,7 +147,7 @@ You MUST respond with JSON in code blocks. Follow these patterns exactly:
 {
   "functionCalls": [
     {"name": "your_tool", "arguments": "{\\"param\\": \\"value\\"}"},
-    {"name": "report", "arguments": "{\\"report\\": \\"Reasoning for tool usage\\"}"}
+    {"name": "report", "arguments": "{\\"report\\": \\"The user wants [describe request]. I have already done [list completed actions]...\\"}"}
   ]
 }
 \`\`\`
@@ -195,7 +196,7 @@ tool_calls:
   - name: report
     args:
       report: |
-        Reasoning
+        The user wants [describe request]. I have already done [list completed actions]...
 \`\`\`
 
 **Task Completion** (standalone only):
@@ -286,7 +287,8 @@ ${toolDefinitions}`);
     if (toolCallReports.length === 0) {
       return `# REPORTS AND RESULTS
 📋 **No reports available yet.**
-🚨 **MANDATORY**: ALWAYS call the 'report' tool alongside every other tool execution`;
+🚨 **MANDATORY**: ALWAYS call the 'report' tool alongside every other tool execution
+📝 **Report Format**: "The user wants [request]. I have already done [action1], [action2], [action3]..."`;
     }
 
     let formattedSection = `# REPORTS AND RESULTS
@@ -303,6 +305,7 @@ Do not expose intermediate data directly—only show the final output via the ap
 
 
 🚨 **MANDATORY**: ALWAYS call the 'report' tool alongside every other tool execution
+📝 **Report Format**: "The user wants [request]. I have already done [action1], [action2], [action3]..."
 📊 **IMPORTANT**: Only use data from here if it's relevant to the CURRENT user request below!
 ⚠️ **WARNING**: Old results may be from different requests - focus on what the current request needs!
 

@@ -110,7 +110,7 @@ export abstract class AgentLoop {
    */
   public setAgentLoopOptions(options: AgentLoopOptions): void {
     this.logger = options.logger || console;
-    this.maxIterations = options.maxIterations !== undefined ? options.maxIterations : 15;
+    this.maxIterations = options.maxIterations !== undefined ? options.maxIterations : 100;
     this.toolTimeoutMs = options.toolTimeoutMs !== undefined ? options.toolTimeoutMs : 30000;
     this.retryAttempts = options.retryAttempts !== undefined ? options.retryAttempts : 3;
     this.retryDelay = options.retryDelay !== undefined ? options.retryDelay : 1000;

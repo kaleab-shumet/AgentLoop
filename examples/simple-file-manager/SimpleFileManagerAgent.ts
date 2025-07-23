@@ -57,14 +57,15 @@ Always be helpful and respond to the user's communication style!`;
       service: providerConfig.service as any,
       apiKey: providerConfig.apiKey,
       model: providerConfig.model,
-      temperature: 0.1
+      temperature: 0.1,
+
     };
 
     const aiProvider = new DefaultAIProvider(aiConfig);
     
     super(aiProvider, {
       formatMode: FormatMode.YAML,
-      parallelExecution: false,
+      parallelExecution: false
     });
 
     this.toolHandlers = new ToolHandlers(basePath);
