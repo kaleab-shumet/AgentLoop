@@ -1,14 +1,15 @@
 import { PromptOptions, Interaction } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
-import { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
+import { WorkerPromptTemplate, FormatType } from './WorkerPromptTemplate';
+import { BasePromptTemplate, WorkerPromptParams, SupervisorPromptParams } from './BasePromptTemplate';
 
 /**
  * Configuration for PromptManager
  */
 export interface PromptManagerConfig {
   responseFormat?: FormatType;
-  customTemplate?: DefaultPromptTemplate;
+  customTemplate?: BasePromptTemplate;
   promptOptions?: PromptOptions;
   errorRecoveryInstructions?: string;
 }
@@ -30,7 +31,7 @@ export interface PromptManagerConfig {
  */
 export class PromptManager {
   private systemPrompt: string;
-  private template: DefaultPromptTemplate;
+  private template: BasePromptTemplate;
   private isCustomTemplate: boolean;
   private promptOptions: PromptOptions;
   private errorRecoveryInstructions?: string;
@@ -53,7 +54,7 @@ export class PromptManager {
     } else {
       // Use default template with specified response format
       const responseFormat = config.responseFormat || FormatType.FUNCTION_CALLING;
-      this.template = new DefaultPromptTemplate(responseFormat);
+      this.template = new WorkerPromptTemplate(responseFormat);
       this.isCustomTemplate = false;
     }
   }
@@ -66,17 +67,17 @@ export class PromptManager {
   }
 
   /**
-   * Get the current response format (only applies to default template)
+   * Get the current response format (only applies to worker template)
    */
   getResponseFormat(): FormatType | null {
     if (this.isCustomTemplate) {
       return null; // Custom templates manage their own format
     }
-    return (this.template as DefaultPromptTemplate).getResponseFormat();
+    return (this.template as WorkerPromptTemplate).getResponseFormat();
   }
 
   /**
-   * Switch response format (only applies to default template)
+   * Switch response format (only applies to worker template)
    */
   setResponseFormat(format: FormatType): PromptManager {
     if (this.isCustomTemplate) {
@@ -86,24 +87,24 @@ export class PromptManager {
         { currentTemplate: 'custom', attemptedFormat: format }
       );
     }
-    (this.template as DefaultPromptTemplate).setResponseFormat(format);
+    (this.template as WorkerPromptTemplate).setResponseFormat(format);
     return this;
   }
 
   /**
    * Set a custom template
    */
-  setCustomTemplate(template: DefaultPromptTemplate): PromptManager {
+  setCustomTemplate(template: BasePromptTemplate): PromptManager {
     this.template = template;
     this.isCustomTemplate = true;
     return this;
   }
 
   /**
-   * Switch back to default template with specified format
+   * Switch back to worker template with specified format
    */
-  setDefaultTemplate(format: FormatType = FormatType.FUNCTION_CALLING): PromptManager {
-    this.template = new DefaultPromptTemplate(format);
+  setWorkerTemplate(format: FormatType = FormatType.FUNCTION_CALLING): PromptManager {
+    this.template = new WorkerPromptTemplate(format);
     this.isCustomTemplate = false;
     return this;
   }
@@ -141,24 +142,41 @@ export class PromptManager {
     prevTasksInteractionHistory: Interaction[],
     lastError: AgentError | null,
     keepRetry: boolean,
-    finalToolName: string,
     toolDefinitions: string,
+    agentType: 'worker' | 'supervisor' = 'worker',
+    workerSystemPrompt?: string
   ): string {
-    return this.template.buildPrompt(
-      this.systemPrompt,
-      userPrompt,
-      context,
-      currentTaskInteractionHistory,
-      prevTasksInteractionHistory,
-      lastError,
-      keepRetry,
-      finalToolName,
-      toolDefinitions,
-      this.promptOptions,
-      this.errorRecoveryInstructions,
-    );
+    if (agentType === 'worker') {
+      return this.template.buildPrompt({
+        type: 'worker',
+        systemPrompt: workerSystemPrompt || this.systemPrompt,
+        supervisorCommand: userPrompt, // The userPrompt IS the supervisor's command
+        toolDefinitions,
+      });
+    } else {
+      return this.template.buildPrompt({
+        type: 'supervisor',
+        systemPrompt: this.systemPrompt,
+        userPrompt,
+        context,
+        currentInteractionHistory: currentTaskInteractionHistory,
+        prevInteractionHistory: prevTasksInteractionHistory,
+        lastError,
+        keepRetry,
+        toolDefinitions,
+        options: this.promptOptions,
+        errorRecoveryInstructions: this.errorRecoveryInstructions,
+      });
+    }
+  }
+
+  /**
+   * Get the current template
+   */
+  getTemplate(): BasePromptTemplate {
+    return this.template;
   }
 
 }
 
-export { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
+export { WorkerPromptTemplate, FormatType } from './WorkerPromptTemplate';

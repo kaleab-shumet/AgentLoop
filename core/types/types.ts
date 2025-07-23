@@ -11,6 +11,14 @@ export enum FormatMode {
 }
 
 /**
+ * Agent mode for supervisor architecture
+ */
+export enum AgentMode {
+  SUPERVISOR = "supervisor",
+  WORKER = "worker"
+}
+
+/**
  * OpenAI-style function call structure
  */
 export interface FunctionCall {

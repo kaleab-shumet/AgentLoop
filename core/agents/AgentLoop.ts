@@ -15,11 +15,16 @@ import {
   AgentResponse,
   ToolCallContext,
   HandlerParams,
-  UserPrompt
+  UserPrompt,
+  AgentMode
 } from '../types/types';
+import { WorkerPromptParams, SupervisorPromptParams } from '../prompt/BasePromptTemplate';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
 import { PromptManager, PromptManagerConfig, FormatType } from '../prompt/PromptManager';
+import { SupervisorPromptTemplate } from '../prompt/SupervisorPromptTemplate';
+import { WorkerPromptTemplate } from '../prompt/WorkerPromptTemplate';
+import { createSupervisorTools } from './SupervisorTools';
 
 
 
@@ -83,11 +88,15 @@ export abstract class AgentLoop {
   protected hooks!: AgentLifecycleHooks;
   protected sleepBetweenIterationsMs!: number;
 
-  protected abstract systemPrompt: string;
+  protected abstract supervisorSystemPrompt: string;
+  protected abstract workerSystemPrompt: string;
   public tools: Tool<ZodTypeAny>[] = [];
+  public supervisorTools: Tool<ZodTypeAny>[] = [];
   protected aiProvider: AIProvider;
   protected aiDataHandler: AIDataHandler;
   protected promptManager!: PromptManager;
+  
+  protected currentAgentMode: AgentMode = AgentMode.SUPERVISOR;
 
   protected temperature?: number;
   protected max_tokens?: number;
@@ -102,6 +111,8 @@ export abstract class AgentLoop {
     this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.FUNCTION_CALLING);
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
+
+    this.supervisorTools = createSupervisorTools();
   }
 
   /**
@@ -126,10 +137,10 @@ export abstract class AgentLoop {
       this.promptManager = options.promptManager;
     } else if (options.promptManagerConfig || options.formatMode) {
       const config = options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.formatMode || this.formatMode);
-      this.promptManager = new PromptManager(this.systemPrompt, config);
+      this.promptManager = new PromptManager(this.supervisorSystemPrompt, config);
     } else if (!this.promptManager) {
       // If promptManager is still not set, set a default
-      this.promptManager = new PromptManager(this.systemPrompt, this.getDefaultPromptManagerConfig(this.formatMode));
+      this.promptManager = new PromptManager(this.supervisorSystemPrompt, this.getDefaultPromptManagerConfig(this.formatMode));
     }
 
   }
@@ -182,12 +193,28 @@ export abstract class AgentLoop {
    * Initialize the prompt manager with the system prompt if not already set
    */
   protected initializePromptManager(): void {
-    // If promptManager was not provided in options or needs system prompt, create new one
-    if (!this.promptManager || this.systemPrompt) {
+    // If promptManager was not provided in options, create new one
+    if (!this.promptManager) {
       // Get the execution mode from the LLM data handler
       const config = this.getDefaultPromptManagerConfig(this.formatMode);
-      this.promptManager = new PromptManager(this.systemPrompt, config);
+      
+      // Start with supervisor template since currentAgentMode defaults to SUPERVISOR
+      config.customTemplate = new SupervisorPromptTemplate();
+      
+      this.promptManager = new PromptManager(this.supervisorSystemPrompt, config);
     }
+  }
+
+  /**
+   * Quickly switch to a different prompt template
+   */
+  public switchPromptTemplate(promptTemplate: any): void {
+    const config = this.getDefaultPromptManagerConfig(this.formatMode);
+    config.customTemplate = promptTemplate;
+    const systemPrompt = this.currentAgentMode === AgentMode.SUPERVISOR 
+      ? this.supervisorSystemPrompt 
+      : this.workerSystemPrompt;
+    this.promptManager = new PromptManager(systemPrompt, config);
   }
 
   /**
@@ -203,7 +230,7 @@ export abstract class AgentLoop {
     let keepRetry = true;
 
     let connectionAndParsingRetryCount = 0;
-    let toolExecRetryCount = 0;
+    let currentSupervisorCommand = "";
 
 
     const taskId = nanoid();
@@ -216,6 +243,8 @@ export abstract class AgentLoop {
 
     currentInteractionHistory.push(userPromptInteraction)
 
+    let supervisorReportResult = ""
+
     try {
       this.initializePromptManager();
       this.initializeFinalTool();
@@ -223,112 +252,169 @@ export abstract class AgentLoop {
       for (let i = 0; i < this.maxIterations; i++) {
 
         try {
+          if (this.currentAgentMode === AgentMode.SUPERVISOR) {
 
+            const supervisorPromptInfo: SupervisorPromptParams = {
+              type: 'supervisor',
+              systemPrompt: this.supervisorSystemPrompt,
+              userPrompt,
+              context,
+              currentInteractionHistory,
+              prevInteractionHistory: input.prevInteractionHistory || [],
+              lastError,
+              keepRetry,
+              toolDefinitions: this.getSupervisorToolDefinitions(),
+              options: this.promptManager.getPromptOptions(),
+              errorRecoveryInstructions: undefined,
+              workerReport: supervisorReportResult
+            }
+            // SUPERVISOR PHASE
+            let prompt = this.constructPrompt(supervisorPromptInfo);
+            prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
+            const aiResponse = await this.getAIResponseWithRetry(prompt);
+            const currentTools = this.getTools(this.currentAgentMode);
+            const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse, currentTools);
+            connectionAndParsingRetryCount = 0; // Reset retries on successful LLM response
 
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry);
-          prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
-          const aiResponse = await this.getAIResponseWithRetry(prompt);
-          const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse, this.tools);
-          connectionAndParsingRetryCount = 0; // Reset retries on successful LLM response
-
-          // executeToolCalls now directly adds results to toolCallHistory
-          const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
-
-          // Handle report creation for both regular tools and final tool
-          const reportResult = iterationResults.find(r => r.context.toolName === this.REPORT_TOOL_NAME);
-          const finalResult = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
-          
-          if (reportResult && reportResult.context.success) {
-            // Regular tool execution with report tool
-            const reportText = reportResult.context.report || "";
-
-            console.log(reportText)
+            // executeToolCalls now directly adds results to toolCallHistory
+            const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
             
-            // Get other tool calls executed in this iteration (excluding report and final)
-            const otherToolResults = iterationResults.filter(r => 
-              r.context.toolName !== this.REPORT_TOOL_NAME && 
-              r.context.toolName !== this.FINAL_TOOL_NAME
-            );
+            // Handle supervisor tool results
+            const talkToUserResult = iterationResults.find(r => r.context.toolName === 'talk_to_user');
+            const commandWorkerResult = iterationResults.find(r => r.context.toolName === 'command_worker');
+            const supervisorReport = iterationResults.find(r => r.context.toolName === 'supervisor_report');
+            supervisorReportResult = supervisorReport?.context?.report
             
-            // Determine overall success and error
-            const overallSuccess = otherToolResults.every(r => r.context.success);
-            const errors = otherToolResults.filter(r => !r.context.success).map(r => r.context.error).filter(Boolean);
-            const error = errors.length > 0 ? errors.join('; ') : undefined;
-
-            // Create ToolCallReport and add to interaction history
-            const toolCallReport: ToolCallReport = {
-              report: reportText,
-              overallSuccess,
-              toolCalls: otherToolResults,
-              error
-            };
-            
-            currentInteractionHistory.push(toolCallReport);
-          } else if (finalResult && finalResult.context.success) {
-            // Final tool execution - manually set "Task completed" report
-            const toolCallReport: ToolCallReport = {
-              report: "Task completed",
-              overallSuccess: true,
-              toolCalls: [finalResult],
-              error: undefined
-            };
-            
-            currentInteractionHistory.push(toolCallReport);
-          }
-
-
-          // Apply failure handling mode
-          const failedTools = iterationResults.filter(r => !r.context.success);
-
-          if (failedTools.length > 0) {
-            const errorMessage = failedTools.map(f => `Tool: ${f.context.toolName}\n  Error: ${f.context?.error ?? 'Unknown error'}`).join('\n');
-            const failedToolsError = new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR, { userPrompt, failedTools });
-
-            throw failedToolsError;
-
-          } else {
-            toolExecRetryCount = 0
-            lastError = null;
-            const finalResult: ToolCall | undefined = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
-            if (finalResult) {
-
-
+            if (talkToUserResult && talkToUserResult.context.success) {
+              // Supervisor is talking to user - this could be final response
+              const toolCallReport: ToolCallReport = {
+                report: "Supervisor communicated with user",
+                overallSuccess: true,
+                toolCalls: [talkToUserResult],
+                error: undefined
+              };
+              
+              currentInteractionHistory.push(toolCallReport);
+              
+              // Check if this is a final response (no more commands needed)
               const agentResponse: AgentResponse = {
                 taskId,
-                timestamp: finalResult.timestamp,
+                timestamp: talkToUserResult.timestamp,
                 type: "agent_response",
-                context: finalResult.context
+                context: talkToUserResult.context
+              };
 
-              }
-
-              currentInteractionHistory.push(agentResponse)
-
+              currentInteractionHistory.push(agentResponse);
               await this.hooks.onAgentFinalResponse?.(agentResponse);
-              //this.logger.info(`[AgentLoop] Run complete. Final answer: ${finalResult.output?.value?.substring(0, 120)}`);
               const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse };
               await this.hooks.onRunEnd?.(output);
               return output;
+              
+            } else if (commandWorkerResult && commandWorkerResult.context.success) {
+              // Supervisor commanded worker - switch to worker mode
+              currentSupervisorCommand = JSON.stringify(commandWorkerResult.context) || "";
+              
+              const toolCallReport: ToolCallReport = {
+                report: "Supervisor sent command to worker",
+                overallSuccess: true,
+                toolCalls: [commandWorkerResult],
+                error: undefined
+              };
+              
+              currentInteractionHistory.push(toolCallReport);
+              
+              // Switch to worker mode for next iteration
+              this.setAgentMode(AgentMode.WORKER);
+              continue;
+            }
+            
+            // Handle failed supervisor tools
+            const failedTools = iterationResults.filter(r => !r.context.success);
+            if (failedTools.length > 0) {
+              const errorMessage = failedTools.map(f => `Tool: ${f.context.toolName}\n  Error: ${f.context?.error ?? 'Unknown error'}`).join('\n');
+              const failedToolsError = new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR, { userPrompt, failedTools });
+              throw failedToolsError;
+            }
+            
+          } else {
+            // WORKER PHASE
+            const workerPromptInfo: WorkerPromptParams = {
+              type: 'worker',
+              systemPrompt: this.workerSystemPrompt,
+              supervisorCommand: currentSupervisorCommand,
+              toolDefinitions: this.getWorkerToolDefinitions()
+            };
+            let prompt = this.constructPrompt(workerPromptInfo);
+            prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
+            const aiResponse = await this.getAIResponseWithRetry(prompt);
+            const currentTools = this.getTools(this.currentAgentMode);
+            const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse, currentTools);
+            connectionAndParsingRetryCount = 0; // Reset retries on successful LLM response
+
+            // executeToolCalls now directly adds results to toolCallHistory
+            const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
+
+            // Handle worker report tool
+            const reportResult = iterationResults.find(r => r.context.toolName === this.REPORT_TOOL_NAME);
+          
+            if (reportResult && reportResult.context.success) {
+              // Worker tool execution with report tool
+              const reportText = reportResult.context.report || "";
+
+              console.log(reportText)
+              
+              // Get other tool calls executed in this iteration (excluding report)
+              const otherToolResults = iterationResults.filter(r => 
+                r.context.toolName !== this.REPORT_TOOL_NAME
+              );
+              
+              // Determine overall success and error
+              const overallSuccess = otherToolResults.every(r => r.context.success);
+              const errors = otherToolResults.filter(r => !r.context.success).map(r => r.context.error).filter(Boolean);
+              const error = errors.length > 0 ? errors.join('; ') : undefined;
+
+              // Create ToolCallReport and add to interaction history
+              const toolCallReport: ToolCallReport = {
+                report: `${supervisorReportResult} Following this, a progress is made,  ${reportText}`,
+                overallSuccess,
+                toolCalls: otherToolResults,
+                error
+              };
+              
+              currentInteractionHistory.push(toolCallReport);
             }
 
-          }
+
+            // Handle worker failures - report back to supervisor instead of throwing error
+            const failedTools = iterationResults.filter(r => !r.context.success);
+
+            if (failedTools.length > 0) {
+              // Create error report for supervisor
+              const errorMessage = failedTools.map(f => `Tool: ${f.context.toolName} failed - ${f.context?.error ?? 'Unknown error'}`).join('; ');
+              const workerErrorReport: ToolCallReport = {
+                report: `Worker execution failed: ${errorMessage}`,
+                overallSuccess: false,
+                toolCalls: failedTools,
+                error: errorMessage
+              };
+              
+              currentInteractionHistory.push(workerErrorReport);
+            }
+
+            // Worker completed (with or without failures), switch back to supervisor
+            lastError = null;
+            this.setAgentMode(AgentMode.SUPERVISOR);
+            continue;
+          } // End of if-else for supervisor/worker modes
 
 
         } catch (error) {
           const err = error instanceof AgentError ? error : new AgentError((error as Error).message, AgentErrorType.UNKNOWN);
           lastError = err;
-          if (err.type === AgentErrorType.TOOL_EXECUTION_ERROR) {
-            i = i - 1;
-            toolExecRetryCount++
-            if (toolExecRetryCount >= this.retryAttempts) {
-              throw new AgentError(`Maximum tool execution retry attempts: ${err.getUserMessage()}`, AgentErrorType.STAGNATION_ERROR, { userPrompt, error: err });
-            }
-
-          }
-          else {
-            connectionAndParsingRetryCount++;
-            if (connectionAndParsingRetryCount >= this.retryAttempts) {
-              throw new AgentError(`Maximum retry attempts for response error: ${err.getUserMessage()}`, AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt, error: err });
-            }
+          
+          connectionAndParsingRetryCount++;
+          if (connectionAndParsingRetryCount >= this.retryAttempts) {
+            throw new AgentError(`Maximum retry attempts for error: ${err.getUserMessage()}`, AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt, error: err });
           }
         }
 
@@ -373,7 +459,8 @@ export abstract class AgentLoop {
       // Sequential execution
       for (const call of toolCalls) {
         //this.logger.info(`[AgentLoop] Executing tool: ${call.name}`);
-        const tool = this.tools.find(t => t.name === call.toolName);
+        const currentTools = this.getTools(this.currentAgentMode);
+        const tool = currentTools.find(t => t.name === call.toolName);
         if (!tool) {
           const err = new AgentError(`Tool '${call.toolName}' not found.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.toolName });
           const result = this.createFailureToolCallContext(call.toolName, err);
@@ -406,8 +493,9 @@ export abstract class AgentLoop {
     const iterationResults: ToolCall[] = []; // Collect results for this iteration to return
     const executionLock = new Map<string, boolean>(); // Prevent race conditions in dependency triggering
 
+    const currentTools = this.getTools(this.currentAgentMode);
     const validToolCalls = toolCalls.filter(call => {
-      if (!this.tools.some(t => t.name === call.toolName)) {
+      if (!currentTools.some(t => t.name === call.toolName)) {
         const error = new AgentError(`Tool '${call.toolName}' not found.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.toolName });
         const result = this.createFailureToolCallContext(call.toolName, error);
         iterationResults.push({
@@ -454,7 +542,8 @@ export abstract class AgentLoop {
 
     const execute = async (toolName: string): Promise<void> => {
       //this.logger.info(`[AgentLoop] Executing tool: ${toolName}`);
-      const tool = this.tools.find(t => t.name === toolName)!;
+      const currentTools = this.getTools(this.currentAgentMode);
+      const tool = currentTools.find(t => t.name === toolName)!;
       const callsForTool = validToolCalls.filter(t => t.toolName === toolName);
 
       try {
@@ -570,7 +659,8 @@ export abstract class AgentLoop {
 
         let functionTools: FunctionCallTool[] | undefined = undefined;
         if (this.formatMode === FormatMode.FUNCTION_CALLING) {
-          functionTools = this.aiDataHandler.formatToolDefinitions(this.tools) as FunctionCallTool[];
+          const currentTools = this.getTools(this.currentAgentMode);
+          functionTools = this.aiDataHandler.formatToolDefinitions(currentTools) as FunctionCallTool[];
         }
 
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
@@ -597,24 +687,44 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean): string {
-    const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
+  private constructPrompt(params: WorkerPromptParams | SupervisorPromptParams): string {
+    if (params.type === 'supervisor') {
+      this.switchPromptTemplate(new SupervisorPromptTemplate());
+    } else {
+      this.switchPromptTemplate(new WorkerPromptTemplate());
+    }
+    return this.promptManager.getTemplate().buildPrompt(params);
+  }
 
-    const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
-    // Build the prompt using the clean PromptManager API
+  private getSupervisorToolDefinitions(): string {
+    const supervisorTools = this.getTools(AgentMode.SUPERVISOR);
+    const supervisorToolDefinitions = this.aiDataHandler.formatToolDefinitions(supervisorTools);
+    
+    let toolDef = typeof supervisorToolDefinitions === "string" 
+      ? supervisorToolDefinitions 
+      : supervisorTools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n');
+    
+    // Include worker tools info for supervisor decision making
+    const workerTools = this.getTools(AgentMode.WORKER);
+    const workerToolsList = workerTools.map(t => `- **${t.name}**: ${t.description}`).join('\n');
+    
+    toolDef += `\n\n# WORKER AGENT AVAILABLE TOOLS
+📋 **Tools the worker agent can execute when you command it:**
 
-    let prompt = this.promptManager.buildPrompt(
-      userPrompt,
-      context,
-      currentInteractionHistory,
-      previousTaskHistory,
-      lastError,
-      keepRetry,
-      this.FINAL_TOOL_NAME,
-      toolDef
-    );
+${workerToolsList}
 
-    return prompt;
+💡 **Use this information to give specific, actionable commands to the worker agent.**`;
+
+    return toolDef;
+  }
+
+  private getWorkerToolDefinitions(): string {
+    const workerTools = this.getTools(AgentMode.WORKER);
+    const workerToolDefinitions = this.aiDataHandler.formatToolDefinitions(workerTools);
+    
+    return typeof workerToolDefinitions === "string" 
+      ? workerToolDefinitions 
+      : workerTools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n');
   }
 
 
@@ -791,6 +901,42 @@ export abstract class AgentLoop {
 
   public getAvailableTools(): string[] {
     return this.tools.map(tool => tool.name);
+  }
+
+  /**
+   * Get tools based on agent mode
+   */
+  public getTools(mode: AgentMode): Tool<ZodTypeAny>[] {
+    switch (mode) {
+      case AgentMode.SUPERVISOR:
+        return this.supervisorTools;
+      case AgentMode.WORKER:
+        return this.tools;
+      default:
+        return this.tools;
+    }
+  }
+
+  /**
+   * Switch agent mode (supervisor or worker)
+   */
+  public setAgentMode(mode: AgentMode): void {
+    this.currentAgentMode = mode;
+    
+    // Switch prompt template based on mode
+    if (mode === AgentMode.SUPERVISOR) {
+      this.switchPromptTemplate(new SupervisorPromptTemplate());
+    } else {
+      // For WORKER mode, switch to worker template
+      this.switchPromptTemplate(new WorkerPromptTemplate());
+    }
+  }
+
+  /**
+   * Get current agent mode
+   */
+  public getAgentMode(): AgentMode {
+    return this.currentAgentMode;
   }
 
   /**
