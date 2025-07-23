@@ -49,7 +49,8 @@ export class DefaultPromptTemplate {
 4. **Data Assessment**: Check REPORTS AND RESULTS for current request relevance
 5. **Tool Selection**: Execute tools needed for current request, even if similar data exists from previous different requests
 6. **Report Protocol**: Include 'report' tool with every execution (except '${finalToolName}')
-   - Format: "The user wants [user request]. I have already done [action1], [action2], [action3]..."
+   - Format: "The user wants [detailed user request]. I have already done [detailed action1 with results], [detailed action2 with results], [detailed action3 with results]..."
+   - **IMPORTANT**: Provide detailed descriptions, not short bullet points
 
 ### Completion Rules
 7. **Use '${finalToolName}' ONLY when**:
@@ -147,7 +148,7 @@ You MUST respond with JSON in code blocks. Follow these patterns exactly:
 {
   "functionCalls": [
     {"name": "your_tool", "arguments": "{\\"param\\": \\"value\\"}"},
-    {"name": "report", "arguments": "{\\"report\\": \\"The user wants [describe request]. I have already done [list completed actions]...\\"}"}
+    {"name": "report", "arguments": "{\\"report\\": \\"The user wants [detailed description of request]. I have already done [detailed description of action1 with results], [detailed description of action2 with results]...\\"}"}
   ]
 }
 \`\`\`
@@ -196,7 +197,7 @@ tool_calls:
   - name: report
     args:
       report: |
-        The user wants [describe request]. I have already done [list completed actions]...
+        The user wants [detailed description of request]. I have already done [detailed description of action1 with results], [detailed description of action2 with results]...
 \`\`\`
 
 **Task Completion** (standalone only):
@@ -288,7 +289,8 @@ ${toolDefinitions}`);
       return `# REPORTS AND RESULTS
 📋 **No reports available yet.**
 🚨 **MANDATORY**: ALWAYS call the 'report' tool alongside every other tool execution
-📝 **Report Format**: "The user wants [request]. I have already done [action1], [action2], [action3]..."`;
+📝 **Report Format**: "The user wants [detailed request]. I have already done [detailed action1 with results], [detailed action2 with results]..."
+💡 **IMPORTANT**: Reports must be detailed descriptions, not shortlisted bullet points`;
     }
 
     let formattedSection = `# REPORTS AND RESULTS
@@ -305,7 +307,8 @@ Do not expose intermediate data directly—only show the final output via the ap
 
 
 🚨 **MANDATORY**: ALWAYS call the 'report' tool alongside every other tool execution
-📝 **Report Format**: "The user wants [request]. I have already done [action1], [action2], [action3]..."
+📝 **Report Format**: "The user wants [detailed request]. I have already done [detailed action1 with results], [detailed action2 with results]..."
+💡 **IMPORTANT**: Reports must be detailed descriptions, not shortlisted bullet points
 📊 **IMPORTANT**: Only use data from here if it's relevant to the CURRENT user request below!
 ⚠️ **WARNING**: Old results may be from different requests - focus on what the current request needs!
 
