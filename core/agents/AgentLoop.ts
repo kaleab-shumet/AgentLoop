@@ -241,6 +241,8 @@ export abstract class AgentLoop {
           if (reportResult && reportResult.context.success) {
             // Regular tool execution with report tool
             const reportText = reportResult.context.report || "";
+
+            console.log(reportText)
             
             // Get other tool calls executed in this iteration (excluding report and final)
             const otherToolResults = iterationResults.filter(r => 

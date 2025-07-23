@@ -47,7 +47,7 @@ export class DefaultPromptTemplate {
 
 ### Execution Logic
 4. **Data Assessment**: Check REPORTS AND RESULTS for current request relevance
-5. **Tool Selection**: Execute tools needed for current request, regardless of old similar data
+5. **Tool Selection**: Execute tools needed for current request, even if similar data exists from previous different requests
 6. **Report Protocol**: Include 'report' tool with every execution (except '${finalToolName}')
 
 ### Completion Rules
@@ -60,7 +60,6 @@ export class DefaultPromptTemplate {
 
 ### Critical Constraints
 - ❌ NEVER combine '${finalToolName}' with other tools
-- ❌ NEVER re-execute successful tools from REPORTS AND RESULTS
 - ❌ NEVER use '${finalToolName}' for partial completion
 - ✅ Always check existing data before tool execution
 - ✅ Use '${finalToolName}' standalone only when complete
@@ -88,7 +87,14 @@ If you cannot complete a task because:
 
 **→ Use '${finalToolName}' immediately to explain:**
 - What the user requested
-- Why you cannot complete it`;
+- Why you cannot complete it
+
+**Note**: When a user ask never say i have already done this. Just do what asked.
+
+`;
+
+
+
   }
 
   /**
@@ -300,13 +306,17 @@ Do not expose intermediate data directly—only show the final output via the ap
 📊 **IMPORTANT**: Only use data from here if it's relevant to the CURRENT user request below!
 ⚠️ **WARNING**: Old results may be from different requests - focus on what the current request needs!
 
+## NOTES - Completed Reports Summary:
+${toolCallReports.map((report, idx) => `${idx + 1}. ${report.report} - Status: ${report.overallSuccess ? 'SUCCESS' : 'FAILED'}`).join('\n')}
+
+please review the notes carefully before deciding to call the next tool
 `;
 
     toolCallReports.forEach((reportData, index) => {
 
       const isLast = index === toolCallReports.length - 1;
 
-      const thinking = isLast ? `Wait,  I need to analyze the JSON result above and what the user want(review USER REQUEST). Then if i have all the necessary data, i will present to the user using ${finalToolName} tool because the user have not seen it yet, otherwise i will choose the next tool to call (i don't repeat a tool, if i have the data what the user want).**` : "";
+      const thinking = isLast ? `Wait, I need to analyze the JSON result above and what the user wants (review USER REQUEST). Then if I have all the necessary data for the CURRENT request, I will present to the user using ${finalToolName} tool because the user has not seen it yet, otherwise I will choose the next tool to call to fulfill the current request.**` : "";
 
       formattedSection += `## Report: ${reportData.report}, then i have found the following result. 
    **overall success**: ${reportData.overallSuccess}
@@ -318,7 +328,7 @@ Do not expose intermediate data directly—only show the final output via the ap
 `;
     });
 
-    formattedSection += `💡 **Use this information to decide your next action and avoid repeating work.`;
+    formattedSection += `💡 **Use this information to decide your next action for the CURRENT request. Re-execute tools if needed for new requests.`;
 
     return formattedSection;
   }
