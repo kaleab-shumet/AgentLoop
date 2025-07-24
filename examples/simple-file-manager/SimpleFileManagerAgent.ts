@@ -66,6 +66,7 @@ Always be helpful and respond to the user's communication style!`;
     super(aiProvider, {
       formatMode: FormatMode.YAML,
       parallelExecution: false,
+      batchMode: true,
       sleepBetweenIterationsMs: 3000
     });
 

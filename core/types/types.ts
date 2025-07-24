@@ -192,4 +192,5 @@ export interface PromptOptions {
   maxPreviousTaskEntries?: number;
   customSections?: Record<string, string>;
   parallelExecution?: boolean;
+  batchMode?: boolean;
 }

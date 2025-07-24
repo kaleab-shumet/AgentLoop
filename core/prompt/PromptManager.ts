@@ -41,7 +41,6 @@ export class PromptManager {
       includeContext: true,
       includePreviousTaskHistory: true,
       maxPreviousTaskEntries: 10,
-      parallelExecution: false,
       ...config.promptOptions
     };
     this.errorRecoveryInstructions = config.errorRecoveryInstructions;

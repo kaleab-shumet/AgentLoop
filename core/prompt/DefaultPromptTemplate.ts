@@ -110,23 +110,23 @@ User: "List all Python files and show their sizes"
 `;
   }
 
-  private getExecutionStrategy(parallelExecution: boolean): string {
-    const strategy = parallelExecution ? `
-### EXECUTION STRATEGY: PARALLEL MODE
-- **Capability**: Execute multiple independent tools simultaneously
-- **When to use**: When gathering multiple pieces of unrelated data
-- **Constraint**: Tools must not depend on each other's outputs
-- **Example**: Reading multiple files that don't reference each other` : `
-### EXECUTION STRATEGY: SEQUENTIAL MODE
-- **Capability**: Execute tools one at a time in order
-- **When to use**: When tool outputs depend on previous results
-- **Constraint**: Wait for each tool to complete before proceeding
-- **Example**: List directory → filter results → read specific files`;
+  private getExecutionStrategy(batchMode?: boolean): string {
+    const batchInfo = batchMode ? `
+### BATCH MODE: ENABLED
+- **Processing Mode**: Multiple requests can be handled in a single turn
+- **Efficiency**: Optimized for handling multiple related tasks together
+- **Coordination**: All requests are processed before final response
+- **Note**: Ensure all batch items are addressed before using the final tool` : `
+### BATCH MODE: DISABLED
+- **Processing Mode**: Handle one request at a time
+- **Focus**: Complete the single user request thoroughly
+- **Approach**: Gather all needed data, then provide the final answer
+- **Note**: Address the current request completely before using the final tool`;
     
-    return strategy;
+    return batchInfo;
   }
 
-  private getFunctionCallingFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
+  private getFunctionCallingFormatInstructions(finalToolName: string, batchMode?: boolean): string {
     return `# 🚨 RESPONSE FORMAT: JSON CODE BLOCKS ONLY 🚨
 
 ## ABSOLUTE REQUIREMENT
@@ -136,7 +136,7 @@ User: "List all Python files and show their sizes"
 - **EVERY response must follow one of the two patterns below**
 
 ${this.getWorkflowRules(finalToolName)}
-${this.getExecutionStrategy(parallelExecution)}
+${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
@@ -181,7 +181,7 @@ Ask yourself:
 `;
   }
 
-  private getYamlFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
+  private getYamlFormatInstructions(finalToolName: string, batchMode?: boolean): string {
     return `# 📋 RESPONSE FORMAT: YAML CODE BLOCKS ONLY
 
 ## ABSOLUTE REQUIREMENT
@@ -190,7 +190,7 @@ Ask yourself:
 - **Use proper YAML syntax with correct indentation**
 
 ${this.getWorkflowRules(finalToolName)}
-${this.getExecutionStrategy(parallelExecution)}
+${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
@@ -236,14 +236,14 @@ tool_calls:
 `;
   }
 
-  private getFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
+  private getFormatInstructions(finalToolName: string, batchMode?: boolean): string {
     switch (this.responseFormat) {
       case FormatType.FUNCTION_CALLING:
-        return this.getFunctionCallingFormatInstructions(finalToolName, parallelExecution);
+        return this.getFunctionCallingFormatInstructions(finalToolName, batchMode);
       case FormatType.YAML:
-        return this.getYamlFormatInstructions(finalToolName, parallelExecution);
+        return this.getYamlFormatInstructions(finalToolName, batchMode);
       default:
-        return this.getFunctionCallingFormatInstructions(finalToolName, parallelExecution);
+        return this.getFunctionCallingFormatInstructions(finalToolName, batchMode);
     }
   }
 
@@ -266,7 +266,7 @@ tool_calls:
     sections.push(systemPrompt);
     
     // Core instructions
-    sections.push(`${this.getFormatInstructions(finalToolName, options.parallelExecution || false)}`);
+    sections.push(`${this.getFormatInstructions(finalToolName, options.batchMode)}`);
     
     // Available tools
     sections.push(`# 🛠️ AVAILABLE TOOLS

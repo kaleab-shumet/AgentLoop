@@ -63,6 +63,7 @@ export interface AgentLoopOptions {
   promptManager?: PromptManager;
   promptManagerConfig?: PromptManagerConfig;
   sleepBetweenIterationsMs?: number;
+  batchMode?: boolean;                // Whether to process multiple requests in a single turn
 }
 
 /**
@@ -82,6 +83,7 @@ export abstract class AgentLoop {
   protected failureTolerance!: number;
   protected hooks!: AgentLifecycleHooks;
   protected sleepBetweenIterationsMs!: number;
+  protected batchMode!: boolean;
 
   protected abstract systemPrompt: string;
   public tools: Tool<ZodTypeAny>[] = [];
@@ -120,6 +122,7 @@ export abstract class AgentLoop {
     this.hooks = options.hooks || {};
     this.formatMode = options.formatMode || FormatMode.FUNCTION_CALLING;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
+    this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
 
     // Update promptManager if provided, or update config if promptManagerConfig/formatMode changes
     if (options.promptManager) {
@@ -148,7 +151,7 @@ export abstract class AgentLoop {
         includeContext: true,
         includePreviousTaskHistory: true,
         maxPreviousTaskEntries: 50,
-        parallelExecution: this.parallelExecution
+        batchMode: this.parallelExecution || this.batchMode
       }
     };
   }
