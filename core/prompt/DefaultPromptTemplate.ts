@@ -1,4 +1,4 @@
-import { Interaction, PromptOptions, ToolCallReport } from '../types/types';
+import { Interaction, PromptOptions, ToolCallReport, UserPrompt, AgentResponse } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 export enum FormatType {
@@ -22,99 +22,217 @@ export class DefaultPromptTemplate {
   }
 
   /**
-   * (CORRECTED) Defines the 'report' tool as an internal-only monologue.
+   * Enhanced workflow rules with clearer structure and examples
    */
   private getWorkflowRules(finalToolName: string): string {
     return `
 ## 🧠 CORE INSTRUCTIONS & THINKING PROCESS
 
-### CORE MISSION
-Your primary objective is to successfully fulfill the user's request by intelligently using the available tools. You must operate in a loop of thinking, acting, and observing until the request is complete.
+### PRIMARY OBJECTIVE
+You are an AI assistant designed to fulfill user requests through a strict two-phase process:
+1. **DATA GATHERING PHASE**: Collect all necessary information using available tools
+2. **ANSWER PRESENTATION PHASE**: Present the complete answer to the user using \`${finalToolName}\`
 
-### The Internal Monologue (Using the 'report' tool)
-- Think of the \`report\` tool as your private internal monologue or a lab notebook. **It is NOT seen by the user.**
-- Its sole purpose is to document your reasoning for the tools you are calling *in this specific turn*.
-- Be direct and technical in your report. Example: "My reasoning: The user requested a file list. I am now calling \`list_directory\` on path \`.\` to get the data."
+### CRITICAL CONSTRAINTS
+- You MUST complete both phases for every request
+- You CANNOT skip directly to presenting without gathering required data
+- You CANNOT end without presenting the answer via \`${finalToolName}\`
 
-### STEP-BY-STEP THINKING PROCESS
-1.  **ANALYZE THE REQUEST**: What is the user's ultimate goal?
-2.  **REVIEW YOUR INTERNAL LOG**: Examine the "REPORTS AND RESULTS" section to see what you've already done.
-3.  **FORM A PLAN FOR THE NEXT STEP**:
-    *   **CRITICAL SANITY CHECK**: Is the action you're planning already completed in your log? If yes, **DO NOT REPEAT IT**. Move to the next logical step.
-    *   **If all steps are complete**: The task is done. Your plan is to use the \`${finalToolName}\` tool to give the final answer to the user.
-    *   **If steps remain**: Your plan is to use the correct tool to perform the *next uncompleted step*.
+### The 'report' Tool (Your Internal Monologue)
+The \`report\` tool is your private reasoning space that helps maintain clarity:
+- **Purpose**: Document your thought process and decision-making
+- **Visibility**: NEVER shown to the user - for internal use only
+- **Usage**: MUST accompany every data-gathering tool call
+- **Format**: "My reasoning: [current_goal] → [why_this_tool] → [expected_outcome]"
 
-### 🚨 CRITICAL RULES for '${finalToolName}' (User-Facing Response)
-- This is your ONLY tool for communicating with the user.
-- Use it ONLY when the task is 100% complete or you are irrecoverably stuck.
-- **NEVER** combine it with any other tools in the same response.
+### STEP-BY-STEP DECISION FRAMEWORK
+
+#### Step 1: Understand the Request
+- What specific output does the user expect?
+- What data/information is required to fulfill this request?
+- What is the success criteria?
+
+#### Step 2: Assess Current State
+Review your "REPORTS AND RESULTS" section:
+- What data have you already gathered?
+- Is this data sufficient to answer the user's request completely?
+- Are there any gaps or missing pieces?
+
+#### Step 3: Execute Action
+Based on your assessment, choose ONE of these paths:
+
+**PATH A - Data Gathering (when you need more information)**
+- Identify the specific data gap
+- Select the appropriate tool to fill this gap
+- Execute tool call WITH report explaining your reasoning
+- Format:
+  \`\`\`
+  Tool: [tool_name] + report
+  Reasoning: "I need [data_type] to [purpose]. Using [tool_name] because [reason]."
+  \`\`\`
+
+**PATH B - Answer Presentation (when you have all required data)**
+- Synthesize all gathered data into a complete answer
+- Format the answer to be clear, helpful, and directly addressing the request
+- Use \`${finalToolName}\` to deliver this answer
+- Format:
+  \`\`\`
+  Tool: ${finalToolName}
+  Content: [Complete, formatted answer based on gathered data]
+  \`\`\`
+
+### 🚨 CRITICAL RULES & ANTI-PATTERNS
+
+#### MUST DO:
+✅ Always use \`report\` with data-gathering tools
+✅ Present actual data/results, not just confirmation of having data
+✅ Complete the full workflow before considering the task done
+✅ Make each tool call purposeful and justified
+
+#### MUST NOT DO:
+❌ Use \`${finalToolName}\` to say "I have the data" without showing it
+❌ Combine \`${finalToolName}\` with other tools in the same call
+❌ Skip the data gathering phase if information is needed
+❌ Make assumptions about data you haven't explicitly gathered
+
+### EXAMPLES OF CORRECT BEHAVIOR
+
+**Example 1: File Reading Request**
+User: "Show me the contents of config.json"
+1. DATA GATHERING: read_file("config.json") + report("Reading config.json to show user its contents")
+2. ANSWER PRESENTATION: ${finalToolName}("Here are the contents of config.json: [actual contents]")
+
+**Example 2: Multi-Step Analysis**
+User: "List all Python files and show their sizes"
+1. DATA GATHERING: list_directory(".") + report("Listing directory to find Python files")
+2. DATA GATHERING: get_file_info([files]) + report("Getting size information for Python files")
+3. ANSWER PRESENTATION: ${finalToolName}("Found X Python files: [formatted list with sizes]")
 `;
   }
 
   private getExecutionStrategy(parallelExecution: boolean): string {
-    const mode = parallelExecution ? 'Parallel' : 'Sequential';
-    const execution = parallelExecution
-      ? 'Tools can be executed concurrently.'
-      : 'Tools are executed in a specific order.';
-    return `### EXECUTION MODE\n*   **Mode**: ${mode} (${execution})`;
+    const strategy = parallelExecution ? `
+### EXECUTION STRATEGY: PARALLEL MODE
+- **Capability**: Execute multiple independent tools simultaneously
+- **When to use**: When gathering multiple pieces of unrelated data
+- **Constraint**: Tools must not depend on each other's outputs
+- **Example**: Reading multiple files that don't reference each other` : `
+### EXECUTION STRATEGY: SEQUENTIAL MODE
+- **Capability**: Execute tools one at a time in order
+- **When to use**: When tool outputs depend on previous results
+- **Constraint**: Wait for each tool to complete before proceeding
+- **Example**: List directory → filter results → read specific files`;
+    
+    return strategy;
   }
 
   private getFunctionCallingFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    return `# 🚨 CRITICAL: YOU MUST RESPOND WITH JSON CODE BLOCKS ONLY 🚨
+    return `# 🚨 RESPONSE FORMAT: JSON CODE BLOCKS ONLY 🚨
+
+## ABSOLUTE REQUIREMENT
+- **ALL responses MUST be valid JSON code blocks**
+- **NO plain text outside of JSON blocks**
+- **NO explanatory text before or after JSON**
+- **EVERY response must follow one of the two patterns below**
+
 ${this.getWorkflowRules(finalToolName)}
 ${this.getExecutionStrategy(parallelExecution)}
-## ⚠️ MANDATORY: NO PLAIN TEXT - ONLY JSON CODE BLOCKS ⚠️
-You MUST NOT respond with plain text. EVERY response MUST be a JSON code block.
-## 🚨 OUTPUT FORMAT REQUIREMENTS
-**Tool Execution** (Internal reasoning + action):
+
+## 📋 EXACT OUTPUT FORMATS
+
+### Format 1: Data Gathering (with mandatory report)
 \`\`\`json
 {
   "functionCalls": [
-    {"name": "your_tool", "arguments": "{\\"param\\": \\"value\\"}"},
-    {"name": "report", "arguments": "{\\"report\\": \\"My reasoning: The user wants to [goal]. I am now calling [tool_name] to achieve this.\\"}"}
+    {
+      "name": "tool_name_here",
+      "arguments": "{\\"param1\\": \\"value1\\", \\"param2\\": \\"value2\\"}"
+    },
+    {
+      "name": "report",
+      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect].\\"}"
+    }
   ]
 }
 \`\`\`
-**Task Completion** (Final response to user):
+
+### Format 2: Final Answer Presentation
 \`\`\`json
 {
   "functionCall": {
     "name": "${finalToolName}",
-    "arguments": "{\\"value\\": \\"Here is the complete answer for the user...\\"}"
+    "arguments": "{\\"value\\": \\"[Complete, helpful answer with all requested data formatted clearly]...\\"}"
   }
 }
 \`\`\`
+
+## ⚠️ FORMATTING RULES
+1. **Escape Requirements**: Double-escape quotes in arguments: \`\\"\`
+2. **Newlines**: Use \`\\n\` for line breaks within string values
+3. **Special Characters**: Properly escape all JSON special characters
+4. **Validation**: Ensure all JSON is valid and parseable
+
+## 🔍 SELF-CHECK BEFORE RESPONDING
+Ask yourself:
+1. Is my response a valid JSON code block?
+2. Did I include \`report\` with any data-gathering tools?
+3. Am I using the correct format (functionCalls vs functionCall)?
+4. Have I properly escaped all special characters?
 `;
   }
 
   private getYamlFormatInstructions(finalToolName: string, parallelExecution: boolean): string {
-    return `#  RESPONSE FORMAT: YAML CODE BLOCKS ONLY
+    return `# 📋 RESPONSE FORMAT: YAML CODE BLOCKS ONLY
+
+## ABSOLUTE REQUIREMENT
+- **ALL responses MUST be valid YAML code blocks**
+- **NO plain text outside of YAML blocks**
+- **Use proper YAML syntax with correct indentation**
+
 ${this.getWorkflowRules(finalToolName)}
 ${this.getExecutionStrategy(parallelExecution)}
-## Output Requirements
-- ❌ NO plain text responses.
-- ✅ YAML code blocks only.
-## YAML Format Patterns
-**Tool Execution** (Internal reasoning + action):
+
+## 📋 EXACT OUTPUT FORMATS
+
+### Format 1: Data Gathering (with mandatory report)
 \`\`\`yaml
 tool_calls:
-  - name: tool_name
+  - name: tool_name_here
     args:
-      param: |
-        value
+      param1: value1
+      param2: |
+        Multi-line value
+        can go here
   - name: report
     args:
       report: |
-        My reasoning: The user wants to [goal]. I am now calling [tool_name] to achieve this.
+        My reasoning: User wants [goal]. I need [data] to achieve this.
+        Using [tool] because [specific_reason].
+        Expected outcome: [what_I_expect].
 \`\`\`
-**Task Completion** (Final response to user):
+
+### Format 2: Final Answer Presentation
 \`\`\`yaml
 tool_calls:
   - name: ${finalToolName}
     args:
       value: |
-        Here is the complete answer for the user...
+        [Complete, helpful answer with all requested data]
+        [Formatted clearly with proper structure]
+        [All information the user requested]
 \`\`\`
+
+## ⚠️ YAML FORMATTING RULES
+1. **Indentation**: Use 2 spaces (never tabs)
+2. **Multi-line strings**: Use \`|\` for literal blocks
+3. **Lists**: Proper \`-\` prefix with consistent spacing
+4. **No quotes needed**: Unless value contains special characters
+
+## 🔍 SELF-CHECK BEFORE RESPONDING
+1. Is my response a valid YAML code block?
+2. Is indentation consistent throughout?
+3. Did I include \`report\` with data-gathering tools?
+4. Are multi-line values properly formatted with \`|\`?
 `;
   }
 
@@ -143,71 +261,248 @@ tool_calls:
     errorRecoveryInstructions?: string
   ): string {
     const sections: string[] = [];
+    
+    // System context
     sections.push(systemPrompt);
+    
+    // Core instructions
     sections.push(`${this.getFormatInstructions(finalToolName, options.parallelExecution || false)}`);
-    sections.push(`# 🛠️ AVAILABLE TOOLS\n**You must adhere to the following schema requirements:**\n- Parameter names are **CASE-SENSITIVE**.\n- You **MUST** include all required parameters.\n- You **MUST** follow the exact data types specified.\n\n${toolDefinitions}`);
+    
+    // Available tools
+    sections.push(`# 🛠️ AVAILABLE TOOLS
+
+## TOOL USAGE REQUIREMENTS
+- **Parameter names are CASE-SENSITIVE** - must match exactly
+- **ALL required parameters MUST be included** - no omissions
+- **Data types MUST match specifications** - string vs number vs boolean
+- **Follow the exact schema** - no extra or modified parameters
+
+## TOOL DEFINITIONS
+${toolDefinitions}
+
+## COMMON TOOL USAGE PATTERNS
+- File operations: Always check existence before reading
+- API calls: Include all required headers and parameters
+- Data processing: Validate input format before processing
+- Error handling: Anticipate and handle potential failures`);
+    
+    // Current state
     sections.push(this.buildReportSection(currentInteractionHistory, finalToolName));
-    if (options.includeContext) sections.push(this.buildContextSection(context, options));
-    if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) sections.push(this.buildPreviousTaskHistory(prevInteractionHistory, options));
-    if (lastError) sections.push(this.buildErrorRecoverySection(finalToolName, lastError, keepRetry, errorRecoveryInstructions));
-    if (options.customSections) Object.entries(options.customSections).forEach(([name, content]) => sections.push(`# ${name.toUpperCase()}\n${content}`));
+    
+    // Context if needed
+    if (options.includeContext) {
+      sections.push(this.buildContextSection(context, options));
+    }
+    
+    // Previous history if needed
+    if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) {
+      sections.push(this.buildConversation(prevInteractionHistory, options));
+    }
+    
+    // Error recovery if needed
+    if (lastError) {
+      sections.push(this.buildErrorRecoverySection(finalToolName, lastError, keepRetry, errorRecoveryInstructions));
+    }
+    
+    // Custom sections
+    if (options.customSections) {
+      Object.entries(options.customSections).forEach(([name, content]) => {
+        sections.push(`# ${name.toUpperCase()}\n${content}`);
+      });
+    }
+    
+    // Final user request
     sections.push(this.buildUserRequestSection(userPrompt, finalToolName));
+    
     return sections.join('\n\n---\n\n');
   }
 
-  /**
-   * (CORRECTED) Frames the report section as an internal-only log.
-   */
   buildReportSection(interactionHistory: Interaction[], finalToolName: string): string {
     const toolCallReports = interactionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
 
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
-**Your action history is empty. The user does not see this section.** Your first step is to call the appropriate tool(s) to begin working on the user's request.`;
+
+## CURRENT STATUS: EMPTY
+- **State**: No actions taken yet
+- **User visibility**: This section is NEVER shown to the user
+- **Next step**: Begin data gathering based on user request
+
+## REMINDER
+This is your working memory. Each action you take will be recorded here with:
+- Your reasoning (from \`report\` tool)
+- Tool calls made and their results
+- Success/failure status
+- Any errors encountered`;
     }
 
-    const reportEntries = toolCallReports.map((report, idx) => `
-### PAST ACTION ${idx + 1}
-*   **My Internal Monologue**: ${report.report}
-*   **Outcome**: ${report.overallSuccess ? '✅ SUCCESS' : '❌ FAILED'}
-*   **Tool Calls & Results**:
-    \`\`\`json
-    ${JSON.stringify(report.toolCalls, null, 2)}
-    \`\`\`
-*   **Error (if any)**: ${report.error || 'None'}`).join('\n');
+    const reportEntries = toolCallReports.map((report, idx) => {
+      const toolSummary = report.toolCalls.map(tc => 
+        `    - ${tc.context.toolName}: ${tc.context.success ? 'SUCCESS' : 'FAILED'} ${tc.context.error ? `(Error: ${tc.context.error})` : ''}`
+      ).join('\n');
+      
+      return `
+### ACTION ${idx + 1} | ${new Date().toISOString()}
+**Internal Reasoning**: ${report.report || 'No reasoning provided'}
+**Overall Status**: ${report.overallSuccess ? '✅ SUCCESS' : '❌ FAILED'}
+**Tools Executed**:
+${toolSummary}
+**Raw Results**:
+\`\`\`json
+${JSON.stringify(report.toolCalls.map(tc => ({name: tc.context.toolName, success: tc.context.success, context: tc.context})), null, 2)}
+\`\`\`
+${report.error ? `**Error Details**: ${report.error}` : ''}`;
+    }).join('\n');
 
     return `# 📊 REPORTS AND RESULTS (Your Internal Log)
-**This section is your internal-only memory and thought process. The user does not see this.** It contains the history of your past actions and their results.
 
+## VISIBILITY NOTICE
+🔒 **This section is PRIVATE** - User cannot see this internal log
+
+## ACTION HISTORY
 ${reportEntries}
 
----
-**ACTION ANALYSIS & NEXT STEP**
-1.  **Review the log above**: What was the result of the last successful action?
-2.  **Determine the next logical step**: Based on that result and the user's goal, what is the *single next action* needed?
-3.  **AVOID REPETITION**: Do not repeat a step if its result is already in the log.
-4.  **Decide**: If more steps are needed, call the next tool + \`report\`. If all work is done, use \`${finalToolName}\` to talk to the user.`;
+## CURRENT DATA INVENTORY
+Based on the above actions, you currently have access to:
+${this.summarizeAvailableData(toolCallReports)}`;
+  }
+
+  private summarizeAvailableData(reports: ToolCallReport[]): string {
+    const successfulCalls = reports
+      .flatMap(r => r.toolCalls)
+      .filter(tc => tc.context.success);
+    
+    if (successfulCalls.length === 0) {
+      return "- No successfully gathered data yet";
+    }
+    
+    return successfulCalls
+      .map(tc => `- ${tc.context.toolName}: Data available`)
+      .join('\n');
   }
 
   buildContextSection(context: Record<string, any>, options: PromptOptions): string {
-    if (Object.keys(context).length === 0) return `# 📎 CONTEXT\nNo additional context has been provided.`;
-    const contextEntries = Object.entries(context).map(([key, value]) => `### ${key}\n\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``).join('\n\n');
-    return `# 📎 CONTEXT\nThis is supplemental data provided for the task.\n\n${contextEntries}`;
+    if (Object.keys(context).length === 0) {
+      return `# 📎 CONTEXT
+**Status**: No additional context provided
+**Note**: Rely on user request and available tools`;
+    }
+    
+    const contextEntries = Object.entries(context).map(([key, value]) => {
+      const preview = JSON.stringify(value, null, 2);
+      const lines = preview.split('\n');
+      const truncated = lines.length > 20 
+        ? lines.slice(0, 20).join('\n') + '\n... [truncated]'
+        : preview;
+      
+      return `### ${key}
+**Type**: ${typeof value}
+**Content**:
+\`\`\`json
+${truncated}
+\`\`\``;
+    }).join('\n\n');
+    
+    return `# 📎 CONTEXT
+Additional information provided for this task:
+
+${contextEntries}
+
+## USAGE NOTES
+- This context supplements but doesn't replace user requests
+- Refer to context when relevant to the current task
+- Don't act on context unless it relates to the current request`;
   }
 
-  buildPreviousTaskHistory(prevInteractionHistory: Interaction[], options: PromptOptions): string {
-    const entries = options.maxPreviousTaskEntries ? prevInteractionHistory.slice(-options.maxPreviousTaskEntries) : prevInteractionHistory;
-    const limitNote = options.maxPreviousTaskEntries ? ` (showing the last ${entries.length} interactions)` : '';
-    return `# 📜 PREVIOUS TASK HISTORY\n🛑 **CRITICAL**: This is reference info from past, unrelated tasks${limitNote}. **DO NOT** act on this unless the current request explicitly refers to it.`;
+  buildConversation(prevInteractionHistory: Interaction[], options: PromptOptions): string {
+    const entries = options.maxPreviousTaskEntries 
+      ? prevInteractionHistory.slice(-options.maxPreviousTaskEntries) 
+      : prevInteractionHistory;
+    
+    const limitNote = options.maxPreviousTaskEntries 
+      ? ` (showing last ${entries.length} of ${prevInteractionHistory.length} total)` 
+      : '';
+    
+    const conversationEntries = entries
+      .filter(interaction => 'type' in interaction && (interaction.type === 'user_prompt' || interaction.type === 'agent_response'))
+      .map((interaction, idx) => {
+        if ('type' in interaction && interaction.type === 'user_prompt') {
+          const userPrompt = interaction as UserPrompt;
+          return `### 👤 USER REQUEST #${idx + 1}
+"${userPrompt.context}"`;
+        } else if ('type' in interaction && interaction.type === 'agent_response') {
+          const agentResponse = interaction as AgentResponse;
+          return `### 🤖 AGENT RESPONSE #${idx + 1}
+${typeof agentResponse.context === 'string' ? agentResponse.context : JSON.stringify(agentResponse.context)}`;
+        }
+        return '';
+      })
+      .filter(entry => entry !== '')
+      .join('\n\n');
+    
+    return `# 💬 CONVERSATION HISTORY${limitNote}
+
+## ⚠️ IMPORTANT NOTICE
+- This is REFERENCE ONLY - do not act on past requests
+- Only relevant if current request explicitly refers to previous interactions
+- Focus on the CURRENT TASK in the "CURRENT TASK" section
+
+## PREVIOUS INTERACTIONS
+${conversationEntries}
+
+## CONTEXT USAGE RULES
+✅ USE when: Current request says "like before", "again", "the same file", etc.
+❌ DON'T USE when: Current request is independent of history`;
   }
 
   buildUserRequestSection(userPrompt: string, finalToolName: string): string {
-    return `# 🎯 CURRENT TASK & USER REQUEST
-Your goal is to address the following request:
+    return `# 🎯 CURRENT TASK & IMMEDIATE ACTION
 
+## USER REQUEST
 > "${userPrompt}"
 
-Now, begin your thinking process.`;
+## YOUR DECISION CHECKLIST
+Follow this exact sequence to determine your next action:
+
+### 1️⃣ PARSE THE REQUEST
+- What specific output/result is the user asking for?
+- What data do I need to provide this output?
+- Have I clearly understood the success criteria?
+
+### 2️⃣ CHECK YOUR INTERNAL LOG
+Review "REPORTS AND RESULTS" section above:
+- ✅ If you have ALL required data → Go to step 3B
+- ❌ If you're missing ANY data → Go to step 3A
+
+### 3️⃣A IF MISSING DATA (Data Gathering Path)
+Execute the following:
+1. Identify the specific missing data
+2. Choose the appropriate tool to get this data
+3. Call the tool WITH a \`report\` explaining your reasoning
+4. After receiving results, return to step 1
+
+### 3️⃣B IF HAVE ALL DATA (Answer Presentation Path)
+Execute the following:
+1. Compile all gathered data into a complete answer
+2. Format the answer to be clear and helpful
+3. Use \`${finalToolName}\` to present this answer
+4. Your task is now complete
+
+## 🚫 COMMON MISTAKES TO AVOID
+- DON'T say "I have the data" without showing it
+- DON'T use ${finalToolName} until you have everything needed
+- DON'T forget the \`report\` tool when gathering data
+- DON'T make assumptions - gather actual data
+
+## ✅ SIGNS OF CORRECT EXECUTION
+- Each data-gathering includes clear reasoning via \`report\`
+- The final answer includes all requested information
+- User receives complete, formatted results via \`${finalToolName}\`
+- No steps are skipped or combined inappropriately
+
+## YOUR IMMEDIATE NEXT ACTION
+Based on the checklist above, your next response should be:
+[Determine this yourself based on the decision framework]`;
   }
 
   buildErrorRecoverySection(
@@ -217,10 +512,83 @@ Now, begin your thinking process.`;
     errorRecoveryInstructions?: string
   ): string {
     if (!error) return '';
-    const defaultRetryInstructions = `**Recovery Plan:**\n1.  **Analyze the Error**: Why did the last tool call fail?\n2.  **Review Your Plan**: Was there a mistake in the tool name, parameters, or logic?\n3.  **Correct and Retry**: Formulate a new tool call that corrects the mistake.`;
-    const maxRetryMessage = `🛑 **MAXIMUM RETRIES EXCEEDED**\nYou have failed multiple times. Do not try the same action again. You **MUST** use the \`${finalToolName}\` tool now to explain what went wrong.`;
-    const recoveryInstruction = keepRetry ? (errorRecoveryInstructions || defaultRetryInstructions) : maxRetryMessage;
-    const errorType = error.type ? ` (Type: ${error.type})` : '';
-    return `# ⚠️ ERROR & RECOVERY\nAn error occurred. You must recover.\n\n**Error Message${errorType}**: ${error.message}\n\n${recoveryInstruction}`;
+    
+    const errorContext = `# ⚠️ ERROR RECOVERY REQUIRED
+
+## ERROR DETAILS
+- **Type**: ${error.type || 'Unknown'}
+- **Message**: ${error.message}
+- **Timestamp**: ${new Date().toISOString()}
+${error.stack ? `- **Stack**: \`\`\`\n${error.stack}\n\`\`\`` : ''}
+
+## ERROR ANALYSIS CHECKLIST
+Before proceeding, analyze:
+1. **Root Cause**: What specifically went wrong?
+2. **Parameter Issues**: Were all required parameters included?
+3. **Format Issues**: Was the JSON/YAML format correct?
+4. **Tool Selection**: Was the right tool used?
+5. **Data Dependencies**: Were prerequisites met?`;
+
+    if (!keepRetry) {
+      return `${errorContext}
+
+## 🛑 MAXIMUM RETRIES EXCEEDED
+**Status**: Recovery attempts exhausted
+**Required Action**: You MUST now use \`${finalToolName}\` to:
+1. Acknowledge the error to the user
+2. Explain what went wrong in user-friendly terms
+3. Suggest alternative approaches if applicable
+4. Apologize for the inconvenience
+
+**Example Response**:
+\`\`\`json
+{
+  "functionCall": {
+    "name": "${finalToolName}",
+    "arguments": "{\\"value\\": \\"I encountered an error while [action]. The issue was [explanation]. I apologize for the inconvenience. You might try [alternative suggestion].\\"}"
+  }
+}
+\`\`\``;
+    }
+
+    const customInstructions = errorRecoveryInstructions || `## DEFAULT RECOVERY STRATEGY
+1. **Identify the Issue**: Analyze the error message and determine the root cause
+2. **Review Documentation**: Check tool definitions for correct usage
+3. **Adjust Approach**: Modify parameters, tool selection, or strategy
+4. **Retry with Fixes**: Execute the corrected approach
+5. **Monitor Results**: Ensure the retry succeeds`;
+
+    return `${errorContext}
+
+## RECOVERY INSTRUCTIONS
+${customInstructions}
+
+## RETRY CHECKLIST
+Before retrying, ensure:
+- ✅ You understand why the error occurred
+- ✅ You've identified the specific fix needed
+- ✅ Your new approach addresses the root cause
+- ✅ You're not repeating the same mistake
+
+## RECOVERY PATTERNS
+
+### Pattern 1: Parameter Mismatch
+**Error**: "Missing required parameter 'X'"
+**Fix**: Include all required parameters with correct names and types
+
+### Pattern 2: Invalid Format
+**Error**: "Invalid JSON/YAML format"
+**Fix**: Check escaping, quotes, and structure
+
+### Pattern 3: Tool Not Found
+**Error**: "Unknown tool 'X'"
+**Fix**: Use exact tool names from the AVAILABLE TOOLS section
+
+### Pattern 4: Permission/Access
+**Error**: "Permission denied" or "Not found"
+**Fix**: Verify resource exists and is accessible
+
+## YOUR RECOVERY ACTION
+Based on the error above, formulate and execute your recovery plan.`;
   }
 }
