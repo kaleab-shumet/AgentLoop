@@ -51,13 +51,14 @@ Always be helpful and respond to the user's communication style!`;
 
   private toolHandlers: ToolHandlers;
 
-  constructor(providerConfig: ProviderConfig, basePath: string = process.cwd()) {
+  constructor(providerConfig: ProviderConfig & { baseURL?: string }, basePath: string = process.cwd()) {
     // Configure AI provider
     const aiConfig: AIConfig = {
       service: providerConfig.service as any,
       apiKey: providerConfig.apiKey,
       model: providerConfig.model,
-      temperature: 0.1,
+      temperature: 0,
+      baseURL: providerConfig.baseURL,
 
     };
 

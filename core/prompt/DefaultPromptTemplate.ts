@@ -97,16 +97,16 @@ Based on your assessment, choose ONE of these paths:
 
 ### EXAMPLES OF CORRECT BEHAVIOR
 
-**Example 1: File Reading Request**
-User: "Show me the contents of config.json"
-1. DATA GATHERING: read_file("config.json") + report("Reading config.json to show user its contents")
-2. ANSWER PRESENTATION: ${finalToolName}("Here are the contents of config.json: [actual contents]")
+**Example 1: Simple Data Retrieval**
+User: "Get information about X"
+1. DATA GATHERING: get_data("X") + report("Retrieving information about X to fulfill user's request")
+2. ANSWER PRESENTATION: ${finalToolName}("Here is the information about X: [retrieved data]")
 
 **Example 2: Multi-Step Analysis**
-User: "List all Python files and show their sizes"
-1. DATA GATHERING: list_directory(".") + report("Listing directory to find Python files")
-2. DATA GATHERING: get_file_info([files]) + report("Getting size information for Python files")
-3. ANSWER PRESENTATION: ${finalToolName}("Found X Python files: [formatted list with sizes]")
+User: "Analyze Y and provide summary"
+1. DATA GATHERING: collect_info("Y") + report("Collecting information about Y for analysis")
+2. DATA GATHERING: analyze_data(info) + report("Analyzing collected data to generate summary")
+3. ANSWER PRESENTATION: ${finalToolName}("Analysis complete: [summary results]")
 `;
   }
 
@@ -512,6 +512,68 @@ Based on the checklist above, your next response should be:
     errorRecoveryInstructions?: string
   ): string {
     if (!error) return '';
+    
+    // Handle stagnation error specifically
+    if (error.type === 'STAGNATION_ERROR') {
+      // Extract tool information from the error context
+      const toolInfo = error.context?.toolInfo || 'Unknown tool';
+      const toolArgs = error.context?.toolArgs || '{}';
+      const isLastChance = error.context?.isLastChance || false;
+      const terminationThreshold = error.context?.terminationThreshold || 3;
+      
+      const warningSection = isLastChance ? `
+
+## 🚨 CRITICAL WARNING - FINAL ATTEMPT 🚨
+**THIS IS YOUR LAST CHANCE!** You have reached ${error.context?.occurrenceCount}/${terminationThreshold} similar attempts.
+**The next similar reasoning pattern will TERMINATE the agent immediately.**
+**You MUST change your approach completely or the task will fail.**
+
+` : '';
+      
+      return `# 🔄 STAGNATION DETECTED - STRATEGIC ANALYSIS REQUIRED
+${warningSection}
+## SITUATION ANALYSIS
+**Problem**: You are repeatedly calling the same tool without making any progress.
+**Repeated Tool**: \`${toolInfo}\`
+**Tool Arguments**: \`${toolArgs}\`
+**Similarity**: ${error.context?.similarity ? (error.context.similarity * 100).toFixed(1) + '%' : 'Unknown'}
+**Occurrence Count**: ${error.context?.occurrenceCount || 'Unknown'}/${terminationThreshold} times
+**Current Report**: "${error.context?.currentText || 'Unknown'}"
+**Similar Previous Report**: "${error.context?.similarText || 'Unknown'}"
+
+## 📊 COMPREHENSIVE REVIEW REQUIRED
+You MUST now analyze your entire "REPORTS AND RESULTS" section and:
+
+### 1️⃣ ASSESS CURRENT PROGRESS
+- What data have you successfully gathered?
+- What tools have you used and what were their results?
+- How much of the user's request have you fulfilled?
+
+### 2️⃣ IDENTIFY THE CAUSE
+- Why are you repeating the same reasoning?
+- What specific obstacle is preventing progress?
+- Are you missing critical information or tools?
+
+### 3️⃣ STRATEGIC DECISION
+Based on your analysis, choose ONE path:
+
+**PATH A - CONTINUE WITH NEW APPROACH**
+- If you can identify a different strategy to gather missing data
+- Use a completely different tool or approach than before
+- Include \`report\` with new reasoning that explains the change in strategy
+
+**PATH B - CONCLUDE WITH AVAILABLE DATA**
+- If you have sufficient data to partially answer the user's request
+- Use \`${finalToolName}\` to present what you've accomplished
+- Explain any limitations or partial results
+
+**PATH C - REQUEST CLARIFICATION**
+- If the user's request is unclear or impossible with available tools
+- Use \`${finalToolName}\` to explain the issue and ask for guidance
+
+## 🎯 YOUR NEXT ACTION
+Analyze your complete action history above, then execute your chosen path with clear reasoning.`;
+    }
     
     const errorContext = `# ⚠️ ERROR RECOVERY REQUIRED
 

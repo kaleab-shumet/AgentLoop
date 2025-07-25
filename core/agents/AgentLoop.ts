@@ -2,6 +2,9 @@
 import z, { ZodTypeAny, ZodObject } from 'zod';
 import { nanoid } from 'nanoid';
 import { createHash } from 'crypto';
+// @ts-ignore - simhash-js doesn't have TypeScript types
+const sjs = require('simhash-js');
+const simhashInstance = new sjs.SimHash();
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { AIDataHandler } from '../handlers/AIDataHandler';
 import { Logger } from '../utils/Logger';
@@ -64,6 +67,7 @@ export interface AgentLoopOptions {
   promptManagerConfig?: PromptManagerConfig;
   sleepBetweenIterationsMs?: number;
   batchMode?: boolean;                // Whether to process multiple requests in a single turn
+  stagnationTerminationThreshold?: number; // Number of similar reasoning attempts before forced termination (default: 3)
 }
 
 /**
@@ -84,6 +88,8 @@ export abstract class AgentLoop {
   protected hooks!: AgentLifecycleHooks;
   protected sleepBetweenIterationsMs!: number;
   protected batchMode!: boolean;
+  protected stagnationTerminationThreshold!: number;
+  private reportHashes: Map<string, { text: string, count: number }> = new Map(); // Track report simhashes for stagnation detection (simhash -> {text, count})
 
   protected abstract systemPrompt: string;
   public tools: Tool<ZodTypeAny>[] = [];
@@ -123,6 +129,7 @@ export abstract class AgentLoop {
     this.formatMode = options.formatMode || FormatMode.FUNCTION_CALLING;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
     this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
+    this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
 
     // Update promptManager if provided, or update config if promptManagerConfig/formatMode changes
     if (options.promptManager) {
@@ -204,6 +211,9 @@ export abstract class AgentLoop {
     const turnState = new TurnState();
     let lastError: AgentError | null = null;
     let keepRetry = true;
+    
+    // Reset stagnation tracking for new run
+    this.reportHashes.clear();
 
     let connectionAndParsingRetryCount = 0;
     let toolExecRetryCount = 0;
@@ -240,19 +250,86 @@ export abstract class AgentLoop {
           // Handle report creation for both regular tools and final tool
           const reportResult = iterationResults.find(r => r.context.toolName === this.REPORT_TOOL_NAME);
           const finalResult = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
-          
+
           if (reportResult && reportResult.context.success) {
             // Regular tool execution with report tool
             const reportText = reportResult.context.report || "";
-
-            console.log(reportText)
             
             // Get other tool calls executed in this iteration (excluding report and final)
-            const otherToolResults = iterationResults.filter(r => 
-              r.context.toolName !== this.REPORT_TOOL_NAME && 
+            const otherToolResults = iterationResults.filter(r =>
+              r.context.toolName !== this.REPORT_TOOL_NAME &&
               r.context.toolName !== this.FINAL_TOOL_NAME
             );
             
+            // Generate simhash for stagnation tracking
+            const currentSimhash = simhashInstance.hash(reportText);
+            
+            // Check for stagnation (similar reports)
+            for (const [existingHash, existingData] of this.reportHashes) {
+              const similarity = sjs.Comparator.similarity(currentSimhash, existingHash);
+              // If similarity is > 90%, consider it stagnation
+              if (similarity > 0.9) {
+                // Increment counter for existing hash
+                existingData.count++;
+                
+                // Extract tool information from other tool results
+                const toolInfo = otherToolResults.length > 0 ? otherToolResults[0].context.toolName : 'Unknown';
+                const toolArgs = otherToolResults.length > 0 ? JSON.stringify(otherToolResults[0].context) : '{}';
+                
+                // If stagnation count exceeds threshold, force termination with final response
+                if (existingData.count > this.stagnationTerminationThreshold) {
+                  const agentResponse: AgentResponse = {
+                    taskId,
+                    timestamp: Date.now().toString(),
+                    type: "agent_response",
+                    context: undefined,
+                    error: `I apologize, but I've encountered a stagnation loop and cannot make further progress. After ${existingData.count} similar attempts with tool "${toolInfo}", I must terminate to prevent infinite loops. The task could not be completed due to repeated unsuccessful reasoning patterns.`
+                  };
+
+                  currentInteractionHistory.push(agentResponse);
+
+                  const output: AgentRunOutput = {
+                    interactionHistory: currentInteractionHistory,
+                    agentResponse
+                  };
+
+                  await this.hooks.onRunEnd?.(output);
+                  return output;
+                }
+                
+                // Check if this is the last chance before termination
+                const isLastChance = existingData.count === this.stagnationTerminationThreshold;
+                
+                throw new AgentError(
+                  `Stagnation detected: Agent is repeating similar reasoning. Similarity: ${(similarity * 100).toFixed(1)}% (occurrence #${existingData.count})${isLastChance ? ' - FINAL WARNING: Next similar attempt will terminate the agent!' : ''}`,
+                  AgentErrorType.STAGNATION_ERROR,
+                  { 
+                    currentHash: currentSimhash, 
+                    similarHash: existingHash,
+                    similarity: similarity,
+                    currentText: reportText,
+                    similarText: existingData.text,
+                    toolInfo: toolInfo,
+                    toolArgs: toolArgs,
+                    occurrenceCount: existingData.count,
+                    isLastChance: isLastChance,
+                    terminationThreshold: this.stagnationTerminationThreshold,
+                    previousHashes: Array.from(this.reportHashes.keys())
+                  }
+                );
+              }
+            }
+            
+            // Track this report simhash with initial count of 1
+            this.reportHashes.set(currentSimhash, { text: reportText, count: 1 });
+
+            console.log("---------------------------------------")
+            console.log("reportText: ", reportText)
+            console.log("reportSimhash: ", currentSimhash)
+            console.log("stagnationMap size: ", this.reportHashes.size)
+            console.log("stagnationMap entries: ", Array.from(this.reportHashes.entries()).map(([hash, data]) => ({ hash, count: data.count })))
+            console.log("---------------------------------------")
+
             // Determine overall success and error
             const overallSuccess = otherToolResults.every(r => r.context.success);
             const errors = otherToolResults.filter(r => !r.context.success).map(r => r.context.error).filter(Boolean);
@@ -265,9 +342,12 @@ export abstract class AgentLoop {
               toolCalls: otherToolResults,
               error
             };
-            
+
             currentInteractionHistory.push(toolCallReport);
-          } else if (finalResult && finalResult.context.success) {
+          }
+          
+          
+          if (finalResult && finalResult.context.success) {
             // Final tool execution - manually set "Task completed" report
             const toolCallReport: ToolCallReport = {
               report: "Task completed",
@@ -275,7 +355,7 @@ export abstract class AgentLoop {
               toolCalls: [finalResult],
               error: undefined
             };
-            
+
             currentInteractionHistory.push(toolCallReport);
           }
 

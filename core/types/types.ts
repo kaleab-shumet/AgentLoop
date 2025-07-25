@@ -142,7 +142,7 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
 };
 
 // Essential types only
-export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'cohere' | 'groq' | 'fireworks' | 'deepseek' | 'perplexity';
+export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'cohere' | 'groq' | 'fireworks' | 'deepseek' | 'perplexity' | 'azure';
 
 
 export interface FunctionCallTool {
@@ -162,6 +162,8 @@ export interface AIConfig {
   temperature?: number;
   /** Maximum number of tokens to generate */
   max_tokens?: number;
+  /** Base URL for the service (required for Azure) */
+  baseURL?: string;
 
   tools?: FunctionCallTool[];
 
