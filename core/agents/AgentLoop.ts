@@ -90,6 +90,7 @@ export abstract class AgentLoop {
   protected batchMode!: boolean;
   protected stagnationTerminationThreshold!: number;
   private reportHashes: Map<string, { text: string, count: number }> = new Map(); // Track report simhashes for stagnation detection (simhash -> {text, count})
+  private nextTask: string | null = null; // Store extracted NEXT command from reports
 
   protected abstract systemPrompt: string;
   public tools: Tool<ZodTypeAny>[] = [];
@@ -142,6 +143,47 @@ export abstract class AgentLoop {
       this.promptManager = new PromptManager(this.systemPrompt, this.getDefaultPromptManagerConfig(this.formatMode));
     }
 
+  }
+
+  /**
+   * Extract NEXT task from report text using regex
+   */
+  private extractNextTask(reportText: string): string | null {
+    const nextRegex = /NEXT:\s*(.+?)(?:\.|$)/i;
+    const match = reportText.match(nextRegex);
+    return match ? match[1].trim() : null;
+  }
+
+  /**
+   * Remove NEXT task from report text, returning clean reasoning
+   */
+  private removeNextTask(reportText: string): string {
+    const nextRegex = /\s*NEXT:\s*.+?(?:\.|$)/i;
+    return reportText.replace(nextRegex, '').trim();
+  }
+
+  /**
+   * Process tool results and extract NEXT commands from reports
+   */
+  private processToolResults(toolResults: ToolCall[]): void {
+    // Find report tool results
+    const reportResults = toolResults.filter(result => 
+      result.context.toolName === 'report' && result.context.success
+    );
+
+    if (reportResults.length > 0) {
+      const latestReport = reportResults[reportResults.length - 1];
+      const reportText = latestReport.context.value as string || '';
+      
+      // Extract and store NEXT task
+      this.nextTask = this.extractNextTask(reportText);
+      
+      // Clean the report text (remove NEXT part)
+      const cleanedReport = this.removeNextTask(reportText);
+      
+      // Update the report result with cleaned text
+      latestReport.context.value = cleanedReport;
+    }
   }
 
   /**
@@ -237,19 +279,35 @@ export abstract class AgentLoop {
 
         try {
 
-
           let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponseWithRetry(prompt);
           const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse, this.tools);
+          
           connectionAndParsingRetryCount = 0; // Reset retries on successful LLM response
 
           // executeToolCalls now directly adds results to toolCallHistory
           const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
+          // Process tool results and extract NEXT commands from reports
+          this.processToolResults(iterationResults);
+
           // Handle report creation for both regular tools and final tool
           const reportResult = iterationResults.find(r => r.context.toolName === this.REPORT_TOOL_NAME);
           const finalResult = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
+
+          if (finalResult && finalResult.context.success) {
+            // Final tool execution - manually set "Task completed" report
+            const toolCallReport: ToolCallReport = {
+              report: "Task completed",
+              overallSuccess: true,
+              toolCalls: [finalResult],
+              error: undefined
+            };
+
+            currentInteractionHistory.push(toolCallReport);
+          }
+
 
           if (reportResult && reportResult.context.success) {
             // Regular tool execution with report tool
@@ -347,17 +405,7 @@ export abstract class AgentLoop {
           }
           
           
-          if (finalResult && finalResult.context.success) {
-            // Final tool execution - manually set "Task completed" report
-            const toolCallReport: ToolCallReport = {
-              report: "Task completed",
-              overallSuccess: true,
-              toolCalls: [finalResult],
-              error: undefined
-            };
-
-            currentInteractionHistory.push(toolCallReport);
-          }
+          
 
 
           // Apply failure handling mode
@@ -694,7 +742,8 @@ export abstract class AgentLoop {
       lastError,
       keepRetry,
       this.FINAL_TOOL_NAME,
-      toolDef
+      toolDef,
+      this.nextTask
     );
 
     return prompt;

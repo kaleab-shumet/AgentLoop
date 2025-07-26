@@ -1,4 +1,4 @@
-import { PromptOptions, Interaction } from '../types/types';
+import { PromptOptions, Interaction, BuildPromptParams } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
 import { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
@@ -142,20 +142,24 @@ export class PromptManager {
     keepRetry: boolean,
     finalToolName: string,
     toolDefinitions: string,
+    nextTask?: string | null,
   ): string {
-    return this.template.buildPrompt(
-      this.systemPrompt,
+    const params: BuildPromptParams = {
+      systemPrompt: this.systemPrompt,
       userPrompt,
       context,
-      currentTaskInteractionHistory,
-      prevTasksInteractionHistory,
+      currentInteractionHistory: currentTaskInteractionHistory,
+      prevInteractionHistory: prevTasksInteractionHistory,
       lastError,
       keepRetry,
       finalToolName,
       toolDefinitions,
-      this.promptOptions,
-      this.errorRecoveryInstructions,
-    );
+      options: this.promptOptions,
+      nextTask: nextTask || null,
+      errorRecoveryInstructions: this.errorRecoveryInstructions,
+    };
+    
+    return this.template.buildPrompt(params);
   }
 
 }

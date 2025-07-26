@@ -196,3 +196,18 @@ export interface PromptOptions {
   parallelExecution?: boolean;
   batchMode?: boolean;
 }
+
+export interface BuildPromptParams {
+  systemPrompt: string;
+  userPrompt: string;
+  context: Record<string, any>;
+  currentInteractionHistory: Interaction[];
+  prevInteractionHistory: Interaction[];
+  lastError: AgentError | null;
+  keepRetry: boolean;
+  finalToolName: string;
+  toolDefinitions: string;
+  options: PromptOptions;
+  nextTask?: string | null;
+  errorRecoveryInstructions?: string;
+}

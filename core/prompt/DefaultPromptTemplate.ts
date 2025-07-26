@@ -1,4 +1,4 @@
-import { Interaction, PromptOptions, ToolCallReport, UserPrompt, AgentResponse } from '../types/types';
+import { Interaction, PromptOptions, ToolCallReport, UserPrompt, AgentResponse, BuildPromptParams } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 export enum FormatType {
@@ -262,19 +262,21 @@ tool_calls:
     }
   }
 
-  buildPrompt(
-    systemPrompt: string,
-    userPrompt: string,
-    context: Record<string, any>,
-    currentInteractionHistory: Interaction[],
-    prevInteractionHistory: Interaction[],
-    lastError: AgentError | null,
-    keepRetry: boolean,
-    finalToolName: string,
-    toolDefinitions: string,
-    options: PromptOptions,
-    errorRecoveryInstructions?: string
-  ): string {
+  buildPrompt(params: BuildPromptParams): string {
+    const {
+      systemPrompt,
+      userPrompt,
+      context,
+      currentInteractionHistory,
+      prevInteractionHistory,
+      lastError,
+      keepRetry,
+      finalToolName,
+      toolDefinitions,
+      options,
+      nextTask,
+      errorRecoveryInstructions
+    } = params;
     const sections: string[] = [];
 
     // System context
@@ -301,8 +303,9 @@ ${toolDefinitions}
 - Data processing: Validate input format before processing
 - Error handling: Anticipate and handle potential failures`);
 
-    // Current state
-    sections.push(this.buildReportSection(currentInteractionHistory, finalToolName));
+    // Current state - filter toolCallReports 
+    const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
+    sections.push(this.buildReportSection(toolCallReports, finalToolName, nextTask));
 
     // Context if needed
     if (options.includeContext) {
@@ -333,8 +336,7 @@ ${toolDefinitions}
   }
 
 
-  buildReportSection(interactionHistory: Interaction[], finalToolName: string): string {
-    const toolCallReports = interactionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
+  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, nextTask?: string | null): string {
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
@@ -355,12 +357,9 @@ This is your working memory. Each action you take will be recorded here with:
         `    - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'} ${tc.context.error ? `(Error: ${tc.context.error})` : ''}`
       ).join('\n');
       
-      // Extract NEXT command and clean report text
-      const cleanedReport = this.removeNextCommand(report.report || '');
-      
       return `
 ### ACTION ${idx + 1} | ${new Date().toISOString()}
-**Internal Reasoning**: ${cleanedReport || 'No reasoning provided'}
+**Internal Reasoning**: ${report.report || 'No reasoning provided'}
 **Overall Status**: ${report.overallSuccess ? '✅ SUCCESS' : '❌ FAILED'}
 **Tools Executed**:
 ${toolSummary}
@@ -370,14 +369,12 @@ ${JSON.stringify(report.toolCalls.map(tc => ({ name: tc.context.toolName, succes
 \`\`\`
 ${report.error ? `**Error Details**: ${report.error}` : ''}`;
     }).join('\n');
-    const latestNextCommand = this.getLatestNextCommand(toolCallReports);
-    
     return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
 ## VISIBILITY NOTICE
 🔒 **This section is PRIVATE** - The user cannot see this internal log.
 
-${latestNextCommand ? this.buildNextCommandFocus(latestNextCommand) : ''}
+${nextTask ? this.buildNextTaskFocus(nextTask) : ''}
 
 ## ACTION HISTORY
 ${reportEntries}
@@ -399,41 +396,16 @@ ${this.summarizeAvailableData(toolCallReports)}`;
       .join('\n');
   }
 
-  /**
-   * Extract NEXT command from report text using regex
-   */
-  private extractNextCommand(reportText: string): string | null {
-    const nextRegex = /NEXT:\s*(.+?)(?:\.|$)/i;
-    const match = reportText.match(nextRegex);
-    return match ? match[1].trim() : null;
-  }
 
   /**
-   * Remove NEXT command from report text, returning clean reasoning
+   * Build focused instructions based on the extracted NEXT task
    */
-  private removeNextCommand(reportText: string): string {
-    const nextRegex = /\s*NEXT:\s*.+?(?:\.|$)/i;
-    return reportText.replace(nextRegex, '').trim();
-  }
-
-  /**
-   * Get the latest NEXT command from the most recent report
-   */
-  private getLatestNextCommand(reports: ToolCallReport[]): string | null {
-    if (reports.length === 0) return null;
-    const latestReport = reports[reports.length - 1];
-    return this.extractNextCommand(latestReport.report || '');
-  }
-
-  /**
-   * Build focused instructions based on the extracted NEXT command
-   */
-  private buildNextCommandFocus(nextCommand: string): string {
+  private buildNextTaskFocus(nextTask: string): string {
     return `
 ## 🚨 HIGHEST PRIORITY - EXECUTE YOUR PLANNED ACTION 🚨
 
 ### 🎯 YOUR PREVIOUS COMMAND TO YOURSELF:
-> "${nextCommand}"
+> "${nextTask}"
 
 ### ⚡ IMMEDIATE REQUIREMENTS:
 1. **EXECUTE EXACTLY**: Follow the command you gave yourself above
