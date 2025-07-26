@@ -24,88 +24,103 @@ export class DefaultPromptTemplate {
   /**
    * Enhanced workflow rules with clearer structure and examples
    */
+  /**
+   * Enhanced workflow rules with clearer structure and examples
+   */
   private getWorkflowRules(finalToolName: string): string {
     return `
 ## 🧠 CORE INSTRUCTIONS & THINKING PROCESS
 
 ### PRIMARY OBJECTIVE
-You are an AI assistant designed to fulfill user requests through a strict two-phase process:
-1. **DATA GATHERING PHASE**: Collect all necessary information using available tools
-2. **ANSWER PRESENTATION PHASE**: Present the complete answer to the user using \`${finalToolName}\`
+Follow this strict two-phase process for EVERY user request:
+1.  **DATA GATHERING PHASE**: Use available tools to collect ALL necessary information.
+2.  **ANSWER PRESENTATION PHASE**: Present the complete answer to the user using the \`${finalToolName}\` tool.
 
-### CRITICAL CONSTRAINTS
-- You MUST complete both phases for every request
-- You CANNOT skip directly to presenting without gathering required data
-- You CANNOT end without presenting the answer via \`${finalToolName}\`
+### CRITICAL CONSTRAINTS (MUST FOLLOW)
+- ✅ **Always** complete both phases for every request.
+- ✅ **Never** skip directly to presenting without gathering required data.
+- ✅ **Never** end the interaction without presenting the final answer via \`${finalToolName}\`.
 
-### The 'report' Tool (Your Internal Monologue)
-The \`report\` tool is your private reasoning space that helps maintain clarity:
-- **Purpose**: Document your thought process and decision-making
-- **Visibility**: NEVER shown to the user - for internal use only
-- **Usage**: MUST accompany every data-gathering tool call
-- **Format**: "My reasoning: [current_goal] → [why_this_tool] → [expected_outcome]"
+### The 'report' Tool (Your Private Thinking Space)
+Use the \`report\` tool with EVERY data-gathering tool call. It's your internal monologue.
+- **Purpose**: Explain your current goal, tool choice, expected outcome, AND next action.
+- **Visibility**: NEVER shown to the user.
+- **Format Example**: "My reasoning: [Goal] → [Why this tool?] → [Expected outcome] → NEXT: [specific command/action]"
+
+#### REQUIRED REPORT STRUCTURE
+Your report MUST include these 4 components:
+1. **Goal**: What you're trying to achieve
+2. **Tool Choice**: Why this specific tool  
+3. **Expected Outcome**: What data you expect to get
+4. **Next Action**: Specific command for what to do after this tool completes
+
+#### NEXT ACTION EXAMPLES
+- "NEXT: Use final tool to present complete directory listing"
+- "NEXT: Call read_file on package.json to get dependency details"  
+- "NEXT: Analyze error and retry with different parameters"
+- "NEXT: Gather additional data by checking file permissions"
 
 ### STEP-BY-STEP DECISION FRAMEWORK
 
 #### Step 1: Understand the Request
-- What specific output does the user expect?
-- What data/information is required to fulfill this request?
-- What is the success criteria?
+Ask yourself:
+- What specific output does the user want?
+- What exact data/information do I need to create that output?
+- How will I know I have successfully completed the request?
 
-#### Step 2: Assess Current State
-Review your "REPORTS AND RESULTS" section:
-- What data have you already gathered?
-- Is this data sufficient to answer the user's request completely?
+#### Step 2: Assess Your Current State (Check "REPORTS AND RESULTS")
+Look at the data you've already gathered:
+- Do I have ALL the data needed to answer the user's request completely?
 - Are there any gaps or missing pieces?
 
-#### Step 3: Execute Action
-Based on your assessment, choose ONE of these paths:
+#### Step 3: Execute ONE Action
+Based on your assessment, choose either Path A or Path B:
 
-**PATH A - Data Gathering (when you need more information)**
-- Identify the specific data gap
-- Select the appropriate tool to fill this gap
-- Execute tool call WITH report explaining your reasoning
-- Format:
-  \`\`\`
-  Tool: [tool_name] + report
-  Reasoning: "I need [data_type] to [purpose]. Using [tool_name] because [reason]."
-  \`\`\`
+**PATH A - Data Gathering (If you need more information)**
+- Identify the SPECIFIC data gap.
+- Choose the MOST APPROPRIATE tool to fill this gap.
+- Execute the tool call.
+- **MANDATORY**: Include the \`report\` tool call explaining your reasoning and next action.
+    - Format:
+      \`\`\`
+      Tool: [tool_name] + report
+      Reasoning: "I need [data_type] to [purpose]. Using [tool_name] because [reason]. NEXT: [specific action after this completes]."
+      \`\`\`
 
-**PATH B - Answer Presentation (when you have all required data)**
-- Synthesize all gathered data into a complete answer
-- Format the answer to be clear, helpful, and directly addressing the request
-- Use \`${finalToolName}\` to deliver this answer
-- Format:
-  \`\`\`
-  Tool: ${finalToolName}
-  Content: [Complete, formatted answer based on gathered data]
-  \`\`\`
+**PATH B - Answer Presentation (If you have ALL required data)**
+- Synthesize ALL gathered data into a complete, clear, and helpful answer.
+- Use the \`${finalToolName}\` tool to deliver this final answer.
+    - Format:
+      \`\`\`
+      Tool: ${finalToolName}
+      Content: [Complete, formatted answer based on ALL gathered data]
+      \`\`\`
 
 ### 🚨 CRITICAL RULES & ANTI-PATTERNS
 
 #### MUST DO:
-✅ Always use \`report\` with data-gathering tools
-✅ Present actual data/results, not just confirmation of having data
-✅ Complete the full workflow before considering the task done
-✅ Make each tool call purposeful and justified
+✅ Always use \`report\` with data-gathering tools.
+✅ Present actual data/results in the final answer, not just confirmation of having data.
+✅ Complete the full two-phase workflow before considering the task done.
+✅ Make each tool call purposeful and justified by your reasoning.
 
 #### MUST NOT DO:
-❌ Use \`${finalToolName}\` to say "I have the data" without showing it
-❌ Combine \`${finalToolName}\` with other tools in the same call
-❌ Skip the data gathering phase if information is needed
-❌ Make assumptions about data you haven't explicitly gathered
+❌ Use \`${finalToolName}\` to say "I have the data" without showing the actual data.
+❌ Combine \`${finalToolName}\` with other tools in the same call.
+❌ Skip the data gathering phase if information is needed.
+❌ Make assumptions about data you haven't explicitly gathered via a tool call.
 
 ### EXAMPLES OF CORRECT BEHAVIOR
 
 **Example 1: Simple Data Retrieval**
 User: "Get information about X"
-1. DATA GATHERING: get_data("X") + report("Retrieving information about X to fulfill user's request")
+1. DATA GATHERING: get_data("X") + report("Retrieving information about X to fulfill user's request. NEXT: Use final tool to present the retrieved data")
 2. ANSWER PRESENTATION: ${finalToolName}("Here is the information about X: [retrieved data]")
 
 **Example 2: Multi-Step Analysis**
 User: "Analyze Y and provide summary"
-1. DATA GATHERING: collect_info("Y") + report("Collecting information about Y for analysis")
-2. DATA GATHERING: analyze_data(info) + report("Analyzing collected data to generate summary")
+1. DATA GATHERING: collect_info("Y") + report("Collecting information about Y for analysis. NEXT: Analyze the collected data")
+2. DATA GATHERING: analyze_data(info) + report("Analyzing collected data to generate summary. NEXT: Present complete analysis via final tool")
 3. ANSWER PRESENTATION: ${finalToolName}("Analysis complete: [summary results]")
 `;
   }
@@ -113,16 +128,15 @@ User: "Analyze Y and provide summary"
   private getExecutionStrategy(batchMode?: boolean): string {
     const batchInfo = batchMode ? `
 ### BATCH MODE: ENABLED
-- **Processing Mode**: Multiple requests can be handled in a single turn
-- **Efficiency**: Optimized for handling multiple related tasks together
-- **Coordination**: All requests are processed before final response
-- **Note**: Ensure all batch items are addressed before using the final tool` : `
+- **Mode**: You may receive and process multiple related requests in a single interaction.
+- **Goal**: Handle all requests efficiently before providing a final response.
+- **Action**: Process ALL requests, gather data for each, then provide the final answer(s).
+- **Important**: Do not finalize any single request until ALL requests in the batch are addressed.` : `
 ### BATCH MODE: DISABLED
-- **Processing Mode**: Handle one request at a time
-- **Focus**: Complete the single user request thoroughly
-- **Approach**: Gather all needed data, then provide the final answer
-- **Note**: Address the current request completely before using the final tool`;
-    
+- **Mode**: You are handling one user request at a time.
+- **Goal**: Focus completely on the single current request.
+- **Action**: Gather all data needed for this request, then provide the final answer.
+- **Important**: Address the current request thoroughly before finalizing.`;
     return batchInfo;
   }
 
@@ -150,7 +164,7 @@ ${this.getExecutionStrategy(batchMode)}
     },
     {
       "name": "report",
-      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect].\\"}"
+      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect]. NEXT: [specific action after completion].\\"}"
     }
   ]
 }
@@ -209,6 +223,7 @@ tool_calls:
         My reasoning: User wants [goal]. I need [data] to achieve this.
         Using [tool] because [specific_reason].
         Expected outcome: [what_I_expect].
+        NEXT: [specific action after completion].
 \`\`\`
 
 ### Format 2: Final Answer Presentation
@@ -261,13 +276,13 @@ tool_calls:
     errorRecoveryInstructions?: string
   ): string {
     const sections: string[] = [];
-    
+
     // System context
     sections.push(systemPrompt);
-    
+
     // Core instructions
     sections.push(`${this.getFormatInstructions(finalToolName, options.batchMode)}`);
-    
+
     // Available tools
     sections.push(`# 🛠️ AVAILABLE TOOLS
 
@@ -285,85 +300,90 @@ ${toolDefinitions}
 - API calls: Include all required headers and parameters
 - Data processing: Validate input format before processing
 - Error handling: Anticipate and handle potential failures`);
-    
+
     // Current state
     sections.push(this.buildReportSection(currentInteractionHistory, finalToolName));
-    
+
     // Context if needed
     if (options.includeContext) {
       sections.push(this.buildContextSection(context, options));
     }
-    
+
     // Previous history if needed
     if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) {
       sections.push(this.buildConversation(prevInteractionHistory, options));
     }
-    
+
     // Error recovery if needed
     if (lastError) {
       sections.push(this.buildErrorRecoverySection(finalToolName, lastError, keepRetry, errorRecoveryInstructions));
     }
-    
+
     // Custom sections
     if (options.customSections) {
       Object.entries(options.customSections).forEach(([name, content]) => {
         sections.push(`# ${name.toUpperCase()}\n${content}`);
       });
     }
-    
+
     // Final user request
     sections.push(this.buildUserRequestSection(userPrompt, finalToolName));
-    
+
     return sections.join('\n\n---\n\n');
   }
 
+
   buildReportSection(interactionHistory: Interaction[], finalToolName: string): string {
     const toolCallReports = interactionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
 ## CURRENT STATUS: EMPTY
-- **State**: No actions taken yet
-- **User visibility**: This section is NEVER shown to the user
-- **Next step**: Begin data gathering based on user request
+- **State**: No actions taken yet.
+- **User visibility**: This section is NEVER shown to the user.
+- **Next step**: Begin data gathering based on the user request in the "CURRENT TASK" section.
 
 ## REMINDER
 This is your working memory. Each action you take will be recorded here with:
-- Your reasoning (from \`report\` tool)
+- Your reasoning (from the \`report\` tool)
 - Tool calls made and their results
 - Success/failure status
 - Any errors encountered`;
     }
-
     const reportEntries = toolCallReports.map((report, idx) => {
-      const toolSummary = report.toolCalls.map(tc => 
-        `    - ${tc.context.toolName}: ${tc.context.success ? 'SUCCESS' : 'FAILED'} ${tc.context.error ? `(Error: ${tc.context.error})` : ''}`
+      const toolSummary = report.toolCalls.map(tc =>
+        `    - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'} ${tc.context.error ? `(Error: ${tc.context.error})` : ''}`
       ).join('\n');
+      
+      // Extract NEXT command and clean report text
+      const cleanedReport = this.removeNextCommand(report.report || '');
       
       return `
 ### ACTION ${idx + 1} | ${new Date().toISOString()}
-**Internal Reasoning**: ${report.report || 'No reasoning provided'}
+**Internal Reasoning**: ${cleanedReport || 'No reasoning provided'}
 **Overall Status**: ${report.overallSuccess ? '✅ SUCCESS' : '❌ FAILED'}
 **Tools Executed**:
 ${toolSummary}
 **Raw Results**:
 \`\`\`json
-${JSON.stringify(report.toolCalls.map(tc => ({name: tc.context.toolName, success: tc.context.success, context: tc.context})), null, 2)}
+${JSON.stringify(report.toolCalls.map(tc => ({ name: tc.context.toolName, success: tc.context.success, context: tc.context })), null, 2)}
 \`\`\`
 ${report.error ? `**Error Details**: ${report.error}` : ''}`;
     }).join('\n');
-
+    const latestNextCommand = this.getLatestNextCommand(toolCallReports);
+    
     return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
 ## VISIBILITY NOTICE
-🔒 **This section is PRIVATE** - User cannot see this internal log
+🔒 **This section is PRIVATE** - The user cannot see this internal log.
+
+${latestNextCommand ? this.buildNextCommandFocus(latestNextCommand) : ''}
 
 ## ACTION HISTORY
 ${reportEntries}
 
 ## CURRENT DATA INVENTORY
-Based on the above actions, you currently have access to:
+Based on the actions above, you currently have access to:
 ${this.summarizeAvailableData(toolCallReports)}`;
   }
 
@@ -371,15 +391,62 @@ ${this.summarizeAvailableData(toolCallReports)}`;
     const successfulCalls = reports
       .flatMap(r => r.toolCalls)
       .filter(tc => tc.context.success);
-    
     if (successfulCalls.length === 0) {
-      return "- No successfully gathered data yet";
+      return "- No successfully gathered data yet.";
     }
-    
     return successfulCalls
       .map(tc => `- ${tc.context.toolName}: Data available`)
       .join('\n');
   }
+
+  /**
+   * Extract NEXT command from report text using regex
+   */
+  private extractNextCommand(reportText: string): string | null {
+    const nextRegex = /NEXT:\s*(.+?)(?:\.|$)/i;
+    const match = reportText.match(nextRegex);
+    return match ? match[1].trim() : null;
+  }
+
+  /**
+   * Remove NEXT command from report text, returning clean reasoning
+   */
+  private removeNextCommand(reportText: string): string {
+    const nextRegex = /\s*NEXT:\s*.+?(?:\.|$)/i;
+    return reportText.replace(nextRegex, '').trim();
+  }
+
+  /**
+   * Get the latest NEXT command from the most recent report
+   */
+  private getLatestNextCommand(reports: ToolCallReport[]): string | null {
+    if (reports.length === 0) return null;
+    const latestReport = reports[reports.length - 1];
+    return this.extractNextCommand(latestReport.report || '');
+  }
+
+  /**
+   * Build focused instructions based on the extracted NEXT command
+   */
+  private buildNextCommandFocus(nextCommand: string): string {
+    return `
+## 🚨 HIGHEST PRIORITY - EXECUTE YOUR PLANNED ACTION 🚨
+
+### 🎯 YOUR PREVIOUS COMMAND TO YOURSELF:
+> "${nextCommand}"
+
+### ⚡ IMMEDIATE REQUIREMENTS:
+1. **EXECUTE EXACTLY**: Follow the command you gave yourself above
+2. **NO DEVIATION**: Don't change plans unless there's a critical error
+3. **STAY FOCUSED**: This is your own strategic decision from the previous turn
+4. **ACT NOW**: Implement the planned action immediately
+
+### 🔥 CRITICAL REMINDER:
+You are NOT starting fresh - you already planned this action. Execute it.
+
+================================================================================`;
+  }
+
 
   buildContextSection(context: Record<string, any>, options: PromptOptions): string {
     if (Object.keys(context).length === 0) {
@@ -387,14 +454,14 @@ ${this.summarizeAvailableData(toolCallReports)}`;
 **Status**: No additional context provided
 **Note**: Rely on user request and available tools`;
     }
-    
+
     const contextEntries = Object.entries(context).map(([key, value]) => {
       const preview = JSON.stringify(value, null, 2);
       const lines = preview.split('\n');
-      const truncated = lines.length > 20 
+      const truncated = lines.length > 20
         ? lines.slice(0, 20).join('\n') + '\n... [truncated]'
         : preview;
-      
+
       return `### ${key}
 **Type**: ${typeof value}
 **Content**:
@@ -402,7 +469,7 @@ ${this.summarizeAvailableData(toolCallReports)}`;
 ${truncated}
 \`\`\``;
     }).join('\n\n');
-    
+
     return `# 📎 CONTEXT
 Additional information provided for this task:
 
@@ -415,14 +482,14 @@ ${contextEntries}
   }
 
   buildConversation(prevInteractionHistory: Interaction[], options: PromptOptions): string {
-    const entries = options.maxPreviousTaskEntries 
-      ? prevInteractionHistory.slice(-options.maxPreviousTaskEntries) 
+    const entries = options.maxPreviousTaskEntries
+      ? prevInteractionHistory.slice(-options.maxPreviousTaskEntries)
       : prevInteractionHistory;
-    
-    const limitNote = options.maxPreviousTaskEntries 
-      ? ` (showing last ${entries.length} of ${prevInteractionHistory.length} total)` 
+
+    const limitNote = options.maxPreviousTaskEntries
+      ? ` (showing last ${entries.length} of ${prevInteractionHistory.length} total)`
       : '';
-    
+
     const conversationEntries = entries
       .filter(interaction => 'type' in interaction && (interaction.type === 'user_prompt' || interaction.type === 'agent_response'))
       .map((interaction, idx) => {
@@ -439,7 +506,7 @@ ${typeof agentResponse.context === 'string' ? agentResponse.context : JSON.strin
       })
       .filter(entry => entry !== '')
       .join('\n\n');
-    
+
     return `# 💬 CONVERSATION HISTORY${limitNote}
 
 ## ⚠️ IMPORTANT NOTICE
@@ -512,7 +579,7 @@ Based on the checklist above, your next response should be:
     errorRecoveryInstructions?: string
   ): string {
     if (!error) return '';
-    
+
     // Handle stagnation error specifically
     if (error.type === 'STAGNATION_ERROR') {
       // Extract tool information from the error context
@@ -520,7 +587,7 @@ Based on the checklist above, your next response should be:
       const toolArgs = error.context?.toolArgs || '{}';
       const isLastChance = error.context?.isLastChance || false;
       const terminationThreshold = error.context?.terminationThreshold || 3;
-      
+
       const warningSection = isLastChance ? `
 
 ## 🚨 CRITICAL WARNING - FINAL ATTEMPT 🚨
@@ -529,7 +596,7 @@ Based on the checklist above, your next response should be:
 **You MUST change your approach completely or the task will fail.**
 
 ` : '';
-      
+
       return `# 🔄 STAGNATION DETECTED - STRATEGIC ANALYSIS REQUIRED
 ${warningSection}
 ## SITUATION ANALYSIS
@@ -574,7 +641,7 @@ Based on your analysis, choose ONE path:
 ## 🎯 YOUR NEXT ACTION
 Analyze your complete action history above, then execute your chosen path with clear reasoning.`;
     }
-    
+
     const errorContext = `# ⚠️ ERROR RECOVERY REQUIRED
 
 ## ERROR DETAILS
