@@ -63,7 +63,8 @@ export interface AgentLoopOptions {
   logger?: Logger;
   maxIterations?: number;
   toolTimeoutMs?: number;
-  retryAttempts?: number;
+  toolExecutionRetryAttempts?: number;  // Retry attempts for tool execution errors
+  connectionRetryAttempts?: number;     // Retry attempts for connection/parsing errors
   retryDelay?: number;
   hooks?: AgentLifecycleHooks;
   formatMode?: FormatMode;
@@ -84,7 +85,8 @@ export abstract class AgentLoop {
   protected logger!: Logger;
   protected maxIterations!: number;
   protected toolTimeoutMs!: number;
-  protected retryAttempts!: number;
+  protected toolExecutionRetryAttempts!: number;
+  protected connectionRetryAttempts!: number;
   protected retryDelay!: number;
   protected parallelExecution!: boolean;
   protected failureHandlingMode!: FailureHandlingMode;
@@ -124,7 +126,8 @@ export abstract class AgentLoop {
     this.logger = options.logger || console;
     this.maxIterations = options.maxIterations !== undefined ? options.maxIterations : 100;
     this.toolTimeoutMs = options.toolTimeoutMs !== undefined ? options.toolTimeoutMs : 30000;
-    this.retryAttempts = options.retryAttempts !== undefined ? options.retryAttempts : 3;
+    this.toolExecutionRetryAttempts = options.toolExecutionRetryAttempts !== undefined ? options.toolExecutionRetryAttempts : 5;
+    this.connectionRetryAttempts = options.connectionRetryAttempts !== undefined ? options.connectionRetryAttempts : 5;
     this.retryDelay = options.retryDelay !== undefined ? options.retryDelay : 1000;
     this.parallelExecution = options.parallelExecution !== undefined ? options.parallelExecution : true;
     this.failureHandlingMode = options.failureHandlingMode || (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
@@ -136,7 +139,7 @@ export abstract class AgentLoop {
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
     
     // Initialize ErrorHandler
-    this.errorHandler = new ErrorHandler(this.retryAttempts);
+    this.errorHandler = new ErrorHandler(this.toolExecutionRetryAttempts);
 
     // Update promptManager if provided, or update config if promptManagerConfig/formatMode changes
     if (options.promptManager) {
@@ -151,22 +154,6 @@ export abstract class AgentLoop {
 
   }
 
-  /**
-   * Extract NEXT task from report text using regex
-   */
-  private extractNextTask(reportText: string): string | null {
-    const nextRegex = /NEXT:\s*(.+?)(?:\.|$)/i;
-    const match = reportText.match(nextRegex);
-    return match ? match[1].trim() : null;
-  }
-
-  /**
-   * Remove NEXT task from report text, returning clean reasoning
-   */
-  private removeNextTask(reportText: string): string {
-    const nextRegex = /\s*NEXT:\s*.+?(?:\.|$)/i;
-    return reportText.replace(nextRegex, '').trim();
-  }
 
   /**
    * Process conversation history into clean conversation entries
@@ -200,7 +187,8 @@ export abstract class AgentLoop {
   }
 
   /**
-   * Process tool results and extract NEXT commands from reports
+   * Process tool results and extract nextTask from report tool
+   * Throws error if report tool is used but nextTask is missing
    */
   private processToolResults(toolResults: ToolCall[]): string | null {
     // Find report tool results
@@ -210,17 +198,12 @@ export abstract class AgentLoop {
 
     if (reportResults.length > 0) {
       const latestReport = reportResults[reportResults.length - 1];
-      const reportText = latestReport.context.value as string || '';
-      
-      // Extract NEXT task
-      const nextTask = this.extractNextTask(reportText);
-      
-      // Clean the report text (remove NEXT part)
-      const cleanedReport = this.removeNextTask(reportText);
-      
-      // Update the report result with cleaned text
-      latestReport.context.value = cleanedReport;
-      
+      const nextTask = latestReport.context.nextTask;
+      const report = latestReport.context.report;
+      console.log("---------------------------------------");
+      console.log("report: ", report);
+      console.log("nextTask: ", nextTask);
+      console.log("---------------------------------------");
       return nextTask;
     }
     
@@ -306,6 +289,20 @@ export abstract class AgentLoop {
    */
   protected defineTool(fn: (schema: typeof z) => any): void {
     const toolDefinition = fn(z);
+    
+    // Check for reserved tool names in public API
+    if (toolDefinition.name === this.REPORT_TOOL_NAME) {
+      throw new AgentError(
+        `Tool name '${toolDefinition.name}' is reserved and cannot be overridden. Reserved tools: [${this.REPORT_TOOL_NAME}]`,
+        AgentErrorType.RESERVED_TOOL_NAME,
+        { 
+          toolName: toolDefinition.name, 
+          reservedTools: [this.REPORT_TOOL_NAME],
+          attemptedOverride: true
+        }
+      );
+    }
+    
     this._addTool(toolDefinition);
   }
 
@@ -353,8 +350,8 @@ export abstract class AgentLoop {
     // Stagnation tracking for this run only
     const reportHashes = new Map<string, { text: string, count: number }>();
 
-    let connectionAndParsingRetryCount = 0;
-    let toolExecRetryCount = 0;
+    let connectionRetryCount = 0;
+    let toolExecutionRetryCount = 0;
 
 
     const taskId = nanoid();
@@ -396,7 +393,7 @@ export abstract class AgentLoop {
             );
           }
           
-          connectionAndParsingRetryCount = 0; // Reset retries on successful LLM response
+          connectionRetryCount = 0; // Reset retries on successful LLM response
 
           // executeToolCalls now directly adds results to toolCallHistory
           const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
@@ -444,11 +441,6 @@ export abstract class AgentLoop {
               throw stagnationError;
             }
 
-            console.log("---------------------------------------")
-            console.log("reportText: ", reportText)
-            console.log("stagnationMap size: ", reportHashes.size)
-            console.log("stagnationMap entries: ", Array.from(reportHashes.entries()).map(([hash, data]) => ({ hash, count: data.count })))
-            console.log("---------------------------------------")
 
             // Determine overall success and error
             const overallSuccess = otherToolResults.every(r => r.context.success);
@@ -480,7 +472,7 @@ export abstract class AgentLoop {
             throw failedToolsError;
 
           } else {
-            toolExecRetryCount = 0
+            toolExecutionRetryCount = 0
             lastError = null;
             const finalResult: ToolCall | undefined = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
             if (finalResult) {
@@ -507,7 +499,7 @@ export abstract class AgentLoop {
 
 
         } catch (error) {
-          const errorResult = this.errorHandler.handleError(error, toolExecRetryCount, this.retryAttempts);
+          const errorResult = this.errorHandler.handleError(error, toolExecutionRetryCount, this.toolExecutionRetryAttempts);
           
           // Set appropriate lastError and nextTask based on feedback type
           if (errorResult.feedbackToLLM) {
@@ -539,9 +531,9 @@ export abstract class AgentLoop {
           // Increment appropriate retry counter based on error type
           if (errorResult.actualError.type === AgentErrorType.TOOL_EXECUTION_ERROR) {
             i = i - 1; // Don't count this iteration
-            toolExecRetryCount++;
+            toolExecutionRetryCount++;
           } else if (errorResult.actualError.type !== AgentErrorType.STAGNATION_ERROR) {
-            connectionAndParsingRetryCount++;
+            connectionRetryCount++;
           }
           
           // Terminate if handler says so
@@ -788,7 +780,7 @@ export abstract class AgentLoop {
 
   private async getAIResponseWithRetry(prompt: string, options = {}): Promise<string> {
     let lastError: Error | null = null;
-    for (let attempt = 0; attempt < this.retryAttempts; attempt++) {
+    for (let attempt = 0; attempt < this.connectionRetryAttempts; attempt++) {
       try {
         await this.hooks.onAIRequestStart?.(prompt);
 
@@ -810,13 +802,13 @@ export abstract class AgentLoop {
       } catch (error) {
         lastError = error as Error;
         this.logger.warn(`[AgentLoop] AI retry ${attempt + 1}: ${lastError.message}`);
-        if (attempt < this.retryAttempts - 1) await this.sleep(this.retryDelay * Math.pow(2, attempt));
+        if (attempt < this.connectionRetryAttempts - 1) await this.sleep(this.retryDelay * Math.pow(2, attempt));
       }
     }
     throw lastError ?? new AgentError(
       "LLM call failed after all retry attempts.",
       AgentErrorType.UNKNOWN,
-      { retryAttempts: this.retryAttempts }
+      { retryAttempts: this.connectionRetryAttempts }
     );
   }
 
@@ -914,6 +906,11 @@ export abstract class AgentLoop {
     const errors: string[] = [];
     let circularDependencies: string[] = [];
 
+    // Check for reserved tool names
+    if (tool.name === this.REPORT_TOOL_NAME) {
+      errors.push(`Tool name '${tool.name}' is reserved and cannot be overridden. Reserved tools: [${this.REPORT_TOOL_NAME}]`);
+    }
+
     // Check for duplicate tool names
     if (this.tools.some(t => t.name === tool.name)) {
       errors.push(`A tool with the name '${tool.name}' is already defined.`);
@@ -1006,20 +1003,23 @@ export abstract class AgentLoop {
 
   private initializeReportTool(): void {
     if (!this.tools.some(t => t.name === this.REPORT_TOOL_NAME)) {
-      this.defineTool((z) => ({
+      const reportTool = {
         name: this.REPORT_TOOL_NAME,
         description: `Report which tools you called in this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this report.`,
         argsSchema: z.object({
-          report: z.string().describe("State which specific tools you called in this iteration and the reason why. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'.")
+          report: z.string().describe("State which specific tools you called in this iteration and the reason why. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
+          nextTask: z.string().describe("Describe the complete plan from the next action all the way to the final tool call. Include all intermediate steps and end with how you will use the final tool. Example: 'Read file1.txt to get data, then analyze the content, then use final tool to present comprehensive analysis with all details including [specific data points]'.")
         }),
         handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
           return {
             toolName: name,
             success: true,
             report: args.report,
+            nextTask: args.nextTask,
           };
         },
-      }));
+      };
+      this._addTool(reportTool);
     }
   }
 

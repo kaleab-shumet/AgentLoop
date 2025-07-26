@@ -24,9 +24,6 @@ export class DefaultPromptTemplate {
   /**
    * Enhanced workflow rules with clearer structure and examples
    */
-  /**
-   * Enhanced workflow rules with clearer structure and examples
-   */
   private getWorkflowRules(finalToolName: string): string {
     return `
 ## 🧠 CORE INSTRUCTIONS & THINKING PROCESS
@@ -45,20 +42,20 @@ Follow this strict two-phase process for EVERY user request:
 Use the \`report\` tool with EVERY data-gathering tool call. It's your internal monologue.
 - **Purpose**: Explain your current goal, tool choice, expected outcome, AND next action.
 - **Visibility**: NEVER shown to the user.
-- **Format Example**: "My reasoning: [Goal] → [Why this tool?] → [Expected outcome] → NEXT: [specific command/action]"
+- **Format Example**: "My reasoning: [Goal] → [Why this tool?] → [Expected outcome]" + separate nextTask property
 
 #### REQUIRED REPORT STRUCTURE
 Your report MUST include these 4 components:
 1. **Goal**: What you're trying to achieve
 2. **Tool Choice**: Why this specific tool  
 3. **Expected Outcome**: What data you expect to get
-4. **Next Action**: Specific command for what to do after this tool completes
+4. **Complete Plan**: Full sequence from next action to final tool call, including what comprehensive details you'll present to the user
 
-#### NEXT ACTION EXAMPLES
-- "NEXT: Use final tool to present complete directory listing"
-- "NEXT: Call read_file on package.json to get dependency details"  
-- "NEXT: Analyze error and retry with different parameters"
-- "NEXT: Gather additional data by checking file permissions"
+#### NEXT TASK EXAMPLES (separate nextTask property)
+- "Read remaining files, analyze data, use final tool to present complete directory listing with file details"
+- "Parse package.json dependencies, check versions, use final tool to present comprehensive dependency analysis"  
+- "Retry with corrected parameters, validate results, use final tool to present successful operation details"
+- "Check file permissions and metadata, compile security report, use final tool to present complete access analysis"
 
 ### STEP-BY-STEP DECISION FRAMEWORK
 
@@ -84,17 +81,14 @@ Based on your assessment, choose either Path A or Path B:
     - Format:
       \`\`\`
       Tool: [tool_name] + report
-      Reasoning: "I need [data_type] to [purpose]. Using [tool_name] because [reason]. NEXT: [specific action after this completes]."
+      Reasoning: "I need [data_type] to [purpose]. Using [tool_name] because [reason]."
+      nextTask: "[complete plan to final tool with specific details]"
       \`\`\`
 
 **PATH B - Answer Presentation (If you have ALL required data)**
 - Synthesize ALL gathered data into a complete, clear, and helpful answer.
 - Use the \`${finalToolName}\` tool to deliver this final answer.
-    - Format:
-      \`\`\`
-      Tool: ${finalToolName}
-      Content: [Complete, formatted answer based on ALL gathered data]
-      \`\`\`
+- **CHECK SCHEMA**: Use the exact parameters defined in the \`${finalToolName}\` tool schema below
 
 ### 🚨 CRITICAL RULES & ANTI-PATTERNS
 
@@ -103,25 +97,32 @@ Based on your assessment, choose either Path A or Path B:
 ✅ Present actual data/results in the final answer, not just confirmation of having data.
 ✅ Complete the full two-phase workflow before considering the task done.
 ✅ Make each tool call purposeful and justified by your reasoning.
+✅ ONLY use tools that are explicitly listed in the available tools section.
+✅ ONLY provide data that you have actually retrieved through tool calls.
+✅ Verify tool names and parameters match exactly what is available.
 
 #### MUST NOT DO:
 ❌ Use \`${finalToolName}\` to say "I have the data" without showing the actual data.
 ❌ Combine \`${finalToolName}\` with other tools in the same call.
 ❌ Skip the data gathering phase if information is needed.
 ❌ Make assumptions about data you haven't explicitly gathered via a tool call.
+❌ NEVER invent, guess, or hallucinate data - only use actual tool results.
+❌ NEVER use tools that don't exist in the provided tool list.
+❌ NEVER assume tool parameters - check the schema requirements exactly.
+❌ NEVER provide information you think might be true without verification through tools.
 
 ### EXAMPLES OF CORRECT BEHAVIOR
 
 **Example 1: Simple Data Retrieval**
 User: "Get information about X"
-1. DATA GATHERING: get_data("X") + report("Retrieving information about X to fulfill user's request. NEXT: Use final tool to present the retrieved data")
-2. ANSWER PRESENTATION: ${finalToolName}("Here is the information about X: [retrieved data]")
+1. DATA GATHERING: get_data("X") + report + nextTask("Analyze retrieved X data, format comprehensive summary, use final tool to present complete information with all details")
+2. ANSWER PRESENTATION: ${finalToolName} (using schema parameters)
 
 **Example 2: Multi-Step Analysis**
 User: "Analyze Y and provide summary"
-1. DATA GATHERING: collect_info("Y") + report("Collecting information about Y for analysis. NEXT: Analyze the collected data")
-2. DATA GATHERING: analyze_data(info) + report("Analyzing collected data to generate summary. NEXT: Present complete analysis via final tool")
-3. ANSWER PRESENTATION: ${finalToolName}("Analysis complete: [summary results]")
+1. DATA GATHERING: collect_info("Y") + report + nextTask("Analyze Y data for patterns, create comprehensive summary with insights, use final tool to present complete analysis")
+2. DATA GATHERING: analyze_data(info) + report + nextTask("Compile all analysis results, format user-friendly report, use final tool to present comprehensive findings with recommendations")
+3. ANSWER PRESENTATION: ${finalToolName} (using schema parameters)
 `;
   }
 
@@ -164,7 +165,7 @@ ${this.getExecutionStrategy(batchMode)}
     },
     {
       "name": "report",
-      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect]. NEXT: [specific action after completion].\\"}"
+      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect].\\\", \\\"nextTask\\\": \\\"[complete plan to final tool with comprehensive details]\\\"}"
     }
   ]
 }
@@ -175,7 +176,7 @@ ${this.getExecutionStrategy(batchMode)}
 {
   "functionCall": {
     "name": "${finalToolName}",
-    "arguments": "{\\"value\\": \\"[Complete, helpful answer with all requested data formatted clearly]...\\"}"
+    "arguments": "[Check the ${finalToolName} tool schema below for exact parameters and structure]"
   }
 }
 \`\`\`
@@ -223,7 +224,8 @@ tool_calls:
         My reasoning: User wants [goal]. I need [data] to achieve this.
         Using [tool] because [specific_reason].
         Expected outcome: [what_I_expect].
-        NEXT: [specific action after completion].
+      nextTask: |
+        [complete plan from next action to final tool with comprehensive details for the user]
 \`\`\`
 
 ### Format 2: Final Answer Presentation
@@ -231,23 +233,27 @@ tool_calls:
 tool_calls:
   - name: ${finalToolName}
     args:
-      value: |
-        [Complete, helpful answer with all requested data]
-        [Formatted clearly with proper structure]
-        [All information the user requested]
+      [Check the ${finalToolName} tool schema below for exact parameters]
 \`\`\`
 
 ## ⚠️ YAML FORMATTING RULES
 1. **Indentation**: Use 2 spaces (never tabs)
-2. **Multi-line strings**: Use \`|\` for literal blocks
+2. **Multi-line strings**: Use \`|\` for literal blocks (preserves indentation and structure)
 3. **Lists**: Proper \`-\` prefix with consistent spacing
 4. **No quotes needed**: Unless value contains special characters
+5. **Tool names**: MUST match exactly from the available tools list
+6. **Parameters**: MUST match the exact schema requirements
+7. **No extra fields**: Don't add parameters not in the schema
 
-## 🔍 SELF-CHECK BEFORE RESPONDING
+## 🔍 MANDATORY SELF-CHECK BEFORE RESPONDING
 1. Is my response a valid YAML code block?
-2. Is indentation consistent throughout?
-3. Did I include \`report\` with data-gathering tools?
-4. Are multi-line values properly formatted with \`|\`?
+2. Are ALL tool names from the provided available tools list?
+3. Do ALL parameters match the exact schema requirements?
+4. Am I using actual data from tool results, not making up information?
+5. Did I include \`report\` with data-gathering tools?
+6. Does my nextTask describe the COMPLETE plan to the final tool call?
+7. Does my nextTask specify what comprehensive details I'll present to the user?
+8. Have I verified every tool name and parameter against the schema?
 `;
   }
 
@@ -286,6 +292,11 @@ tool_calls:
 
     // Core instructions
     sections.push(`${this.getFormatInstructions(finalToolName, options.batchMode)}`);
+
+    // ENHANCED: Add immediate task directive if nextTask exists
+    if (nextTask) {
+      sections.push(this.buildImmediateTaskDirective(nextTask, finalToolName));
+    }
 
     // Available tools
     sections.push(`# 🛠️ AVAILABLE TOOLS
@@ -332,11 +343,33 @@ ${toolDefinitions}
     }
 
     // Final user request
-    sections.push(this.buildUserRequestSection(userPrompt, finalToolName));
+    sections.push(this.buildUserRequestSection(userPrompt, finalToolName, nextTask));
 
     return sections.join('\n\n---\n\n');
   }
 
+  /**
+   * ENHANCED: Build immediate task directive that appears early in the prompt
+   */
+  private buildImmediateTaskDirective(nextTask: string, finalToolName: string): string {
+    return `# 🎯 IMMEDIATE TASK DIRECTIVE - HIGHEST PRIORITY
+
+## ⚡ YOUR CURRENT TASK (FROM PREVIOUS ANALYSIS):
+> **${nextTask}**
+
+## 🚨 CRITICAL INSTRUCTIONS:
+1. **THIS IS NOT A NEW REQUEST** - You already analyzed and decided this is your next step
+2. **EXECUTE IMMEDIATELY** - Do not re-analyze or change plans
+3. **FOLLOW YOUR OWN COMMAND** - The task above is what YOU determined needs to happen next
+4. **NO DEVIATION** - Unless there's a critical error preventing execution
+
+## 📌 CONTEXT:
+- You have already completed some actions (see REPORTS AND RESULTS below)
+- You determined the next logical step is: "${nextTask}"
+- Now execute this step without hesitation
+
+================================================================================`;
+  }
 
   buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, nextTask?: string | null): string {
     if (toolCallReports.length === 0) {
@@ -354,14 +387,18 @@ This is your working memory. Each action you take will be recorded here with:
 - Success/failure status
 - Any errors encountered`;
     }
+
     const reportEntries = toolCallReports.map((report, idx) => {
       const toolSummary = report.toolCalls.map(tc =>
         `    - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'} ${tc.context.error ? `(Error: ${tc.context.error})` : ''}`
       ).join('\n');
       
+      // Note: nextTask is now a separate property, not embedded in report text
+      const nextActionHighlight = '';
+      
       return `
 ### ACTION ${idx + 1} | ${new Date().toISOString()}
-**Internal Reasoning**: ${report.report || 'No reasoning provided'}
+**Internal Reasoning**: ${report.report || 'No reasoning provided'}${nextActionHighlight}
 **Overall Status**: ${report.overallSuccess ? '✅ SUCCESS' : '❌ FAILED'}
 **Tools Executed**:
 ${toolSummary}
@@ -371,19 +408,44 @@ ${JSON.stringify(report.toolCalls.map(tc => ({ name: tc.context.toolName, succes
 \`\`\`
 ${report.error ? `**Error Details**: ${report.error}` : ''}`;
     }).join('\n');
+
     return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
 ## VISIBILITY NOTICE
 🔒 **This section is PRIVATE** - The user cannot see this internal log.
-
-${nextTask ? this.buildNextTaskFocus(nextTask) : ''}
 
 ## ACTION HISTORY
 ${reportEntries}
 
 ## CURRENT DATA INVENTORY
 Based on the actions above, you currently have access to:
-${this.summarizeAvailableData(toolCallReports)}`;
+${this.summarizeAvailableData(toolCallReports)}
+
+## 🎯 PROGRESSION STATUS
+${this.buildProgressionStatus(toolCallReports, nextTask)}`;
+  }
+
+  /**
+   * ENHANCED: Build a clear progression status
+   */
+  private buildProgressionStatus(reports: ToolCallReport[], nextTask?: string | null): string {
+    const lastReport = reports[reports.length - 1];
+    
+    if (nextTask) {
+      return `
+### YOUR WORKFLOW PROGRESS:
+1. **Last Completed Action**: ${lastReport?.toolCalls[0]?.context.toolName || 'Unknown'}
+2. **Your Planned Next Step**: "${nextTask}"
+3. **Current Directive**: Execute the planned step now
+
+⚠️ **IMPORTANT**: You are in the middle of a workflow. Continue with your planned action.`;
+    }
+    
+    return `
+### YOUR WORKFLOW PROGRESS:
+- Review the action history above
+- Determine what data is still needed
+- Continue with the next logical step`;
   }
 
   private summarizeAvailableData(reports: ToolCallReport[]): string {
@@ -397,30 +459,6 @@ ${this.summarizeAvailableData(toolCallReports)}`;
       .map(tc => `- ${tc.context.toolName}: Data available`)
       .join('\n');
   }
-
-
-  /**
-   * Build focused instructions based on the extracted NEXT task
-   */
-  private buildNextTaskFocus(nextTask: string): string {
-    return `
-## 🚨 HIGHEST PRIORITY - EXECUTE YOUR PLANNED ACTION 🚨
-
-### 🎯 YOUR PREVIOUS COMMAND TO YOURSELF:
-> "${nextTask}"
-
-### ⚡ IMMEDIATE REQUIREMENTS:
-1. **EXECUTE EXACTLY**: Follow the command you gave yourself above
-2. **NO DEVIATION**: Don't change plans unless there's a critical error
-3. **STAY FOCUSED**: This is your own strategic decision from the previous turn
-4. **ACT NOW**: Implement the planned action immediately
-
-### 🔥 CRITICAL REMINDER:
-You are NOT starting fresh - you already planned this action. Execute it.
-
-================================================================================`;
-  }
-
 
   buildContextSection(context: Record<string, any>, options: PromptOptions): string {
     if (Object.keys(context).length === 0) {
@@ -482,7 +520,40 @@ ${formattedEntries}
 ❌ DON'T USE when: Current request is independent of history`;
   }
 
-  buildUserRequestSection(userPrompt: string, finalToolName: string): string {
+  /**
+   * ENHANCED: Build user request section with clear task progression
+   */
+  buildUserRequestSection(userPrompt: string, finalToolName: string, nextTask?: string | null): string {
+    // If there's a nextTask, emphasize continuation rather than fresh analysis
+    if (nextTask) {
+      return `# 🎯 CURRENT TASK & IMMEDIATE ACTION
+
+## ORIGINAL USER REQUEST (FOR REFERENCE)
+> "${userPrompt}"
+
+## ⚡ YOUR IMMEDIATE ACTION
+You have already analyzed this request and determined your next step.
+
+### 🔴 DO NOT:
+- Re-analyze the user's request from scratch
+- Change your planned approach
+- Repeat previous tool calls
+
+### 🟢 DO:
+- Execute the task you planned: "${nextTask}"
+- Use the data you've already gathered
+- Continue progressing toward the final answer
+
+## DECISION POINT
+Based on your previous analysis and the task "${nextTask}":
+- If this involves gathering more data → Execute the specific tool call now
+- If this involves presenting the final answer → Use \`${finalToolName}\` with all gathered data
+
+## EXECUTE NOW
+Stop reading and execute your planned action immediately.`;
+    }
+
+    // Original behavior for fresh requests
     return `# 🎯 CURRENT TASK & IMMEDIATE ACTION
 
 ## USER REQUEST
@@ -606,7 +677,7 @@ Analyze your complete action history above, then execute your chosen path with c
 
 ## ERROR DETAILS
 - **Type**: ${error.type || 'Unknown'}
-- **Message**: ${error.message}
+- **Message**: **${error.message}**
 - **Timestamp**: ${new Date().toISOString()}
 ${error.stack ? `- **Stack**: \`\`\`\n${error.stack}\n\`\`\`` : ''}
 

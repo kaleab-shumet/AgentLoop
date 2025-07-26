@@ -9,24 +9,6 @@ import zodToJsonSchema from "zod-to-json-schema";
  */
 export class YamlFormatHandler implements FormatHandler {
   
-  /**
-   * Recursively trim all string values in an object or array
-   */
-  private trimStringsRecursively(obj: any): any {
-    if (typeof obj === 'string') {
-      return obj.trim();
-    } else if (Array.isArray(obj)) {
-      return obj.map(item => this.trimStringsRecursively(item));
-    } else if (obj && typeof obj === 'object') {
-      const trimmed: any = {};
-      for (const [key, value] of Object.entries(obj)) {
-        trimmed[key] = this.trimStringsRecursively(value);
-      }
-      return trimmed;
-    }
-    return obj;
-  }
-  
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     const schemaMap = tools.map(t => {
 
@@ -63,29 +45,27 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
   try {
     const parsedYaml = parseYaml(yamlContent);
     
-    // Trim all string values recursively to handle | block style whitespace
-    const trimmedParsedYaml = this.trimStringsRecursively(parsedYaml);
 
     // Handle different YAML structures
     let toolCalls: any[] = [];
 
-    if (Array.isArray(trimmedParsedYaml)) {
+    if (Array.isArray(parsedYaml)) {
       // Direct array of tool calls
-      toolCalls = trimmedParsedYaml;
-    } else if (trimmedParsedYaml.tools && Array.isArray(trimmedParsedYaml.tools)) {
+      toolCalls = parsedYaml;
+    } else if (parsedYaml.tools && Array.isArray(parsedYaml.tools)) {
       // Tools wrapped in a tools array
-      toolCalls = trimmedParsedYaml.tools;
-    } else if (trimmedParsedYaml.tool_calls && Array.isArray(trimmedParsedYaml.tool_calls)) {
+      toolCalls = parsedYaml.tools;
+    } else if (parsedYaml.tool_calls && Array.isArray(parsedYaml.tool_calls)) {
       // Tools wrapped in a tool_calls array
-      toolCalls = trimmedParsedYaml.tool_calls;
-    } else if (trimmedParsedYaml.name) {
+      toolCalls = parsedYaml.tool_calls;
+    } else if (parsedYaml.name) {
       // Single tool call object
-      toolCalls = [trimmedParsedYaml];
+      toolCalls = [parsedYaml];
     } else {
       throw new AgentError(
         "Invalid YAML structure for tool calls - expected array of tools or single tool with 'name' field", 
         AgentErrorType.INVALID_RESPONSE,
-        { parsedYaml: trimmedParsedYaml, expectedStructure: 'array of tools or single tool with name field' }
+        { parsedYaml: parsedYaml, expectedStructure: 'array of tools or single tool with name field' }
       );
     }
 

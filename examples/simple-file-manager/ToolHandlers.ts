@@ -1,6 +1,7 @@
 import { HandlerParams, ToolCallContext } from '../../core/types/types';
 import * as fs from 'fs';
 import * as path from 'path';
+import { AgentError, AgentErrorType } from '../../core/utils/AgentError';
 
 /**
  * Tool Handlers for File Management Operations
@@ -101,36 +102,83 @@ export class ToolHandlers {
   }
 
   /**
-   * Create a file with content
+   * Create multiple files with content (prevents overwriting existing files)
    */
-  async createFile(params: HandlerParams): Promise<ToolCallContext> {
+  async createFiles(params: HandlerParams): Promise<ToolCallContext> {
     try {
-      const { path: inputPath, content } = params.args as { path: string; content: string };
-      const fullPath = this.resolvePath(inputPath);
+      const { files } = params.args as { files: Array<{ path: string; content: string }> };
 
-      // Ensure the directory exists
-      const dir = path.dirname(fullPath);
-      await fs.promises.mkdir(dir, { recursive: true });
+      if (!Array.isArray(files) || files.length === 0) {
+        return {
+          toolName: 'create_files',
+          success: false,
+          error: 'No files provided for creation'
+        };
+      }
 
-      // Write the file
-      await fs.promises.writeFile(fullPath, content, 'utf8');
+      const results: Array<{ path: string; size: number; created: string }> = [];
+      const errors: string[] = [];
 
-      // Get file stats for confirmation
-      const stats = await fs.promises.stat(fullPath);
+      // Process each file
+      for (const fileSpec of files) {
+        try {
+          const { path: inputPath, content } = fileSpec;
+          const fullPath = this.resolvePath(inputPath);
 
-      return {
-        toolName: 'create_file',
-        success: true,
-        path: path.relative(this.basePath, fullPath),
-        size: stats.size,
-        created: stats.birthtime.toISOString()
+          // Check if file already exists
+          try {
+            await fs.promises.access(fullPath);
+            errors.push(`File '${inputPath}' already exists. Cannot overwrite existing files.`);
+            continue;
+          } catch {
+            // File doesn't exist, proceed with creation
+          }
+
+          // Ensure the directory exists
+          const dir = path.dirname(fullPath);
+          await fs.promises.mkdir(dir, { recursive: true });
+
+          // Write the file
+          await fs.promises.writeFile(fullPath, content, 'utf8');
+
+          // Get file stats for confirmation
+          const stats = await fs.promises.stat(fullPath);
+
+          results.push({
+            path: path.relative(this.basePath, fullPath),
+            size: stats.size,
+            created: stats.birthtime.toISOString()
+          });
+
+        } catch (error) {
+          errors.push(`Failed to create '${fileSpec.path}': ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      // Determine overall success
+      const success = errors.length < 1;
+      const summary = {
+        toolName: 'create_files',
+        success,
+        totalFiles: files.length,
+        createdFiles: results.length,
+        failedFiles: errors.length,
+        createdAt: new Date().toISOString(),
+        results,
+        ...(errors.length > 0 && { errors })
       };
+
+      if (!success) {
+        throw new AgentError(errors.join("\n\n"), AgentErrorType.TOOL_EXECUTION_ERROR, summary);
+      }
+
+      return summary;
 
     } catch (error) {
       return {
-        toolName: 'create_file',
+        toolName: 'create_files',
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof AgentError ? error.getMessage() : 'Unknown error occurred'
       };
     }
   }
@@ -155,84 +203,226 @@ export class ToolHandlers {
   }
 
   /**
-   * Read file contents
+   * Read multiple file contents
    */
-  async readFile(params: HandlerParams): Promise<ToolCallContext> {
+  async readFiles(params: HandlerParams): Promise<ToolCallContext> {
     try {
-      const { path: inputPath } = params.args as { path: string };
-      const fullPath = this.resolvePath(inputPath);
+      const { paths } = params.args as { paths: string[] };
 
-      // Check if file exists and is readable
-      const stats = await fs.promises.stat(fullPath);
-      if (!stats.isFile()) {
+      if (!Array.isArray(paths) || paths.length === 0) {
         return {
-          toolName: 'read_file',
+          toolName: 'read_files',
           success: false,
-          error: `Path '${inputPath}' is not a file`
+          error: 'No file paths provided for reading'
         };
       }
 
-      // Read file content
-      const content = await fs.promises.readFile(fullPath, 'utf8');
-      await params.turnState.set("display", content)
+      const results: Array<{ path: string; size: number; content: string; encoding: string }> = [];
+      const errors: string[] = [];
+      let combinedDisplay = '';
 
-      return {
-        toolName: 'read_file',
-        success: true,
-        path: path.relative(this.basePath, fullPath),
-        size: stats.size,
-        content,
-        encoding: 'utf8'
+      // Process each file
+      for (const inputPath of paths) {
+        try {
+          const fullPath = this.resolvePath(inputPath);
+
+          // Check if file exists and is readable
+          const stats = await fs.promises.stat(fullPath);
+          if (!stats.isFile()) {
+            errors.push(`Path '${inputPath}' is not a file`);
+            continue;
+          }
+
+          // Read file content
+          const content = await fs.promises.readFile(fullPath, 'utf8');
+          const relativePath = path.relative(this.basePath, fullPath);
+
+          // Add line numbers to content
+          const lines = content.split('\n');
+          const numberedContent = lines.map((line, index) => {
+            return `{ln:${index + 1}} ${line}`;
+          }).join('\n');
+
+          results.push({
+            path: relativePath,
+            size: stats.size,
+            content: numberedContent,
+            encoding: 'utf8'
+          });
+
+          // Combine content for display
+          combinedDisplay += `=== ${relativePath} ===\n${numberedContent}\n\n`;
+
+        } catch (error) {
+          errors.push(`Failed to read '${inputPath}': ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      // Set combined display for turnState
+      if (combinedDisplay) {
+        await params.turnState.set("display", combinedDisplay.trim());
+      }
+
+      // Determine overall success
+      const success = errors.length < 1;
+      const summary = {
+        toolName: 'read_files',
+        success,
+        totalFiles: paths.length,
+        readFiles: results.length,
+        failedFiles: errors.length,
+        readAt: new Date().toISOString(),
+        results,
+        ...(errors.length > 0 && { errors })
       };
+
+      if (!success) {
+        throw new AgentError(errors.join("\n\n"), AgentErrorType.TOOL_EXECUTION_ERROR, summary);
+      }
+
+      return summary;
 
     } catch (error) {
       return {
-        toolName: 'read_file',
+        toolName: 'read_files',
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof AgentError ? error.getMessage() : 'Unknown error occurred'
       };
     }
   }
 
   /**
-   * Delete a file
+   * Edit files by replacing the entire content
    */
-  async deleteFile(params: HandlerParams): Promise<ToolCallContext> {
+  async editFiles(params: HandlerParams): Promise<ToolCallContext> {
     try {
-      const { path: inputPath } = params.args as { path: string };
-      const fullPath = this.resolvePath(inputPath);
+      const { path: filePath, content } = params.args as { 
+        path: string; 
+        content: string;
+      };
 
-      // Check if file exists
+      const fullPath = this.resolvePath(filePath);
+
+      // Check if file exists and is readable
       const stats = await fs.promises.stat(fullPath);
       if (!stats.isFile()) {
         return {
-          toolName: 'delete_file',
+          toolName: 'edit_files',
           success: false,
-          error: `Path '${inputPath}' is not a file`
+          error: `Path '${filePath}' is not a file`
         };
       }
 
-      // Store file info before deletion
-      const relativePath = path.relative(this.basePath, fullPath);
-      const fileSize = stats.size;
+      // Write the new content to the file
+      await fs.promises.writeFile(fullPath, content, 'utf8');
 
-      // Delete the file
-      await fs.promises.unlink(fullPath);
+      // Get updated file stats
+      const updatedStats = await fs.promises.stat(fullPath);
 
       return {
-        toolName: 'delete_file',
+        toolName: 'edit_files',
         success: true,
-        path: relativePath,
-        deletedSize: fileSize,
-        deletedAt: new Date().toISOString()
+        path: path.relative(this.basePath, fullPath),
+        newSize: updatedStats.size,
+        modifiedAt: updatedStats.mtime.toISOString()
       };
 
     } catch (error) {
       return {
-        toolName: 'delete_file',
+        toolName: 'edit_files',
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof AgentError ? error.getMessage() : 'Unknown error occurred'
       };
     }
   }
+
+  /**
+   * Delete multiple files
+   */
+  async deleteFiles(params: HandlerParams): Promise<ToolCallContext> {
+    try {
+      const { paths, askedForConfirmation } = params.args as { paths: string[]; askedForConfirmation: boolean };
+      
+      // Safety check - require confirmation
+      if (!askedForConfirmation) {
+        return {
+          toolName: 'delete_files',
+          success: false,
+          error: 'Deletion requires user confirmation. Please ask the user for confirmation before proceeding.'
+        };
+      }
+
+      if (!Array.isArray(paths) || paths.length === 0) {
+        return {
+          toolName: 'delete_files',
+          success: false,
+          error: 'No file paths provided for deletion'
+        };
+      }
+
+      const results: Array<{ path: string; size: number; deleted: boolean }> = [];
+      const errors: string[] = [];
+      let totalDeletedSize = 0;
+
+      // Process each file
+      for (const inputPath of paths) {
+        try {
+          const fullPath = this.resolvePath(inputPath);
+
+          // Check if file exists and is a file
+          const stats = await fs.promises.stat(fullPath);
+          if (!stats.isFile()) {
+            errors.push(`Path '${inputPath}' is not a file`);
+            continue;
+          }
+
+          // Store file info before deletion
+          const relativePath = path.relative(this.basePath, fullPath);
+          const fileSize = stats.size;
+
+          // Delete the file
+          await fs.promises.unlink(fullPath);
+
+          results.push({
+            path: relativePath,
+            size: fileSize,
+            deleted: true
+          });
+
+          totalDeletedSize += fileSize;
+
+        } catch (error) {
+          errors.push(`Failed to delete '${inputPath}': ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      // Determine overall success
+      const success = errors.length < 1;
+      const summary = {
+        toolName: 'delete_files',
+        success,
+        totalFiles: paths.length,
+        deletedFiles: results.length,
+        failedFiles: errors.length,
+        totalDeletedSize,
+        deletedAt: new Date().toISOString(),
+        results,
+        ...(errors.length > 0 && { errors })
+      };
+
+      if(!success){
+        throw new AgentError(errors.join("\n\n"), AgentErrorType.TOOL_EXECUTION_ERROR, summary);
+      }
+
+      return summary;
+
+    } catch (error) {
+      return {
+        toolName: 'delete_files',
+        success: false,
+        error: error instanceof AgentError ? error.getMessage() : 'Unknown error occurred'
+      };
+    }
+  }
+
 }

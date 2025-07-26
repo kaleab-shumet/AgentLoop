@@ -52,9 +52,10 @@ export class FileManagerConsole {
     console.log('');
     console.log('Examples:');
     console.log('  - "list this directory"');
-    console.log('  - "create a file called test.txt with hello world"');
-    console.log('  - "read the contents of package.json"');
-    console.log('  - "delete the file test.txt"');
+    console.log('  - "create files: test1.txt with content A, test2.txt with content B"');
+    console.log('  - "read the contents of package.json and tsconfig.json"');
+    console.log('  - "edit file test.txt: replace lines 5-7 with new content"');
+    console.log('  - "delete files test1.txt and test2.txt"');
     console.log('');
     console.log('Special commands:');
     console.log('  - "memory" - Show conversation history');
@@ -79,6 +80,7 @@ export class FileManagerConsole {
 
       // Handle special commands
       if (input.toLowerCase() === 'memory') {
+        this.showMemory();
         this.askQuestion();
         return;
       }
@@ -110,9 +112,11 @@ export class FileManagerConsole {
           this.conversationHistory.push(result.agentResponse);
           const context = result.agentResponse.context;
           
-          // If context is undefined, check for error message
-          if (context === undefined && result.agentResponse.error) {
+          // Handle different response types
+          if (result.agentResponse.error) {
             console.log('❌ Agent Error:', result.agentResponse.error);
+          } else if (context === undefined) {
+            console.log('❌ Error: Agent response context is undefined');
           } else {
             const response = context?.value || context;
             console.log('🤖 Agent:', response);
@@ -132,7 +136,33 @@ export class FileManagerConsole {
   /**
    * Show conversation memory
    */
- 
+  private showMemory() {
+    console.log('\n📚 Conversation Memory:');
+    if (this.conversationHistory.length === 0) {
+      console.log('  No conversation history yet.');
+      return;
+    }
+
+    this.conversationHistory.forEach((interaction, index) => {
+      if ('type' in interaction) {
+        if (interaction.type === 'user_prompt') {
+          console.log(`  ${index + 1}. 👤 User: ${interaction.context}`);
+        } else if (interaction.type === 'agent_response') {
+          const context = interaction.context;
+          const response = context?.value || context || 'No response';
+          const errorMsg = interaction.error ? ` (Error: ${interaction.error})` : '';
+          console.log(`  ${index + 1}. 🤖 Agent: ${response}${errorMsg}`);
+        }
+      } else {
+        // Handle ToolCallReport
+        const report = interaction as any;
+        if (report.report) {
+          console.log(`  ${index + 1}. 📋 Report: ${report.report}`);
+        }
+      }
+    });
+    console.log('');
+  }
 
   /**
    * Clear conversation memory

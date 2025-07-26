@@ -43,9 +43,10 @@ RESPONSE STYLE:
 
 CAPABILITIES:
 - list_directory: Show directory contents
-- create_file: Create/overwrite files with content  
-- read_file: Read file contents
-- delete_file: Remove files permanently
+- create_files: Create multiple files with content (prevents overwriting)
+- read_files: Read multiple file contents
+- edit_files: Edit files using line-based operations (replace/insert lines)
+- delete_files: Remove one or more files permanently (supports batch deletion)
 
 Always be helpful and respond to the user's communication style!`;
 
@@ -66,9 +67,11 @@ Always be helpful and respond to the user's communication style!`;
     
     super(aiProvider, {
       formatMode: FormatMode.YAML,
-      parallelExecution: false,
+      parallelExecution: true,
       batchMode: true,
-      sleepBetweenIterationsMs: 3000
+      sleepBetweenIterationsMs: 3000,
+      connectionRetryAttempts: 10,
+      
     });
 
     this.toolHandlers = new ToolHandlers(basePath);
@@ -88,35 +91,49 @@ Always be helpful and respond to the user's communication style!`;
       handler: this.toolHandlers.listDirectory.bind(this.toolHandlers)
     }));
 
-    // Create File Tool
+    // Create Files Tool
     this.defineTool((z) => ({
-      name: 'create_file',
-      description: 'Create a new file with the specified content. Will overwrite existing files.',
+      name: 'create_files',
+      description: 'Create one or more files with specified content. Prevents overwriting existing files.',
       argsSchema: z.object({
-        path: z.string().describe('The file path where to create the file (relative or absolute)'),
-        content: z.string().describe('The content to write to the file')
+        files: z.array(z.object({
+          path: z.string().describe('The file path where to create the file (relative or absolute)'),
+          content: z.string().describe('The content to write to the file')
+        })).describe('Array of files to create. Each file needs a path and content.')
       }),
-      handler: this.toolHandlers.createFile.bind(this.toolHandlers)
+      handler: this.toolHandlers.createFiles.bind(this.toolHandlers)
     }));
 
-    // Read File Tool
+    // Read Files Tool
     this.defineTool((z) => ({
-      name: 'read_file',
-      description: 'Read the contents of a file and return them as text.',
+      name: 'read_files',
+      description: 'Read the contents of one or more files and return them as text.',
       argsSchema: z.object({
-        path: z.string().describe('The file path to read (relative or absolute)')
+        paths: z.array(z.string()).describe('Array of file paths to read (relative or absolute). Can be a single file or multiple files.')
       }),
-      handler: this.toolHandlers.readFile.bind(this.toolHandlers)
+      handler: this.toolHandlers.readFiles.bind(this.toolHandlers)
     }));
 
-    // Delete File Tool
+    // Edit Files Tool
     this.defineTool((z) => ({
-      name: 'delete_file',
-      description: 'Delete a file from the filesystem. Use with caution as this cannot be undone.',
+      name: 'edit_files',
+      description: 'Edit a file by replacing its entire content with new content.',
       argsSchema: z.object({
-        path: z.string().describe('The file path to delete (relative or absolute)')
+        path: z.string().describe('The file path to edit (relative or absolute)'),
+        content: z.string().describe('The new complete content to write to the file')
       }),
-      handler: this.toolHandlers.deleteFile.bind(this.toolHandlers)
+      handler: this.toolHandlers.editFiles.bind(this.toolHandlers)
+    }));
+
+    // Delete Files Tool (supports multiple files)
+    this.defineTool((z) => ({
+      name: 'delete_files',
+      description: 'Delete one or more files from the filesystem. Use with caution as this cannot be undone. Note: Never use this tool without user confirmation, always you must ask if the user really wants to continue the operation',
+      argsSchema: z.object({
+        paths: z.array(z.string()).describe('Array of file paths to delete (relative or absolute). Can be a single file or multiple files.'),
+        askedForConfirmation: z.boolean().default(false).describe("Only set this to true after explicitly asking the user to confirm the deletion. Do not set it to true without confirming deletion for ALL specified paths.")
+      }),
+      handler: this.toolHandlers.deleteFiles.bind(this.toolHandlers)
     }));
 
     this.defineTool((z) => ({
