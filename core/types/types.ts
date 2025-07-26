@@ -197,6 +197,11 @@ export interface PromptOptions {
   batchMode?: boolean;
 }
 
+export interface ConversationEntry {
+  user?: string;
+  ai?: string;
+}
+
 export interface BuildPromptParams {
   systemPrompt: string;
   userPrompt: string;
@@ -209,5 +214,14 @@ export interface BuildPromptParams {
   toolDefinitions: string;
   options: PromptOptions;
   nextTask?: string | null;
+  conversationEntries?: ConversationEntry[];
+  conversationLimitNote?: string;
   errorRecoveryInstructions?: string;
+}
+
+export interface ErrorHandlingResult {
+  errorString: string;
+  actualError: AgentError;
+  shouldTerminate: boolean;
+  feedbackToLLM: boolean;
 }

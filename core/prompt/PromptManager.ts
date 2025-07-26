@@ -133,33 +133,15 @@ export class PromptManager {
   /**
    * Build the complete prompt for the agent
    */
-  buildPrompt(
-    userPrompt: string,
-    context: Record<string, any>,
-    currentTaskInteractionHistory: Interaction[],
-    prevTasksInteractionHistory: Interaction[],
-    lastError: AgentError | null,
-    keepRetry: boolean,
-    finalToolName: string,
-    toolDefinitions: string,
-    nextTask?: string | null,
-  ): string {
-    const params: BuildPromptParams = {
-      systemPrompt: this.systemPrompt,
-      userPrompt,
-      context,
-      currentInteractionHistory: currentTaskInteractionHistory,
-      prevInteractionHistory: prevTasksInteractionHistory,
-      lastError,
-      keepRetry,
-      finalToolName,
-      toolDefinitions,
+  buildPrompt(params: BuildPromptParams): string {
+    // Merge options and error recovery instructions with provided params
+    const fullParams: BuildPromptParams = {
+      ...params,
       options: this.promptOptions,
-      nextTask: nextTask || null,
       errorRecoveryInstructions: this.errorRecoveryInstructions,
     };
     
-    return this.template.buildPrompt(params);
+    return this.template.buildPrompt(fullParams);
   }
 
 }

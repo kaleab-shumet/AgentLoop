@@ -1,4 +1,4 @@
-import { Interaction, PromptOptions, ToolCallReport, UserPrompt, AgentResponse, BuildPromptParams } from '../types/types';
+import { Interaction, PromptOptions, ToolCallReport, UserPrompt, AgentResponse, BuildPromptParams, ConversationEntry } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 export enum FormatType {
@@ -275,6 +275,8 @@ tool_calls:
       toolDefinitions,
       options,
       nextTask,
+      conversationEntries,
+      conversationLimitNote,
       errorRecoveryInstructions
     } = params;
     const sections: string[] = [];
@@ -314,7 +316,7 @@ ${toolDefinitions}
 
     // Previous history if needed
     if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) {
-      sections.push(this.buildConversation(prevInteractionHistory, options));
+      sections.push(this.buildConversation(conversationEntries || [], conversationLimitNote || ''));
     }
 
     // Error recovery if needed
@@ -453,31 +455,17 @@ ${contextEntries}
 - Don't act on context unless it relates to the current request`;
   }
 
-  buildConversation(prevInteractionHistory: Interaction[], options: PromptOptions): string {
-    const entries = options.maxPreviousTaskEntries
-      ? prevInteractionHistory.slice(-options.maxPreviousTaskEntries)
-      : prevInteractionHistory;
-
-    const limitNote = options.maxPreviousTaskEntries
-      ? ` (showing last ${entries.length} of ${prevInteractionHistory.length} total)`
-      : '';
-
-    const conversationEntries = entries
-      .filter(interaction => 'type' in interaction && (interaction.type === 'user_prompt' || interaction.type === 'agent_response'))
-      .map((interaction, idx) => {
-        if ('type' in interaction && interaction.type === 'user_prompt') {
-          const userPrompt = interaction as UserPrompt;
-          return `### 👤 USER REQUEST #${idx + 1}
-"${userPrompt.context}"`;
-        } else if ('type' in interaction && interaction.type === 'agent_response') {
-          const agentResponse = interaction as AgentResponse;
-          return `### 🤖 AGENT RESPONSE #${idx + 1}
-${typeof agentResponse.context === 'string' ? agentResponse.context : JSON.stringify(agentResponse.context)}`;
-        }
-        return '';
-      })
-      .filter(entry => entry !== '')
-      .join('\n\n');
+  buildConversation(conversationEntries: ConversationEntry[], limitNote: string): string {
+    const formattedEntries = conversationEntries.map((entry, idx) => {
+      const parts = [];
+      if (entry.user) {
+        parts.push(`### 👤 USER REQUEST #${idx + 1}\n"${entry.user}"`);
+      }
+      if (entry.ai) {
+        parts.push(`### 🤖 AGENT RESPONSE #${idx + 1}\n${entry.ai}`);
+      }
+      return parts.join('\n\n');
+    }).join('\n\n');
 
     return `# 💬 CONVERSATION HISTORY${limitNote}
 
@@ -487,7 +475,7 @@ ${typeof agentResponse.context === 'string' ? agentResponse.context : JSON.strin
 - Focus on the CURRENT TASK in the "CURRENT TASK" section
 
 ## PREVIOUS INTERACTIONS
-${conversationEntries}
+${formattedEntries}
 
 ## CONTEXT USAGE RULES
 ✅ USE when: Current request says "like before", "again", "the same file", etc.
