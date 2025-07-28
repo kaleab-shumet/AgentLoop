@@ -137,7 +137,7 @@ User: "Analyze Y and provide summary"
     return batchInfo;
   }
 
-  private getFunctionCallingFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
+  private getFunctionCallingFormatInstructions(finalToolName: string, reportToolName: string): string {
     return `# 🚨 RESPONSE FORMAT: JSON CODE BLOCKS ONLY 🚨
 
 ## ABSOLUTE REQUIREMENT
@@ -145,9 +145,6 @@ User: "Analyze Y and provide summary"
 - **NO plain text outside of JSON blocks**
 - **NO explanatory text before or after JSON**
 - **EVERY response must follow one of the two patterns below**
-
-${this.getWorkflowRules(finalToolName, reportToolName)}
-${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
@@ -198,16 +195,13 @@ Ask yourself:
 `;
   }
 
-  private getYamlFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
+  private getYamlFormatInstructions(finalToolName: string, reportToolName: string): string {
     return `# 📋 RESPONSE FORMAT: YAML CODE BLOCKS ONLY
 
 ## ABSOLUTE REQUIREMENT
 - **ALL responses MUST be valid YAML code blocks**
 - **NO plain text outside of YAML blocks**
 - **Use proper YAML syntax with correct indentation**
-
-${this.getWorkflowRules(finalToolName, reportToolName)}
-${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
@@ -265,14 +259,14 @@ tool_calls:
 `;
   }
 
-  private getFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
+  private getFormatInstructions(finalToolName: string, reportToolName: string): string {
     switch (this.responseFormat) {
       case FormatMode.FUNCTION_CALLING:
-        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
+        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName);
       case FormatMode.YAML:
-        return this.getYamlFormatInstructions(finalToolName, reportToolName, batchMode);
+        return this.getYamlFormatInstructions(finalToolName, reportToolName);
       default:
-        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
+        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName);
     }
   }
 
@@ -299,8 +293,14 @@ tool_calls:
     // System context
     sections.push(systemPrompt);
 
-    // Core instructions
-    sections.push(`${this.getFormatInstructions(finalToolName, reportToolName, options.batchMode)}`);
+    // Workflow rules
+    sections.push(this.getWorkflowRules(finalToolName, reportToolName));
+
+    // Execution strategy
+    sections.push(this.getExecutionStrategy(options.batchMode));
+
+    // Format instructions
+    sections.push(this.getFormatInstructions(finalToolName, reportToolName));
 
     // ENHANCED: Add immediate task directive if nextTasks exists
     if (nextTasks) {
@@ -317,17 +317,13 @@ tool_calls:
 - **Follow the exact schema** - no extra or modified parameters
 
 ## TOOL DEFINITIONS
-${toolDefinitions}
-
-## COMMON TOOL USAGE PATTERNS
-- File operations: Always check existence before reading
-- API calls: Include all required headers and parameters
-- Data processing: Validate input format before processing
-- Error handling: Anticipate and handle potential failures`);
+${toolDefinitions}`);
 
     // Current state - filter toolCallReports 
     const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, nextTasks));
+    const availableData = this.summarizeAvailableData(toolCallReports);
+    const progressionStatus = this.buildProgressionStatus(toolCallReports, nextTasks);
+    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, availableData, progressionStatus));
 
     // Context if needed
     if (options.includeContext) {
@@ -380,7 +376,7 @@ ${toolDefinitions}
 ================================================================================`;
   }
 
-  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
+  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, availableData: string, progressionStatus: string): string {
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
@@ -428,10 +424,10 @@ ${reportEntries}
 
 ## CURRENT DATA INVENTORY
 Based on the actions above, you currently have access to:
-${this.summarizeAvailableData(toolCallReports)}
+${availableData}
 
 ## 🎯 PROGRESSION STATUS
-${this.buildProgressionStatus(toolCallReports, nextTasks)}`;
+${progressionStatus}`;
   }
 
   /**
