@@ -214,7 +214,7 @@ export interface BuildPromptParams {
   reportToolName: string;
   toolDefinitions: string;
   options: PromptOptions;
-  nextTask?: string | null;
+  nextTasks?: string | null;
   conversationEntries?: ConversationEntry[];
   conversationLimitNote?: string;
   errorRecoveryInstructions?: string;

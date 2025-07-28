@@ -133,4 +133,41 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
     );
   }
 }
+
+private removeLastNewlineFromString(str: string): string {
+  if (typeof str !== 'string') {
+    return str;
+  }
+  return str.replace(/(\r?\n)$/, "");
+}
+
+private recursiveRemoveLastNewline(data: any): any {
+  // Handle null and undefined explicitly
+  if (data === null || data === undefined) {
+    return data;
+  }
+  
+  // Handle strings
+  if (typeof data === "string") {
+    return this.removeLastNewlineFromString(data);
+  } 
+  
+  // Handle arrays
+  if (Array.isArray(data)) {
+    return data.map(item => this.recursiveRemoveLastNewline(item));
+  } 
+  
+  // Handle objects (but not Date, RegExp, etc.)
+  if (typeof data === "object" && data.constructor === Object) {
+    const result: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      result[key] = this.recursiveRemoveLastNewline(value);
+    }
+    return result;
+  }
+  
+  // For other types (number, boolean, Date, RegExp, etc.), return as is
+  return data;
+}
+
 }

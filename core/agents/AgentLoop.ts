@@ -195,8 +195,8 @@ export abstract class AgentLoop {
   }
 
   /**
-   * Process tool results and extract nextTask from report tool
-   * Throws error if report tool is used but nextTask is missing
+   * Process tool results and extract nextTasks from report tool
+   * Throws error if report tool is used but nextTasks is missing
    */
   private processToolResults(toolResults: ToolCall[]): string | null {
     // Find report tool results
@@ -206,13 +206,13 @@ export abstract class AgentLoop {
 
     if (reportResults.length > 0) {
       const latestReport = reportResults[reportResults.length - 1];
-      const nextTask = latestReport.context.nextTask;
+      const nextTasks = latestReport.context.nextTasks;
       const report = latestReport.context.report;
       console.log("---------------------------------------");
       console.log("report: ", report);
-      console.log("nextTask: ", nextTask);
+      console.log("nextTasks: ", nextTasks);
       console.log("---------------------------------------");
-      return nextTask;
+      return nextTasks;
     }
     
     return null;
@@ -357,7 +357,7 @@ export abstract class AgentLoop {
     const turnState = new TurnState();
     let lastError: AgentError | null = null;
     let keepRetry = true;
-    let nextTask: string | null = null; // Track next task from previous iteration
+    let nextTasks: string | null = null; // Track next tasks from previous iteration
     
     // Stagnation tracking for this run only
     const reportHashes = new Map<string, { text: string, count: number }>();
@@ -384,7 +384,7 @@ export abstract class AgentLoop {
 
         try {
 
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTask);
+          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponseWithRetry(prompt);
           const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
@@ -412,7 +412,7 @@ export abstract class AgentLoop {
           const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
           // Process tool results and extract NEXT commands from reports
-          nextTask = this.processToolResults(iterationResults);
+          nextTasks = this.processToolResults(iterationResults);
 
           // Handle report creation for both regular tools and final tool
           const reportResult = iterationResults.find(r => r.context.toolName === this.REPORT_TOOL_NAME);
@@ -514,15 +514,15 @@ export abstract class AgentLoop {
         } catch (error) {
           const errorResult = this.errorHandler.handleError(error, toolExecutionRetryCount, this.toolExecutionRetryAttempts);
           
-          // Set appropriate lastError and nextTask based on feedback type
+          // Set appropriate lastError and nextTasks based on feedback type
           if (errorResult.feedbackToLLM) {
             lastError = errorResult.actualError;
             
             // Set next task to focus on fixing this specific error
-            nextTask = `Fix this error: ${errorResult.actualError.getMessage()}`;
+            nextTasks = `Fix this error: ${errorResult.actualError.getMessage()}`;
           } else {
-            // For system errors (feedbackToLLM = false), clear nextTask and don't set lastError
-            nextTask = null;
+            // For system errors (feedbackToLLM = false), clear nextTasks and don't set lastError
+            nextTasks = null;
           }
           
           // Handle stagnation termination specially
@@ -837,7 +837,7 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTask: string | null = null): string {
+  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
@@ -858,7 +858,7 @@ export abstract class AgentLoop {
       reportToolName: this.REPORT_TOOL_NAME,
       toolDefinitions: toolDef,
       options: {}, // Will be merged by PromptManager
-      nextTask: nextTask,
+      nextTasks: nextTasks,
       conversationEntries: conversationData.entries,
       conversationLimitNote: conversationData.limitNote,
     };
@@ -1051,14 +1051,14 @@ export abstract class AgentLoop {
         description: `Report which tools you called in this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this report.`,
         argsSchema: z.object({
           report: z.string().describe("State which specific tools you called in this iteration and the reason why. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
-          nextTask: z.string().describe("Describe the complete plan from the next action all the way to the final tool call using numbered listing format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'.")
+          nextTasks: z.string().describe("Describe the complete plan from the next action all the way to the final tool call using numbered listing format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'.")
         }),
         handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
           return {
             toolName: name,
             success: true,
             report: args.report,
-            nextTask: args.nextTask,
+            nextTasks: args.nextTasks,
           };
         },
       };
