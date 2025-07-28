@@ -52,7 +52,7 @@ Always be helpful and respond to the user's communication style!`;
 
   private toolHandlers: ToolHandlers;
 
-  constructor(providerConfig: ProviderConfig & { baseURL?: string }, basePath: string = process.cwd()+"/testfolder") {
+  constructor(providerConfig: ProviderConfig & { baseURL?: string }, basePath: string = process.cwd()+"\\testfolder") {
     // Configure AI provider
     const aiConfig: AIConfig = {
       service: providerConfig.service as any,

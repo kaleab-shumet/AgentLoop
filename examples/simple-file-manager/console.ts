@@ -93,7 +93,7 @@ export class FileManagerConsole {
           userPrompt: input,
           prevInteractionHistory: this.conversationHistory,
           context: {
-            workingDirectory: process.cwd()+"/testfolder",
+            workingDirectory: process.cwd()+"\\testfolder",
             timestamp: new Date().toISOString()
           }
         });
