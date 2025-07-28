@@ -22,11 +22,12 @@ import {
   UserPrompt,
   BuildPromptParams,
   ConversationEntry,
+  TokenUsage,
   ErrorHandlingResult
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
-import { PromptManager, PromptManagerConfig, FormatType } from '../prompt/PromptManager';
+import { PromptManager, PromptManagerConfig } from '../prompt/PromptManager';
 
 
 
@@ -109,6 +110,13 @@ export abstract class AgentLoop {
   private readonly FINAL_TOOL_NAME = 'final';
   public readonly REPORT_TOOL_NAME = 'report_action';
   formatMode!: FormatMode;
+  
+  // Token usage tracking for the current run
+  private currentRunTokenUsage: TokenUsage = {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0
+  };
 
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
@@ -269,8 +277,8 @@ export abstract class AgentLoop {
    */
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
     const responseFormat = formatMode === FormatMode.YAML
-      ? FormatType.YAML
-      : FormatType.FUNCTION_CALLING;
+      ? FormatMode.YAML
+      : FormatMode.FUNCTION_CALLING;
 
     return {
       responseFormat,
@@ -340,6 +348,10 @@ export abstract class AgentLoop {
    */
   public async run(input: AgentRunInput): Promise<AgentRunOutput> {
     await this.hooks.onRunStart?.(input);
+    
+    // Reset token usage for this run
+    this.resetRunTokenUsage();
+    
     const { userPrompt, context = {} } = input;
     const currentInteractionHistory: Interaction[] = []
     const turnState = new TurnState();
@@ -375,7 +387,7 @@ export abstract class AgentLoop {
           let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTask);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponseWithRetry(prompt);
-          const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse, this.tools);
+          const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
           
           // Validation: If final tool is not included, report tool is required
           const hasReportTool = parsedToolCalls.some(call => call.toolName === this.REPORT_TOOL_NAME);
@@ -779,7 +791,7 @@ export abstract class AgentLoop {
   }
 
 
-  private async getAIResponseWithRetry(prompt: string, options = {}): Promise<string> {
+  private async getAIResponseWithRetry(prompt: string, options = {}): Promise<{ text: string; usage?: import('../types/types').TokenUsage }> {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < this.connectionRetryAttempts; attempt++) {
       try {
@@ -791,14 +803,25 @@ export abstract class AgentLoop {
         }
 
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
-        if (typeof response !== "string") {
+        if (!response || typeof response !== "object" || typeof response.text !== "string") {
           throw new AgentError(
-            "AI provider returned undefined or non-string response.",
+            "AI provider returned invalid response format.",
             AgentErrorType.INVALID_RESPONSE,
-            { responseType: typeof response, expectedType: 'string' }
+            { responseType: typeof response, expectedType: 'AICompletionResponse' }
           );
         }
-        await this.hooks.onAIRequestEnd?.(response);
+        
+        // Display token usage if available and accumulate for run total
+        if (response.usage) {
+          this.logger.info(`[AgentLoop] Token Usage - Prompt: ${response.usage.promptTokens}, Completion: ${response.usage.completionTokens}, Total: ${response.usage.totalTokens}`);
+          
+          // Accumulate tokens for the current run
+          this.currentRunTokenUsage.promptTokens += response.usage.promptTokens;
+          this.currentRunTokenUsage.completionTokens += response.usage.completionTokens;
+          this.currentRunTokenUsage.totalTokens += response.usage.totalTokens;
+        }
+        
+        await this.hooks.onAIRequestEnd?.(response.text);
         return response;
       } catch (error) {
         lastError = error as Error;
@@ -850,6 +873,24 @@ export abstract class AgentLoop {
 
   protected sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Reset token usage tracking for a new run
+   */
+  private resetRunTokenUsage(): void {
+    this.currentRunTokenUsage = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0
+    };
+  }
+
+  /**
+   * Get the accumulated token usage for the current run
+   */
+  public getRunTokenUsage(): Readonly<TokenUsage> {
+    return { ...this.currentRunTokenUsage };
   }
 
   private async _executeTool(taskId: string, tool: Tool<ZodTypeAny>, call: PendingToolCall, turnState: TurnState): Promise<ToolCall> {

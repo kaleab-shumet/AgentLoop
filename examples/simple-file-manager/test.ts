@@ -30,6 +30,7 @@ class FileManagerAgentTest {
   private agent: SimpleFileManagerAgent;
   private testSuites: TestSuite[] = [];
   private currentSuite: TestSuite | null = null;
+  private totalTokensUsed = 0;
 
   constructor() {
     this.testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filemanager-test-'));
@@ -190,6 +191,13 @@ class FileManagerAgentTest {
           if (result.interactionHistory) {
             conversationHistory.push(...result.interactionHistory);
           }
+          
+          // Log token usage for this test
+          const tokenUsage = this.agent.getRunTokenUsage();
+          if (tokenUsage.totalTokens > 0) {
+            console.log(`    📊 Tokens: ${tokenUsage.totalTokens} (Prompt: ${tokenUsage.promptTokens}, Completion: ${tokenUsage.completionTokens})`);
+            this.totalTokensUsed += tokenUsage.totalTokens;
+          }
         } else {
           throw new Error(`Agent error: ${result.agentResponse.error}`);
         }
@@ -293,6 +301,11 @@ class FileManagerAgentTest {
     } else {
       console.log(`\n⚠️  ${totalFailed} test(s) failed`);
     }
+    
+    if (this.totalTokensUsed > 0) {
+      console.log(`\n📊 Total Tokens Used Across All Tests: ${this.totalTokensUsed}`);
+    }
+    
     console.log('='.repeat(80));
   }
 

@@ -226,3 +226,20 @@ export interface ErrorHandlingResult {
   shouldTerminate: boolean;
   feedbackToLLM: boolean;
 }
+
+/**
+ * Token usage information from AI provider
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * AI completion response with token usage information
+ */
+export interface AICompletionResponse {
+  text: string;
+  usage?: TokenUsage;
+}

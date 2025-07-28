@@ -1,4 +1,4 @@
-import { FunctionCallTool, AIConfig, ServiceName } from "../types";
+import { FunctionCallTool, AIConfig, ServiceName, AICompletionResponse, TokenUsage } from "../types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { AIProvider } from "./AIProvider";
 import { generateText, tool } from "ai";
@@ -52,7 +52,7 @@ export class DefaultAIProvider implements AIProvider {
     /**
      * Get completion - stateless operation
      */
-    async getCompletion(prompt: string, tools: FunctionCallTool[] = [], options = {}): Promise<string> {
+    async getCompletion(prompt: string, tools: FunctionCallTool[] = [], options = {}): Promise<AICompletionResponse> {
         try {
 
 
@@ -75,7 +75,17 @@ export class DefaultAIProvider implements AIProvider {
                 maxTokens: this.config.max_tokens,
             });
 
-            return result.text;
+            // Extract token usage information if available
+            const usage: TokenUsage | undefined = result.usage ? {
+                promptTokens: result.usage.promptTokens || 0,
+                completionTokens: result.usage.completionTokens || 0,
+                totalTokens: result.usage.totalTokens || 0
+            } : undefined;
+
+            return {
+                text: result.text,
+                usage
+            };
 
         } catch (error: any) {
             // Enhanced error handling with provider-specific guidance

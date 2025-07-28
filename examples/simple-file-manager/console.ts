@@ -120,6 +120,15 @@ export class FileManagerConsole {
           console.log('🤖 Agent: Task completed, but no response was provided.');
         }
 
+        // Display total token usage for this run
+        const tokenUsage = this.agent.getRunTokenUsage();
+        if (tokenUsage.totalTokens > 0) {
+          console.log(`\n📊 Token Usage Summary:`);
+          console.log(`   Prompt Tokens: ${tokenUsage.promptTokens}`);
+          console.log(`   Completion Tokens: ${tokenUsage.completionTokens}`);
+          console.log(`   Total Tokens: ${tokenUsage.totalTokens}`);
+        }
+
       } catch (error) {
         console.error('❌ Error:', error instanceof Error ? error.message : String(error));
       }

@@ -1,13 +1,13 @@
-import { PromptOptions, Interaction, BuildPromptParams } from '../types/types';
+import { PromptOptions, Interaction, BuildPromptParams, FormatMode } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
-import { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
+import { DefaultPromptTemplate } from './DefaultPromptTemplate';
 
 /**
  * Configuration for PromptManager
  */
 export interface PromptManagerConfig {
-  responseFormat?: FormatType;
+  responseFormat?: FormatMode;
   customTemplate?: DefaultPromptTemplate;
   promptOptions?: PromptOptions;
   errorRecoveryInstructions?: string;
@@ -51,7 +51,7 @@ export class PromptManager {
       this.isCustomTemplate = true;
     } else {
       // Use default template with specified response format
-      const responseFormat = config.responseFormat || FormatType.FUNCTION_CALLING;
+      const responseFormat = config.responseFormat || FormatMode.FUNCTION_CALLING;
       this.template = new DefaultPromptTemplate(responseFormat);
       this.isCustomTemplate = false;
     }
@@ -67,7 +67,7 @@ export class PromptManager {
   /**
    * Get the current response format (only applies to default template)
    */
-  getResponseFormat(): FormatType | null {
+  getResponseFormat(): FormatMode | null {
     if (this.isCustomTemplate) {
       return null; // Custom templates manage their own format
     }
@@ -77,7 +77,7 @@ export class PromptManager {
   /**
    * Switch response format (only applies to default template)
    */
-  setResponseFormat(format: FormatType): PromptManager {
+  setResponseFormat(format: FormatMode): PromptManager {
     if (this.isCustomTemplate) {
       throw new AgentError(
         'Cannot set response format when using a custom template. Custom templates manage their own format.',
@@ -101,7 +101,7 @@ export class PromptManager {
   /**
    * Switch back to default template with specified format
    */
-  setDefaultTemplate(format: FormatType = FormatType.FUNCTION_CALLING): PromptManager {
+  setDefaultTemplate(format: FormatMode = FormatMode.FUNCTION_CALLING): PromptManager {
     this.template = new DefaultPromptTemplate(format);
     this.isCustomTemplate = false;
     return this;
@@ -146,4 +146,4 @@ export class PromptManager {
 
 }
 
-export { DefaultPromptTemplate, FormatType } from './DefaultPromptTemplate';
+export { DefaultPromptTemplate } from './DefaultPromptTemplate';
