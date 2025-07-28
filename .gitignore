@@ -24,7 +24,7 @@ yarn-error.log*
 
 # Test coverage
 coverage/
-
+testfolder/
 # Misc
 *.log 
 claude-md/

@@ -211,6 +211,7 @@ export interface BuildPromptParams {
   lastError: AgentError | null;
   keepRetry: boolean;
   finalToolName: string;
+  reportToolName: string;
   toolDefinitions: string;
   options: PromptOptions;
   nextTask?: string | null;

@@ -107,7 +107,7 @@ export abstract class AgentLoop {
   protected max_tokens?: number;
 
   private readonly FINAL_TOOL_NAME = 'final';
-  private readonly REPORT_TOOL_NAME = 'report';
+  public readonly REPORT_TOOL_NAME = 'report_action';
   formatMode!: FormatMode;
 
 
@@ -193,7 +193,7 @@ export abstract class AgentLoop {
   private processToolResults(toolResults: ToolCall[]): string | null {
     // Find report tool results
     const reportResults = toolResults.filter(result => 
-      result.context.toolName === 'report' && result.context.success
+      result.context.toolName === this.REPORT_TOOL_NAME && result.context.success
     );
 
     if (reportResults.length > 0) {
@@ -378,17 +378,16 @@ export abstract class AgentLoop {
           const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse, this.tools);
           
           // Validation: If final tool is not included, report tool is required
-          const hasFinalTool = parsedToolCalls.some(call => call.toolName === this.FINAL_TOOL_NAME);
           const hasReportTool = parsedToolCalls.some(call => call.toolName === this.REPORT_TOOL_NAME);
           
-          if (!hasFinalTool && !hasReportTool) {
+          if (!hasReportTool) {
             throw new AgentError(
-              'Report tool is required when final tool is not called. The LLM must provide reasoning for its actions.',
+              `${this.REPORT_TOOL_NAME} is required. It must be included in each tool calls`,
               AgentErrorType.TOOL_NOT_FOUND,
               { 
                 requiredTool: this.REPORT_TOOL_NAME,
                 parsedTools: parsedToolCalls.map(call => call.toolName),
-                missingToolType: 'report'
+                missingToolType: this.REPORT_TOOL_NAME
               }
             );
           }
@@ -831,6 +830,7 @@ export abstract class AgentLoop {
       lastError,
       keepRetry,
       finalToolName: this.FINAL_TOOL_NAME,
+      reportToolName: this.REPORT_TOOL_NAME,
       toolDefinitions: toolDef,
       options: {}, // Will be merged by PromptManager
       nextTask: nextTask,
@@ -1008,7 +1008,7 @@ export abstract class AgentLoop {
         description: `Report which tools you called in this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this report.`,
         argsSchema: z.object({
           report: z.string().describe("State which specific tools you called in this iteration and the reason why. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
-          nextTask: z.string().describe("Describe the complete plan from the next action all the way to the final tool call. Include all intermediate steps and end with how you will use the final tool. Example: 'Read file1.txt to get data, then analyze the content, then use final tool to present comprehensive analysis with all details including [specific data points]'.")
+          nextTask: z.string().describe("Describe the complete plan from the next action all the way to the final tool call using numbered listing format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'.")
         }),
         handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
           return {

@@ -52,7 +52,7 @@ Always be helpful and respond to the user's communication style!`;
 
   private toolHandlers: ToolHandlers;
 
-  constructor(providerConfig: ProviderConfig & { baseURL?: string }, basePath: string = process.cwd()) {
+  constructor(providerConfig: ProviderConfig & { baseURL?: string }, basePath: string = process.cwd()+"/testfolder") {
     // Configure AI provider
     const aiConfig: AIConfig = {
       service: providerConfig.service as any,
@@ -128,7 +128,7 @@ Always be helpful and respond to the user's communication style!`;
     // Delete Files Tool (supports multiple files)
     this.defineTool((z) => ({
       name: 'delete_files',
-      description: 'Delete one or more files from the filesystem. Use with caution as this cannot be undone. Note: Never use this tool without user confirmation, always you must ask if the user really wants to continue the operation',
+      description: 'Delete one or more files from the filesystem. Use with caution as this cannot be undone. Note: Never use this tool without user confirmation to delete. Use your the final tool to confirm the user first',
       argsSchema: z.object({
         paths: z.array(z.string()).describe('Array of file paths to delete (relative or absolute). Can be a single file or multiple files.'),
         askedForConfirmation: z.boolean().default(false).describe("Only set this to true after explicitly asking the user to confirm the deletion. Do not set it to true without confirming deletion for ALL specified paths.")

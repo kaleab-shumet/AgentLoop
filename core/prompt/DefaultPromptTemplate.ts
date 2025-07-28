@@ -24,7 +24,7 @@ export class DefaultPromptTemplate {
   /**
    * Enhanced workflow rules with clearer structure and examples
    */
-  private getWorkflowRules(finalToolName: string): string {
+  private getWorkflowRules(finalToolName: string, reportToolName: string): string {
     return `
 ## 🧠 CORE INSTRUCTIONS & THINKING PROCESS
 
@@ -38,8 +38,8 @@ Follow this strict two-phase process for EVERY user request:
 - ✅ **Never** skip directly to presenting without gathering required data.
 - ✅ **Never** end the interaction without presenting the final answer via \`${finalToolName}\`.
 
-### The 'report' Tool (Your Private Thinking Space)
-Use the \`report\` tool with EVERY data-gathering tool call. It's your internal monologue.
+### The '${reportToolName}' Tool (Your Private Thinking Space)
+Use the \`${reportToolName}\` tool with EVERY tool call (including \`${finalToolName}\`). It's your internal monologue.
 - **Purpose**: Explain your current goal, tool choice, expected outcome, AND next action.
 - **Visibility**: NEVER shown to the user.
 - **Format Example**: "My reasoning: [Goal] → [Why this tool?] → [Expected outcome]" + separate nextTask property
@@ -51,11 +51,11 @@ Your report MUST include these 4 components:
 3. **Expected Outcome**: What data you expect to get
 4. **Complete Plan**: Full sequence from next action to final tool call, including what comprehensive details you'll present to the user
 
-#### NEXT TASK EXAMPLES (separate nextTask property)
-- "Read remaining files, analyze data, use final tool to present complete directory listing with file details"
-- "Parse package.json dependencies, check versions, use final tool to present comprehensive dependency analysis"  
-- "Retry with corrected parameters, validate results, use final tool to present successful operation details"
-- "Check file permissions and metadata, compile security report, use final tool to present complete access analysis"
+#### NEXT TASK EXAMPLES (separate nextTask property - MUST use numbered listing)
+- "1. Gather remaining information, 2. Process collected data, 3. Use final tool to present complete results"
+- "1. Validate input parameters, 2. Execute operation, 3. Use final tool to present comprehensive output"  
+- "1. Retry with corrected approach, 2. Verify completion, 3. Use final tool to present successful results"
+- "1. Check required conditions, 2. Compile findings, 3. Use final tool to present complete analysis"
 
 ### STEP-BY-STEP DECISION FRAMEWORK
 
@@ -77,12 +77,12 @@ Based on your assessment, choose either Path A or Path B:
 - Identify the SPECIFIC data gap.
 - Choose the MOST APPROPRIATE tool to fill this gap.
 - Execute the tool call.
-- **MANDATORY**: Include the \`report\` tool call explaining your reasoning and next action.
+- **MANDATORY**: Include the \`${reportToolName}\` tool call explaining your reasoning and next action.
     - Format:
       \`\`\`
       Tool: [tool_name] + report
       Reasoning: "I need [data_type] to [purpose]. Using [tool_name] because [reason]."
-      nextTask: "[complete plan to final tool with specific details]"
+      nextTask: "1. [next action], 2. [subsequent step], 3. Use final tool to present [specific details]"
       \`\`\`
 
 **PATH B - Answer Presentation (If you have ALL required data)**
@@ -93,7 +93,7 @@ Based on your assessment, choose either Path A or Path B:
 ### 🚨 CRITICAL RULES & ANTI-PATTERNS
 
 #### MUST DO:
-✅ Always use \`report\` with data-gathering tools.
+✅ Always use \`${reportToolName}\` with EVERY tool call (including \`${finalToolName}\`).
 ✅ Present actual data/results in the final answer, not just confirmation of having data.
 ✅ Complete the full two-phase workflow before considering the task done.
 ✅ Make each tool call purposeful and justified by your reasoning.
@@ -103,7 +103,7 @@ Based on your assessment, choose either Path A or Path B:
 
 #### MUST NOT DO:
 ❌ Use \`${finalToolName}\` to say "I have the data" without showing the actual data.
-❌ Combine \`${finalToolName}\` with other tools in the same call.
+❌ Call any tool without including \`${reportToolName}\` in the same response.
 ❌ Skip the data gathering phase if information is needed.
 ❌ Make assumptions about data you haven't explicitly gathered via a tool call.
 ❌ NEVER invent, guess, or hallucinate data - only use actual tool results.
@@ -115,14 +115,14 @@ Based on your assessment, choose either Path A or Path B:
 
 **Example 1: Simple Data Retrieval**
 User: "Get information about X"
-1. DATA GATHERING: get_data("X") + report + nextTask("Analyze retrieved X data, format comprehensive summary, use final tool to present complete information with all details")
-2. ANSWER PRESENTATION: ${finalToolName} (using schema parameters)
+1. DATA GATHERING: tool_name("X") + ${reportToolName} + nextTask("1. Process retrieved data, 2. Format comprehensive summary, 3. Use final tool to present complete information")
+2. ANSWER PRESENTATION: ${finalToolName} + ${reportToolName} (using schema parameters)
 
 **Example 2: Multi-Step Analysis**
 User: "Analyze Y and provide summary"
-1. DATA GATHERING: collect_info("Y") + report + nextTask("Analyze Y data for patterns, create comprehensive summary with insights, use final tool to present complete analysis")
-2. DATA GATHERING: analyze_data(info) + report + nextTask("Compile all analysis results, format user-friendly report, use final tool to present comprehensive findings with recommendations")
-3. ANSWER PRESENTATION: ${finalToolName} (using schema parameters)
+1. DATA GATHERING: tool_name("Y") + ${reportToolName} + nextTask("1. Analyze collected data, 2. Create comprehensive summary, 3. Use final tool to present complete analysis")
+2. DATA GATHERING: tool_name(data) + ${reportToolName} + nextTask("1. Compile all results, 2. Format user-friendly report, 3. Use final tool to present comprehensive findings")
+3. ANSWER PRESENTATION: ${finalToolName} + ${reportToolName} (using schema parameters)
 `;
   }
 
@@ -141,7 +141,7 @@ User: "Analyze Y and provide summary"
     return batchInfo;
   }
 
-  private getFunctionCallingFormatInstructions(finalToolName: string, batchMode?: boolean): string {
+  private getFunctionCallingFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
     return `# 🚨 RESPONSE FORMAT: JSON CODE BLOCKS ONLY 🚨
 
 ## ABSOLUTE REQUIREMENT
@@ -150,12 +150,12 @@ User: "Analyze Y and provide summary"
 - **NO explanatory text before or after JSON**
 - **EVERY response must follow one of the two patterns below**
 
-${this.getWorkflowRules(finalToolName)}
+${this.getWorkflowRules(finalToolName, reportToolName)}
 ${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
-### Format 1: Data Gathering (with mandatory report)
+### Format 1: Any Tool Call (with mandatory ${reportToolName})
 \`\`\`json
 {
   "functionCalls": [
@@ -164,20 +164,26 @@ ${this.getExecutionStrategy(batchMode)}
       "arguments": "{\\"param1\\": \\"value1\\", \\"param2\\": \\"value2\\"}"
     },
     {
-      "name": "report",
-      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect].\\\", \\\"nextTask\\\": \\\"[complete plan to final tool with comprehensive details]\\\"}"
+      "name": "${reportToolName}",
+      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect].\\\", \\\"nextTask\\\": \\\"1. [next action], 2. [subsequent step], 3. Use final tool to present [comprehensive details]\\\"}"
     }
   ]
 }
 \`\`\`
 
-### Format 2: Final Answer Presentation
+### Format 2: Final Answer Presentation (also requires ${reportToolName})
 \`\`\`json
 {
-  "functionCall": {
-    "name": "${finalToolName}",
-    "arguments": "[Check the ${finalToolName} tool schema below for exact parameters and structure]"
-  }
+  "functionCalls": [
+    {
+      "name": "${finalToolName}",
+      "arguments": "[Check the ${finalToolName} tool schema below for exact parameters and structure]"
+    },
+    {
+      "name": "${reportToolName}",
+      "arguments": "{\\"report\\": \\"Task completed. I have [what was accomplished]\\\", \\\"nextTask\\\": \\"Task is complete\\\"}"
+    }
+  ]
 }
 \`\`\`
 
@@ -190,13 +196,13 @@ ${this.getExecutionStrategy(batchMode)}
 ## 🔍 SELF-CHECK BEFORE RESPONDING
 Ask yourself:
 1. Is my response a valid JSON code block?
-2. Did I include \`report\` with any data-gathering tools?
+2. Did I include \`${reportToolName}\` with ALL tools (including ${finalToolName})?
 3. Am I using the correct format (functionCalls vs functionCall)?
 4. Have I properly escaped all special characters?
 `;
   }
 
-  private getYamlFormatInstructions(finalToolName: string, batchMode?: boolean): string {
+  private getYamlFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
     return `# 📋 RESPONSE FORMAT: YAML CODE BLOCKS ONLY
 
 ## ABSOLUTE REQUIREMENT
@@ -204,12 +210,12 @@ Ask yourself:
 - **NO plain text outside of YAML blocks**
 - **Use proper YAML syntax with correct indentation**
 
-${this.getWorkflowRules(finalToolName)}
+${this.getWorkflowRules(finalToolName, reportToolName)}
 ${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
-### Format 1: Data Gathering (with mandatory report)
+### Format 1: Any Tool Call (with mandatory ${reportToolName})
 \`\`\`yaml
 tool_calls:
   - name: tool_name_here
@@ -218,22 +224,28 @@ tool_calls:
       param2: |
         Multi-line value
         can go here
-  - name: report
+  - name: ${reportToolName}
     args:
       report: |
         My reasoning: User wants [goal]. I need [data] to achieve this.
         Using [tool] because [specific_reason].
         Expected outcome: [what_I_expect].
       nextTask: |
-        [complete plan from next action to final tool with comprehensive details for the user]
+        1. [next action], 2. [subsequent step], 3. Use final tool to present [complete results]
 \`\`\`
 
-### Format 2: Final Answer Presentation
+### Format 2: Final Answer Presentation (also requires ${reportToolName})
 \`\`\`yaml
 tool_calls:
   - name: ${finalToolName}
     args:
       [Check the ${finalToolName} tool schema below for exact parameters]
+  - name: ${reportToolName}
+    args:
+      report: |
+        Task completed. I have [what was accomplished]
+      nextTask: |
+        Task is complete
 \`\`\`
 
 ## ⚠️ YAML FORMATTING RULES
@@ -250,21 +262,21 @@ tool_calls:
 2. Are ALL tool names from the provided available tools list?
 3. Do ALL parameters match the exact schema requirements?
 4. Am I using actual data from tool results, not making up information?
-5. Did I include \`report\` with data-gathering tools?
+5. Did I include \`${reportToolName}\` with ALL tools (including ${finalToolName})?
 6. Does my nextTask describe the COMPLETE plan to the final tool call?
 7. Does my nextTask specify what comprehensive details I'll present to the user?
 8. Have I verified every tool name and parameter against the schema?
 `;
   }
 
-  private getFormatInstructions(finalToolName: string, batchMode?: boolean): string {
+  private getFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
     switch (this.responseFormat) {
       case FormatType.FUNCTION_CALLING:
-        return this.getFunctionCallingFormatInstructions(finalToolName, batchMode);
+        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
       case FormatType.YAML:
-        return this.getYamlFormatInstructions(finalToolName, batchMode);
+        return this.getYamlFormatInstructions(finalToolName, reportToolName, batchMode);
       default:
-        return this.getFunctionCallingFormatInstructions(finalToolName, batchMode);
+        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
     }
   }
 
@@ -278,6 +290,7 @@ tool_calls:
       lastError,
       keepRetry,
       finalToolName,
+      reportToolName,
       toolDefinitions,
       options,
       nextTask,
@@ -291,11 +304,15 @@ tool_calls:
     sections.push(systemPrompt);
 
     // Core instructions
-    sections.push(`${this.getFormatInstructions(finalToolName, options.batchMode)}`);
+    sections.push(`${this.getFormatInstructions(finalToolName, reportToolName, options.batchMode)}`);
 
     // ENHANCED: Add immediate task directive if nextTask exists
     if (nextTask) {
-      sections.push(this.buildImmediateTaskDirective(nextTask, finalToolName));
+      // Modify nextTask to prioritize error fixing if lastError exists
+      const adjustedNextTask = lastError 
+        ? `Please fix this error: ${lastError.getMessage()}, before proceeding to the following task: ${nextTask}`
+        : nextTask;
+      sections.push(this.buildImmediateTaskDirective(adjustedNextTask, finalToolName));
     }
 
     // Available tools
@@ -318,7 +335,7 @@ ${toolDefinitions}
 
     // Current state - filter toolCallReports 
     const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportSection(toolCallReports, finalToolName, nextTask));
+    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, nextTask));
 
     // Context if needed
     if (options.includeContext) {
@@ -332,7 +349,7 @@ ${toolDefinitions}
 
     // Error recovery if needed
     if (lastError) {
-      sections.push(this.buildErrorRecoverySection(finalToolName, lastError, keepRetry, errorRecoveryInstructions));
+      sections.push(this.buildErrorRecoverySection(finalToolName, reportToolName, lastError, keepRetry, errorRecoveryInstructions));
     }
 
     // Custom sections
@@ -343,7 +360,7 @@ ${toolDefinitions}
     }
 
     // Final user request
-    sections.push(this.buildUserRequestSection(userPrompt, finalToolName, nextTask));
+    sections.push(this.buildUserRequestSection(userPrompt, finalToolName, reportToolName, nextTask));
 
     return sections.join('\n\n---\n\n');
   }
@@ -371,7 +388,7 @@ ${toolDefinitions}
 ================================================================================`;
   }
 
-  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, nextTask?: string | null): string {
+  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, nextTask?: string | null): string {
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
@@ -382,7 +399,7 @@ ${toolDefinitions}
 
 ## REMINDER
 This is your working memory. Each action you take will be recorded here with:
-- Your reasoning (from the \`report\` tool)
+- Your reasoning (from the \`${reportToolName}\` tool)
 - Tool calls made and their results
 - Success/failure status
 - Any errors encountered`;
@@ -523,7 +540,7 @@ ${formattedEntries}
   /**
    * ENHANCED: Build user request section with clear task progression
    */
-  buildUserRequestSection(userPrompt: string, finalToolName: string, nextTask?: string | null): string {
+  buildUserRequestSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTask?: string | null): string {
     // If there's a nextTask, emphasize continuation rather than fresh analysis
     if (nextTask) {
       return `# 🎯 CURRENT TASK & IMMEDIATE ACTION
@@ -576,7 +593,7 @@ Review "REPORTS AND RESULTS" section above:
 Execute the following:
 1. Identify the specific missing data
 2. Choose the appropriate tool to get this data
-3. Call the tool WITH a \`report\` explaining your reasoning
+3. Call the tool WITH a \`${reportToolName}\` explaining your reasoning
 4. After receiving results, return to step 1
 
 ### 3️⃣B IF HAVE ALL DATA (Answer Presentation Path)
@@ -589,11 +606,11 @@ Execute the following:
 ## 🚫 COMMON MISTAKES TO AVOID
 - DON'T say "I have the data" without showing it
 - DON'T use ${finalToolName} until you have everything needed
-- DON'T forget the \`report\` tool when gathering data
+- DON'T forget the \`${reportToolName}\` tool when gathering data
 - DON'T make assumptions - gather actual data
 
 ## ✅ SIGNS OF CORRECT EXECUTION
-- Each data-gathering includes clear reasoning via \`report\`
+- Each data-gathering includes clear reasoning via \`${reportToolName}\`
 - The final answer includes all requested information
 - User receives complete, formatted results via \`${finalToolName}\`
 - No steps are skipped or combined inappropriately
@@ -605,6 +622,7 @@ Based on the checklist above, your next response should be:
 
   buildErrorRecoverySection(
     finalToolName: string,
+    reportToolName: string,
     error: AgentError | null,
     keepRetry: boolean,
     errorRecoveryInstructions?: string
@@ -658,7 +676,7 @@ Based on your analysis, choose ONE path:
 **PATH A - CONTINUE WITH NEW APPROACH**
 - If you can identify a different strategy to gather missing data
 - Use a completely different tool or approach than before
-- Include \`report\` with new reasoning that explains the change in strategy
+- Include \`${reportToolName}\` with new reasoning that explains the change in strategy
 
 **PATH B - CONCLUDE WITH AVAILABLE DATA**
 - If you have sufficient data to partially answer the user's request
