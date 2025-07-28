@@ -18,22 +18,17 @@ export class FileManagerConsole {
   private conversationHistory: Interaction[] = [];
 
   constructor() {
-    // Check for API key and resource name
-    if (!process.env.AZURE_OPENAI_API_KEY) {
-      console.error('❌ AZURE_OPENAI_API_KEY environment variable is required');
-      process.exit(1);
-    }
-    if (!process.env.AZURE_OPENAI_RESOURCE_NAME) {
-      console.error('❌ AZURE_OPENAI_RESOURCE_NAME environment variable is required');
+    // Check for API key
+    if (!process.env.GEMINI_API_KEY) {
+      console.error('❌ GEMINI_API_KEY environment variable is required');
       process.exit(1);
     }
 
     // Create agent
     this.agent = new SimpleFileManagerAgent({
-      service: 'azure',
-      apiKey: process.env.AZURE_OPENAI_API_KEY,
-      model: 'gpt-4.1-mini', // This should match your Azure OpenAI deployment name
-      baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME
+      service: 'google',
+      apiKey: process.env.GEMINI_API_KEY,
+      model: 'gemini-2.5-flash'
     });
 
     // Create readline interface

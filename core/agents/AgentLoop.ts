@@ -381,13 +381,15 @@ export abstract class AgentLoop {
           const hasReportTool = parsedToolCalls.some(call => call.toolName === this.REPORT_TOOL_NAME);
           
           if (!hasReportTool) {
+            const toolsList = parsedToolCalls.map(call => call.toolName).join(', ');
             throw new AgentError(
-              `${this.REPORT_TOOL_NAME} is required. It must be included in each tool calls`,
+              `CRITICAL ERROR: You MUST include the '${this.REPORT_TOOL_NAME}' tool with EVERY response. You called these tools: [${toolsList}] but forgot to include '${this.REPORT_TOOL_NAME}'. Please retry your response and include '${this.REPORT_TOOL_NAME}' along with your other tool calls.`,
               AgentErrorType.TOOL_NOT_FOUND,
               { 
                 requiredTool: this.REPORT_TOOL_NAME,
                 parsedTools: parsedToolCalls.map(call => call.toolName),
-                missingToolType: this.REPORT_TOOL_NAME
+                missingToolType: this.REPORT_TOOL_NAME,
+                instruction: `Add the '${this.REPORT_TOOL_NAME}' tool to your response`
               }
             );
           }
