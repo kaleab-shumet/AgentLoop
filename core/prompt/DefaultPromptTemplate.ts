@@ -1,4 +1,4 @@
-import { Interaction, PromptOptions, ToolCallReport, UserPrompt, AgentResponse, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
+import { PromptOptions, ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
 
@@ -111,13 +111,13 @@ Based on your assessment, choose either Path A or Path B:
 
 **Example 1: Simple Data Retrieval**
 User: "Get information about X"
-1. DATA GATHERING: get_data("X") + ${reportToolName} + nextTasks("Analyze retrieved X data, format comprehensive summary, use final tool to present complete information with all details")
+1. DATA GATHERING: tool_name("X") + ${reportToolName} + nextTasks("1. Process retrieved data, 2. Format comprehensive summary, 3. Use final tool to present complete information")
 2. ANSWER PRESENTATION: ${finalToolName} + ${reportToolName} (using schema parameters)
 
 **Example 2: Multi-Step Analysis**
 User: "Analyze Y and provide summary"
-1. DATA GATHERING: collect_info("Y") + ${reportToolName} + nextTasks("Analyze Y data for patterns, create comprehensive summary with insights, use final tool to present complete analysis")
-2. DATA GATHERING: analyze_data(info) + ${reportToolName} + nextTasks("Compile all analysis results, format user-friendly report, use final tool to present comprehensive findings with recommendations")
+1. DATA GATHERING: tool_name("Y") + ${reportToolName} + nextTasks("1. Analyze collected data, 2. Create comprehensive summary, 3. Use final tool to present complete analysis")
+2. DATA GATHERING: tool_name(data) + ${reportToolName} + nextTasks("1. Compile all results, 2. Format user-friendly report, 3. Use final tool to present comprehensive findings")
 3. ANSWER PRESENTATION: ${finalToolName} + ${reportToolName} (using schema parameters)
 `;
   }
@@ -137,7 +137,7 @@ User: "Analyze Y and provide summary"
     return batchInfo;
   }
 
-  private getFunctionCallingFormatInstructions(finalToolName: string, reportToolName: string): string {
+  private getFunctionCallingFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
     return `# 🚨 RESPONSE FORMAT: JSON CODE BLOCKS ONLY 🚨
 
 ## ABSOLUTE REQUIREMENT
@@ -145,6 +145,9 @@ User: "Analyze Y and provide summary"
 - **NO plain text outside of JSON blocks**
 - **NO explanatory text before or after JSON**
 - **EVERY response must follow one of the two patterns below**
+
+${this.getWorkflowRules(finalToolName, reportToolName)}
+${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
@@ -195,13 +198,16 @@ Ask yourself:
 `;
   }
 
-  private getYamlFormatInstructions(finalToolName: string, reportToolName: string): string {
+  private getYamlFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
     return `# 📋 RESPONSE FORMAT: YAML CODE BLOCKS ONLY
 
 ## ABSOLUTE REQUIREMENT
 - **ALL responses MUST be valid YAML code blocks**
 - **NO plain text outside of YAML blocks**
 - **Use proper YAML syntax with correct indentation**
+
+${this.getWorkflowRules(finalToolName, reportToolName)}
+${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
@@ -221,7 +227,7 @@ tool_calls:
         Using [tool] because [specific_reason].
         Expected outcome: [what_I_expect].
       nextTasks: |
-        1. [next action], 2. [subsequent step], 3. Use final tool to present [comprehensive details for the user]
+        1. [next action], 2. [subsequent step], 3. Use final tool to present [complete results]
 \`\`\`
 
 ### Format 2: Final Answer Presentation (also requires ${reportToolName})
@@ -259,14 +265,14 @@ tool_calls:
 `;
   }
 
-  private getFormatInstructions(finalToolName: string, reportToolName: string): string {
+  private getFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
     switch (this.responseFormat) {
       case FormatMode.FUNCTION_CALLING:
-        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName);
+        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
       case FormatMode.YAML:
-        return this.getYamlFormatInstructions(finalToolName, reportToolName);
+        return this.getYamlFormatInstructions(finalToolName, reportToolName, batchMode);
       default:
-        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName);
+        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
     }
   }
 
@@ -293,18 +299,16 @@ tool_calls:
     // System context
     sections.push(systemPrompt);
 
-    // Workflow rules
-    sections.push(this.getWorkflowRules(finalToolName, reportToolName));
-
-    // Execution strategy
-    sections.push(this.getExecutionStrategy(options.batchMode));
-
-    // Format instructions
-    sections.push(this.getFormatInstructions(finalToolName, reportToolName));
+    // Core instructions
+    sections.push(`${this.getFormatInstructions(finalToolName, reportToolName, options.batchMode)}`);
 
     // ENHANCED: Add immediate task directive if nextTasks exists
     if (nextTasks) {
-      sections.push(this.buildImmediateTaskDirective(nextTasks, finalToolName));
+      // Modify nextTasks to prioritize error fixing if lastError exists
+      const adjustednextTasks = lastError 
+        ? `Please fix this error first: ${lastError.getMessage()}, then you must continue to the following: ${nextTasks}`
+        : nextTasks;
+      sections.push(this.buildImmediateTaskDirective(adjustednextTasks, finalToolName));
     }
 
     // Available tools
@@ -317,13 +321,17 @@ tool_calls:
 - **Follow the exact schema** - no extra or modified parameters
 
 ## TOOL DEFINITIONS
-${toolDefinitions}`);
+${toolDefinitions}
+
+## COMMON TOOL USAGE PATTERNS
+- File operations: Always check existence before reading
+- API calls: Include all required headers and parameters
+- Data processing: Validate input format before processing
+- Error handling: Anticipate and handle potential failures`);
 
     // Current state - filter toolCallReports 
     const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    const availableData = this.summarizeAvailableData(toolCallReports);
-    const progressionStatus = this.buildProgressionStatus(toolCallReports, nextTasks);
-    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, availableData, progressionStatus));
+    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, nextTasks));
 
     // Context if needed
     if (options.includeContext) {
@@ -376,21 +384,25 @@ ${toolDefinitions}`);
 ================================================================================`;
   }
 
-  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, availableData: string, progressionStatus: string): string {
+  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
-## CURRENT STATUS: EMPTY
-- **State**: No actions taken yet.
-- **User visibility**: This section is NEVER shown to the user.
-- **Next step**: Begin data gathering based on the user request in the "CURRENT TASK" section.
+## 🚨 CRITICAL DATA FRESHNESS NOTICE
+🔒 **This section is PRIVATE** - The user cannot see this internal log.
+⚡ **THIS IS YOUR MOST RECENT DATA** - This section will contain the LATEST, REAL-TIME information from your tool calls.
+🎯 **DATA PRIORITY RULE**: ALWAYS use data from this section for user responses. Any data NOT in this section is OUTDATED.
 
-## REMINDER
-This is your working memory. Each action you take will be recorded here with:
-- Your reasoning (from the \`${reportToolName}\` tool)
-- Tool calls made and their results
-- Success/failure status
-- Any errors encountered`;
+## CURRENT STATUS: EMPTY
+- **State**: No actions taken yet - NO FRESH DATA AVAILABLE
+- **Critical Rule**: You have NO current data to present to the user
+- **Next step**: Begin data gathering based on the user request in the "CURRENT TASK" section
+- **Warning**: DO NOT use conversation history as real-time data - use it only for context understanding
+
+## ⚠️ DATA USAGE RULES (EMPTY STATE)
+❌ **FORBIDDEN**: Presenting any data from conversation history as current information
+❌ **FORBIDDEN**: Telling user about data you "remember" from previous interactions
+✅ **REQUIRED**: Use tools to gather fresh data before presenting any information to the user`;
     }
 
     const reportEntries = toolCallReports.map((report, idx) => {
@@ -416,18 +428,32 @@ ${report.error ? `**Error Details**: ${report.error}` : ''}`;
 
     return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
-## VISIBILITY NOTICE
+## 🚨 CRITICAL DATA FRESHNESS NOTICE
 🔒 **This section is PRIVATE** - The user cannot see this internal log.
+⚡ **THIS IS YOUR MOST RECENT DATA** - This section contains the LATEST, REAL-TIME information from your tool calls.
+🎯 **DATA PRIORITY RULE**: ALWAYS use data from this section for user responses. Any data NOT in this section is OUTDATED.
+
+## ⚠️ CONVERSATION HISTORY VS FRESH DATA
+- **CONVERSATION HISTORY**: Use ONLY for understanding context and user intent - NOT for actual data
+- **REPORTS AND RESULTS**: Use for ALL factual information and data presentation
+- **FAILURE CONDITION**: Presenting outdated data from conversation history instead of fresh tool results is a FAILURE
 
 ## ACTION HISTORY
 ${reportEntries}
 
-## CURRENT DATA INVENTORY
-Based on the actions above, you currently have access to:
-${availableData}
+## 📦 FRESH DATA INVENTORY (USE THIS FOR USER RESPONSES)
+🎯 **MANDATORY**: Only use data listed below for user responses. If data is missing, use tools to gather it.
+
+**Available Fresh Data**:
+${this.summarizeAvailableData(toolCallReports)}
+
+## 🚫 DATA USAGE RULES
+✅ **CORRECT**: Present data from tool results above
+❌ **INCORRECT**: Use data from conversation history that isn't verified by recent tool calls
+❌ **FAILURE**: Telling user about data you "remember" but haven't recently gathered via tools
 
 ## 🎯 PROGRESSION STATUS
-${progressionStatus}`;
+${this.buildProgressionStatus(toolCallReports, nextTasks)}`;
   }
 
   /**
@@ -512,17 +538,23 @@ ${contextEntries}
 
     return `# 💬 CONVERSATION HISTORY${limitNote}
 
-## ⚠️ IMPORTANT NOTICE
-- This is REFERENCE ONLY - do not act on past requests
-- Only relevant if current request explicitly refers to previous interactions
-- Focus on the CURRENT TASK in the "CURRENT TASK" section
+## 🚨 CRITICAL: CONTEXT ONLY - NOT REAL-TIME DATA
+⚠️ **DATA FRESHNESS WARNING**: This section contains OUTDATED information for CONTEXT UNDERSTANDING ONLY
+🎯 **PRIMARY PURPOSE**: Understanding user intent and request context - NOT for factual data presentation
+🚫 **FORBIDDEN**: Using data from this section in user responses unless explicitly requested by user
 
-## PREVIOUS INTERACTIONS
+## ⚠️ STRICT USAGE RULES
+✅ **CORRECT USE**: Understanding what the user wants, their communication style, request patterns
+❌ **INCORRECT USE**: Presenting file contents, data, or information from here as current facts
+❌ **FAILURE CONDITION**: Telling user about data from conversation history instead of using fresh tool results
+
+## PREVIOUS INTERACTIONS (FOR CONTEXT ONLY)
 ${formattedEntries}
 
-## CONTEXT USAGE RULES
-✅ USE when: Current request says "like before", "again", "the same file", etc.
-❌ DON'T USE when: Current request is independent of history`;
+## WHEN TO USE CONVERSATION DATA
+✅ **USE when**: User explicitly says "like before", "the same file from earlier", "as we discussed"
+✅ **USE when**: Understanding user's request context and intent
+❌ **NEVER USE**: As a source of current data or factual information for responses`;
   }
 
   /**
