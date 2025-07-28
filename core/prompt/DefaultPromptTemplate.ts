@@ -310,7 +310,7 @@ tool_calls:
     if (nextTask) {
       // Modify nextTask to prioritize error fixing if lastError exists
       const adjustedNextTask = lastError 
-        ? `Please fix this error: ${lastError.getMessage()}, before proceeding to the following task: ${nextTask}`
+        ? `Please fix this error first: ${lastError.getMessage()}, then you must continue to the following: ${nextTask}`
         : nextTask;
       sections.push(this.buildImmediateTaskDirective(adjustedNextTask, finalToolName));
     }
@@ -392,17 +392,21 @@ ${toolDefinitions}
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
-## CURRENT STATUS: EMPTY
-- **State**: No actions taken yet.
-- **User visibility**: This section is NEVER shown to the user.
-- **Next step**: Begin data gathering based on the user request in the "CURRENT TASK" section.
+## 🚨 CRITICAL DATA FRESHNESS NOTICE
+🔒 **This section is PRIVATE** - The user cannot see this internal log.
+⚡ **THIS IS YOUR MOST RECENT DATA** - This section will contain the LATEST, REAL-TIME information from your tool calls.
+🎯 **DATA PRIORITY RULE**: ALWAYS use data from this section for user responses. Any data NOT in this section is OUTDATED.
 
-## REMINDER
-This is your working memory. Each action you take will be recorded here with:
-- Your reasoning (from the \`${reportToolName}\` tool)
-- Tool calls made and their results
-- Success/failure status
-- Any errors encountered`;
+## CURRENT STATUS: EMPTY
+- **State**: No actions taken yet - NO FRESH DATA AVAILABLE
+- **Critical Rule**: You have NO current data to present to the user
+- **Next step**: Begin data gathering based on the user request in the "CURRENT TASK" section
+- **Warning**: DO NOT use conversation history as real-time data - use it only for context understanding
+
+## ⚠️ DATA USAGE RULES (EMPTY STATE)
+❌ **FORBIDDEN**: Presenting any data from conversation history as current information
+❌ **FORBIDDEN**: Telling user about data you "remember" from previous interactions
+✅ **REQUIRED**: Use tools to gather fresh data before presenting any information to the user`;
     }
 
     const reportEntries = toolCallReports.map((report, idx) => {
@@ -428,15 +432,29 @@ ${report.error ? `**Error Details**: ${report.error}` : ''}`;
 
     return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
-## VISIBILITY NOTICE
+## 🚨 CRITICAL DATA FRESHNESS NOTICE
 🔒 **This section is PRIVATE** - The user cannot see this internal log.
+⚡ **THIS IS YOUR MOST RECENT DATA** - This section contains the LATEST, REAL-TIME information from your tool calls.
+🎯 **DATA PRIORITY RULE**: ALWAYS use data from this section for user responses. Any data NOT in this section is OUTDATED.
+
+## ⚠️ CONVERSATION HISTORY VS FRESH DATA
+- **CONVERSATION HISTORY**: Use ONLY for understanding context and user intent - NOT for actual data
+- **REPORTS AND RESULTS**: Use for ALL factual information and data presentation
+- **FAILURE CONDITION**: Presenting outdated data from conversation history instead of fresh tool results is a FAILURE
 
 ## ACTION HISTORY
 ${reportEntries}
 
-## CURRENT DATA INVENTORY
-Based on the actions above, you currently have access to:
+## 📦 FRESH DATA INVENTORY (USE THIS FOR USER RESPONSES)
+🎯 **MANDATORY**: Only use data listed below for user responses. If data is missing, use tools to gather it.
+
+**Available Fresh Data**:
 ${this.summarizeAvailableData(toolCallReports)}
+
+## 🚫 DATA USAGE RULES
+✅ **CORRECT**: Present data from tool results above
+❌ **INCORRECT**: Use data from conversation history that isn't verified by recent tool calls
+❌ **FAILURE**: Telling user about data you "remember" but haven't recently gathered via tools
 
 ## 🎯 PROGRESSION STATUS
 ${this.buildProgressionStatus(toolCallReports, nextTask)}`;
@@ -524,17 +542,23 @@ ${contextEntries}
 
     return `# 💬 CONVERSATION HISTORY${limitNote}
 
-## ⚠️ IMPORTANT NOTICE
-- This is REFERENCE ONLY - do not act on past requests
-- Only relevant if current request explicitly refers to previous interactions
-- Focus on the CURRENT TASK in the "CURRENT TASK" section
+## 🚨 CRITICAL: CONTEXT ONLY - NOT REAL-TIME DATA
+⚠️ **DATA FRESHNESS WARNING**: This section contains OUTDATED information for CONTEXT UNDERSTANDING ONLY
+🎯 **PRIMARY PURPOSE**: Understanding user intent and request context - NOT for factual data presentation
+🚫 **FORBIDDEN**: Using data from this section in user responses unless explicitly requested by user
 
-## PREVIOUS INTERACTIONS
+## ⚠️ STRICT USAGE RULES
+✅ **CORRECT USE**: Understanding what the user wants, their communication style, request patterns
+❌ **INCORRECT USE**: Presenting file contents, data, or information from here as current facts
+❌ **FAILURE CONDITION**: Telling user about data from conversation history instead of using fresh tool results
+
+## PREVIOUS INTERACTIONS (FOR CONTEXT ONLY)
 ${formattedEntries}
 
-## CONTEXT USAGE RULES
-✅ USE when: Current request says "like before", "again", "the same file", etc.
-❌ DON'T USE when: Current request is independent of history`;
+## WHEN TO USE CONVERSATION DATA
+✅ **USE when**: User explicitly says "like before", "the same file from earlier", "as we discussed"
+✅ **USE when**: Understanding user's request context and intent
+❌ **NEVER USE**: As a source of current data or factual information for responses`;
   }
 
   /**
