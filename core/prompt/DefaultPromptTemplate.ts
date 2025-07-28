@@ -38,7 +38,7 @@ Follow this strict two-phase process for EVERY user request:
 Use the \`${reportToolName}\` tool with EVERY tool call (including \`${finalToolName}\`). It's your internal monologue.
 - **Purpose**: Explain your current goal, tool choice, expected outcome, AND next action.
 - **Visibility**: NEVER shown to the user.
-- **Format Example**: "My reasoning: [Goal] → [Why this tool?] → [Expected outcome]" + separate nextTask property
+- **Format Example**: "My reasoning: [Goal] → [Why this tool?] → [Expected outcome]" + separate nextTasks property
 
 #### REQUIRED REPORT STRUCTURE
 Your report MUST include these 4 components:
@@ -47,7 +47,7 @@ Your report MUST include these 4 components:
 3. **Expected Outcome**: What data you expect to get
 4. **Complete Plan**: Full sequence from next action to final tool call, including what comprehensive details you'll present to the user
 
-#### NEXT TASK EXAMPLES (separate nextTask property - MUST use numbered listing)
+#### NEXT TASK EXAMPLES (separate nextTasks property - MUST use numbered listing)
 - "1. Gather remaining information, 2. Process collected data, 3. Use final tool to present complete results"
 - "1. Validate input parameters, 2. Execute operation, 3. Use final tool to present comprehensive output"  
 - "1. Retry with corrected approach, 2. Verify completion, 3. Use final tool to present successful results"
@@ -78,7 +78,7 @@ Based on your assessment, choose either Path A or Path B:
       \`\`\`
       Tool: [tool_name] + report
       Reasoning: "I need [data_type] to [purpose]. Using [tool_name] because [reason]."
-      nextTask: "1. [next action], 2. [subsequent step], 3. Use final tool to present [specific details]"
+      nextTasks: "1. [next action], 2. [subsequent step], 3. Use final tool to present [specific details]"
       \`\`\`
 
 **PATH B - Answer Presentation (If you have ALL required data)**
@@ -111,13 +111,13 @@ Based on your assessment, choose either Path A or Path B:
 
 **Example 1: Simple Data Retrieval**
 User: "Get information about X"
-1. DATA GATHERING: get_data("X") + ${reportToolName} + nextTask("Analyze retrieved X data, format comprehensive summary, use final tool to present complete information with all details")
+1. DATA GATHERING: get_data("X") + ${reportToolName} + nextTasks("Analyze retrieved X data, format comprehensive summary, use final tool to present complete information with all details")
 2. ANSWER PRESENTATION: ${finalToolName} + ${reportToolName} (using schema parameters)
 
 **Example 2: Multi-Step Analysis**
 User: "Analyze Y and provide summary"
-1. DATA GATHERING: collect_info("Y") + ${reportToolName} + nextTask("Analyze Y data for patterns, create comprehensive summary with insights, use final tool to present complete analysis")
-2. DATA GATHERING: analyze_data(info) + ${reportToolName} + nextTask("Compile all analysis results, format user-friendly report, use final tool to present comprehensive findings with recommendations")
+1. DATA GATHERING: collect_info("Y") + ${reportToolName} + nextTasks("Analyze Y data for patterns, create comprehensive summary with insights, use final tool to present complete analysis")
+2. DATA GATHERING: analyze_data(info) + ${reportToolName} + nextTasks("Compile all analysis results, format user-friendly report, use final tool to present comprehensive findings with recommendations")
 3. ANSWER PRESENTATION: ${finalToolName} + ${reportToolName} (using schema parameters)
 `;
   }
@@ -161,7 +161,7 @@ ${this.getExecutionStrategy(batchMode)}
     },
     {
       "name": "${reportToolName}",
-      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect].\\\", \\\"nextTask\\\": \\\"1. [next action], 2. [subsequent step], 3. Use final tool to present [comprehensive details]\\\"}"
+      "arguments": "{\\"report\\": \\"My reasoning: User wants [goal]. I need [data] to achieve this. Using [tool] because [specific_reason]. Expected outcome: [what_I_expect].\\\", \\\"nextTasks\\\": \\\"1. [next action], 2. [subsequent step], 3. Use final tool to present [comprehensive details]\\\"}"
     }
   ]
 }
@@ -177,7 +177,7 @@ ${this.getExecutionStrategy(batchMode)}
     },
     {
       "name": "${reportToolName}",
-      "arguments": "{\\"report\\": \\"Task completed. I have [what was accomplished]\\\", \\\"nextTask\\\": \\"Task is complete\\\"}"
+      "arguments": "{\\"report\\": \\"Task completed. I have [what was accomplished]\\\", \\\"nextTasks\\\": \\"Task is complete\\\"}"
     }
   ]
 }
@@ -226,7 +226,7 @@ tool_calls:
         My reasoning: User wants [goal]. I need [data] to achieve this.
         Using [tool] because [specific_reason].
         Expected outcome: [what_I_expect].
-      nextTask: |
+      nextTasks: |
         1. [next action], 2. [subsequent step], 3. Use final tool to present [comprehensive details for the user]
 \`\`\`
 
@@ -240,7 +240,7 @@ tool_calls:
     args:
       report: |
         Task completed. I have [what was accomplished]
-      nextTask: |
+      nextTasks: |
         Task is complete
 \`\`\`
 
@@ -259,8 +259,8 @@ tool_calls:
 3. Do ALL parameters match the exact schema requirements?
 4. Am I using actual data from tool results, not making up information?
 5. Did I include \`${reportToolName}\` with ALL tools (including ${finalToolName})?
-6. Does my nextTask describe the COMPLETE plan to the final tool call?
-7. Does my nextTask specify what comprehensive details I'll present to the user?
+6. Does my nextTasks describe the COMPLETE plan to the final tool call?
+7. Does my nextTasks specify what comprehensive details I'll present to the user?
 8. Have I verified every tool name and parameter against the schema?
 `;
   }
@@ -289,7 +289,7 @@ tool_calls:
       reportToolName,
       toolDefinitions,
       options,
-      nextTask,
+      nextTasks,
       conversationEntries,
       conversationLimitNote,
       errorRecoveryInstructions
@@ -302,9 +302,9 @@ tool_calls:
     // Core instructions
     sections.push(`${this.getFormatInstructions(finalToolName, reportToolName, options.batchMode)}`);
 
-    // ENHANCED: Add immediate task directive if nextTask exists
-    if (nextTask) {
-      sections.push(this.buildImmediateTaskDirective(nextTask, finalToolName));
+    // ENHANCED: Add immediate task directive if nextTasks exists
+    if (nextTasks) {
+      sections.push(this.buildImmediateTaskDirective(nextTasks, finalToolName));
     }
 
     // Available tools
@@ -327,7 +327,7 @@ ${toolDefinitions}
 
     // Current state - filter toolCallReports 
     const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, nextTask));
+    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, nextTasks));
 
     // Context if needed
     if (options.includeContext) {
@@ -352,7 +352,7 @@ ${toolDefinitions}
     }
 
     // Final user request
-    sections.push(this.buildUserRequestSection(userPrompt, finalToolName, reportToolName, nextTask));
+    sections.push(this.buildUserRequestSection(userPrompt, finalToolName, reportToolName, nextTasks));
 
     return sections.join('\n\n---\n\n');
   }
@@ -360,11 +360,11 @@ ${toolDefinitions}
   /**
    * ENHANCED: Build immediate task directive that appears early in the prompt
    */
-  private buildImmediateTaskDirective(nextTask: string, finalToolName: string): string {
+  private buildImmediateTaskDirective(nextTasks: string, finalToolName: string): string {
     return `# 🎯 IMMEDIATE TASK DIRECTIVE - HIGHEST PRIORITY
 
 ## ⚡ YOUR CURRENT TASK (FROM PREVIOUS ANALYSIS):
-> **${nextTask}**
+> **${nextTasks}**
 
 ## 🚨 CRITICAL INSTRUCTIONS:
 1. **THIS IS NOT A NEW REQUEST** - You already analyzed and decided this is your next step
@@ -374,13 +374,13 @@ ${toolDefinitions}
 
 ## 📌 CONTEXT:
 - You have already completed some actions (see REPORTS AND RESULTS below)
-- You determined the next logical step is: "${nextTask}"
+- You determined the next logical step is: "${nextTasks}"
 - Now execute this step without hesitation
 
 ================================================================================`;
   }
 
-  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, nextTask?: string | null): string {
+  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
@@ -402,7 +402,7 @@ This is your working memory. Each action you take will be recorded here with:
         `    - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'} ${tc.context.error ? `(Error: ${tc.context.error})` : ''}`
       ).join('\n');
       
-      // Note: nextTask is now a separate property, not embedded in report text
+      // Note: nextTasks is now a separate property, not embedded in report text
       const nextActionHighlight = '';
       
       return `
@@ -431,20 +431,20 @@ Based on the actions above, you currently have access to:
 ${this.summarizeAvailableData(toolCallReports)}
 
 ## 🎯 PROGRESSION STATUS
-${this.buildProgressionStatus(toolCallReports, nextTask)}`;
+${this.buildProgressionStatus(toolCallReports, nextTasks)}`;
   }
 
   /**
    * ENHANCED: Build a clear progression status
    */
-  private buildProgressionStatus(reports: ToolCallReport[], nextTask?: string | null): string {
+  private buildProgressionStatus(reports: ToolCallReport[], nextTasks?: string | null): string {
     const lastReport = reports[reports.length - 1];
     
-    if (nextTask) {
+    if (nextTasks) {
       return `
 ### YOUR WORKFLOW PROGRESS:
 1. **Last Completed Action**: ${lastReport?.toolCalls[0]?.context.toolName || 'Unknown'}
-2. **Your Planned Next Step**: "${nextTask}"
+2. **Your Planned Next Step**: "${nextTasks}"
 3. **Current Directive**: Execute the planned step now
 
 ⚠️ **IMPORTANT**: You are in the middle of a workflow. Continue with your planned action.`;
@@ -532,9 +532,9 @@ ${formattedEntries}
   /**
    * ENHANCED: Build user request section with clear task progression
    */
-  buildUserRequestSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTask?: string | null): string {
-    // If there's a nextTask, emphasize continuation rather than fresh analysis
-    if (nextTask) {
+  buildUserRequestSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
+    // If there's a nextTasks, emphasize continuation rather than fresh analysis
+    if (nextTasks) {
       return `# 🎯 CURRENT TASK & IMMEDIATE ACTION
 
 ## ORIGINAL USER REQUEST (FOR REFERENCE)
@@ -549,12 +549,12 @@ You have already analyzed this request and determined your next step.
 - Repeat previous tool calls
 
 ### 🟢 DO:
-- Execute the task you planned: "${nextTask}"
+- Execute the task you planned: "${nextTasks}"
 - Use the data you've already gathered
 - Continue progressing toward the final answer
 
 ## DECISION POINT
-Based on your previous analysis and the task "${nextTask}":
+Based on your previous analysis and the task "${nextTasks}":
 - If this involves gathering more data → Execute the specific tool call now
 - If this involves presenting the final answer → Use \`${finalToolName}\` with all gathered data
 
