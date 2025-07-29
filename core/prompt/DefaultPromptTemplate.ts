@@ -1,7 +1,6 @@
 import { PromptOptions, ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
-
 export class DefaultPromptTemplate {
   private responseFormat: FormatMode;
 
@@ -20,9 +19,8 @@ export class DefaultPromptTemplate {
   /**
    * Enhanced workflow rules with clearer structure and examples
    */
-  getWorkflowRules(finalToolName: string, reportToolName: string): string {
-    return `
-## 🧠 CORE INSTRUCTIONS & THINKING PROCESS
+  private buildWorkflowRulesSection(finalToolName: string, reportToolName: string): string {
+    return `## 🧠 CORE INSTRUCTIONS & THINKING PROCESS
 
 ### PRIMARY OBJECTIVE
 Follow this strict two-phase process for EVERY user request:
@@ -118,11 +116,10 @@ User: "Get information about X"
 User: "Analyze Y and provide summary"
 1. DATA GATHERING: tool_name("Y") + ${reportToolName} + nextTasks("1. Analyze collected data, 2. Create comprehensive summary, 3. Use final tool to present complete analysis")
 2. DATA GATHERING: tool_name(data) + ${reportToolName} + nextTasks("1. Compile all results, 2. Format user-friendly report, 3. Use final tool to present comprehensive findings")
-3. ANSWER PRESENTATION: ${finalToolName} + ${reportToolName} (using schema parameters)
-`;
+3. ANSWER PRESENTATION: ${finalToolName} + ${reportToolName} (using schema parameters)`;
   }
 
-  getExecutionStrategy(batchMode?: boolean): string {
+  private buildExecutionStrategySection(batchMode?: boolean): string {
     const batchInfo = batchMode ? `
 ### BATCH MODE: ENABLED
 - **Mode**: You may receive and process multiple related requests in a single interaction.
@@ -137,7 +134,7 @@ User: "Analyze Y and provide summary"
     return batchInfo;
   }
 
-  getFunctionCallingFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
+  private buildFunctionCallingFormatSection(finalToolName: string, reportToolName: string): string {
     return `# 🚨 RESPONSE FORMAT: JSON CODE BLOCKS ONLY 🚨
 
 ## ABSOLUTE REQUIREMENT
@@ -145,9 +142,6 @@ User: "Analyze Y and provide summary"
 - **NO plain text outside of JSON blocks**
 - **NO explanatory text before or after JSON**
 - **EVERY response must follow one of the two patterns below**
-
-${this.getWorkflowRules(finalToolName, reportToolName)}
-${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
@@ -194,20 +188,16 @@ Ask yourself:
 1. Is my response a valid JSON code block?
 2. Did I include \`${reportToolName}\` with ALL tools (including ${finalToolName})?
 3. Am I using the correct format (functionCalls vs functionCall)?
-4. Have I properly escaped all special characters?
-`;
+4. Have I properly escaped all special characters?`;
   }
 
-  getYamlFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
+  private buildYamlFormatSection(finalToolName: string, reportToolName: string): string {
     return `# 📋 RESPONSE FORMAT: YAML CODE BLOCKS ONLY
 
 ## ABSOLUTE REQUIREMENT
 - **ALL responses MUST be valid YAML code blocks**
 - **NO plain text outside of YAML blocks**
 - **Use proper YAML syntax with correct indentation**
-
-${this.getWorkflowRules(finalToolName, reportToolName)}
-${this.getExecutionStrategy(batchMode)}
 
 ## 📋 EXACT OUTPUT FORMATS
 
@@ -261,25 +251,24 @@ tool_calls:
 5. Did I include \`${reportToolName}\` with ALL tools (including ${finalToolName})?
 6. Does my nextTasks describe the COMPLETE plan to the final tool call?
 7. Does my nextTasks specify what comprehensive details I'll present to the user?
-8. Have I verified every tool name and parameter against the schema?
-`;
+8. Have I verified every tool name and parameter against the schema?`;
   }
 
-  getFormatInstructions(finalToolName: string, reportToolName: string, responseFormat: FormatMode, batchMode?: boolean): string {
-    switch (responseFormat) {
-      case FormatMode.FUNCTION_CALLING:
-        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
-      case FormatMode.YAML:
-        return this.getYamlFormatInstructions(finalToolName, reportToolName, batchMode);
-      default:
-        return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
-    }
+  private buildFormatInstructionsSection(finalToolName: string, reportToolName: string, responseFormat: FormatMode, batchMode?: boolean): string {
+    const formatSection = responseFormat === FormatMode.YAML
+      ? this.buildYamlFormatSection(finalToolName, reportToolName)
+      : this.buildFunctionCallingFormatSection(finalToolName, reportToolName);
+
+    const workflowRules = this.buildWorkflowRulesSection(finalToolName, reportToolName);
+    const executionStrategy = this.buildExecutionStrategySection(batchMode);
+
+    return `${formatSection}
+
+${workflowRules}
+${executionStrategy}`;
   }
 
-  /**
-   * ENHANCED: Build immediate task directive that appears early in the prompt
-   */
-  buildImmediateTaskDirective(nextTasks: string, finalToolName: string): string {
+  private buildImmediateTaskDirectiveSection(nextTasks: string, finalToolName: string): string {
     return `# 🎯 IMMEDIATE TASK DIRECTIVE - HIGHEST PRIORITY
 
 ## ⚡ YOUR CURRENT TASK (FROM PREVIOUS ANALYSIS):
@@ -299,42 +288,26 @@ tool_calls:
 ================================================================================`;
   }
 
-  /**
-   * ENHANCED: Build a clear progression status
-   */
-  buildProgressionStatus(reports: ToolCallReport[], nextTasks?: string | null): string {
-    const lastReport = reports[reports.length - 1];
-    
-    if (nextTasks) {
-      return `
-### YOUR WORKFLOW PROGRESS:
-1. **Last Completed Action**: ${lastReport?.toolCalls[0]?.context.toolName || 'Unknown'}
-2. **Your Planned Next Step**: "${nextTasks}"
-3. **Current Directive**: Execute the planned step now
+  private buildToolDefinitionsSection(toolDefinitions: string): string {
+    return `# 🛠️ AVAILABLE TOOLS
 
-⚠️ **IMPORTANT**: You are in the middle of a workflow. Continue with your planned action.`;
-    }
-    
-    return `
-### YOUR WORKFLOW PROGRESS:
-- Review the action history above
-- Determine what data is still needed
-- Continue with the next logical step`;
+## TOOL USAGE REQUIREMENTS
+- **Parameter names are CASE-SENSITIVE** - must match exactly
+- **ALL required parameters MUST be included** - no omissions
+- **Data types MUST match specifications** - string vs number vs boolean
+- **Follow the exact schema** - no extra or modified parameters
+
+## TOOL DEFINITIONS
+${toolDefinitions}
+
+## COMMON TOOL USAGE PATTERNS
+- File operations: Always check existence before reading
+- API calls: Include all required headers and parameters
+- Data processing: Validate input format before processing
+- Error handling: Anticipate and handle potential failures`;
   }
 
-  summarizeAvailableData(reports: ToolCallReport[]): string {
-    const successfulCalls = reports
-      .flatMap(r => r.toolCalls)
-      .filter(tc => tc.context.success);
-    if (successfulCalls.length === 0) {
-      return "- No successfully gathered data yet.";
-    }
-    return successfulCalls
-      .map(tc => `- ${tc.context.toolName}: Data available`)
-      .join('\n');
-  }
-
-  buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
+  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
     if (toolCallReports.length === 0) {
       return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
@@ -359,13 +332,10 @@ tool_calls:
       const toolSummary = report.toolCalls.map(tc =>
         `    - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'} ${tc.context.error ? `(Error: ${tc.context.error})` : ''}`
       ).join('\n');
-      
-      // Note: nextTasks is now a separate property, not embedded in report text
-      const nextActionHighlight = '';
-      
+
       return `
 ### ACTION ${idx + 1} | ${new Date().toISOString()}
-**Internal Reasoning**: ${report.report || 'No reasoning provided'}${nextActionHighlight}
+**Internal Reasoning**: ${report.report || 'No reasoning provided'}
 **Overall Status**: ${report.overallSuccess ? '✅ SUCCESS' : '❌ FAILED'}
 **Tools Executed**:
 ${toolSummary}
@@ -375,6 +345,9 @@ ${JSON.stringify(report.toolCalls.map(tc => ({ name: tc.context.toolName, succes
 \`\`\`
 ${report.error ? `**Error Details**: ${report.error}` : ''}`;
     }).join('\n');
+
+    const availableDataSummary = this.summarizeAvailableData(toolCallReports);
+    const progressionStatus = this.buildProgressionStatus(toolCallReports, nextTasks);
 
     return `# 📊 REPORTS AND RESULTS (Your Internal Log)
 
@@ -395,7 +368,7 @@ ${reportEntries}
 🎯 **MANDATORY**: Only use data listed below for user responses. If data is missing, use tools to gather it.
 
 **Available Fresh Data**:
-${this.summarizeAvailableData(toolCallReports)}
+${availableDataSummary}
 
 ## 🚫 DATA USAGE RULES
 ✅ **CORRECT**: Present data from tool results above
@@ -403,10 +376,10 @@ ${this.summarizeAvailableData(toolCallReports)}
 ❌ **FAILURE**: Telling user about data you "remember" but haven't recently gathered via tools
 
 ## 🎯 PROGRESSION STATUS
-${this.buildProgressionStatus(toolCallReports, nextTasks)}`;
+${progressionStatus}`;
   }
 
-  buildContextSection(context: Record<string, any>, options: PromptOptions): string {
+  private buildContextSection(context: Record<string, any>, options: PromptOptions): string {
     if (Object.keys(context).length === 0) {
       return `# 📎 CONTEXT
 **Status**: No additional context provided
@@ -439,7 +412,7 @@ ${contextEntries}
 - Don't act on context unless it relates to the current request`;
   }
 
-  buildConversation(conversationEntries: ConversationEntry[], limitNote: string): string {
+  private buildConversationHistorySection(conversationEntries: ConversationEntry[], limitNote: string): string {
     const formattedEntries = conversationEntries.map((entry, idx) => {
       const parts = [];
       if (entry.user) {
@@ -472,11 +445,7 @@ ${formattedEntries}
 ❌ **NEVER USE**: As a source of current data or factual information for responses`;
   }
 
-  /**
-   * ENHANCED: Build user request section with clear task progression
-   */
-  buildUserRequestSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
-    // If there's a nextTasks, emphasize continuation rather than fresh analysis
+  private buildUserRequestSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
     if (nextTasks) {
       return `# 🎯 CURRENT TASK & IMMEDIATE ACTION
 
@@ -505,7 +474,6 @@ Based on your previous analysis and the task "${nextTasks}":
 Stop reading and execute your planned action immediately.`;
     }
 
-    // Original behavior for fresh requests
     return `# 🎯 CURRENT TASK & IMMEDIATE ACTION
 
 ## USER REQUEST
@@ -555,7 +523,7 @@ Based on the checklist above, your next response should be:
 [Determine this yourself based on the decision framework]`;
   }
 
-  buildErrorRecoverySection(
+  private buildErrorRecoverySection(
     finalToolName: string,
     reportToolName: string,
     error: AgentError | null,
@@ -564,9 +532,7 @@ Based on the checklist above, your next response should be:
   ): string {
     if (!error) return '';
 
-    // Handle stagnation error specifically
     if (error.type === 'STAGNATION_ERROR') {
-      // Extract tool information from the error context
       const toolInfo = error.context?.toolInfo || 'Unknown tool';
       const toolArgs = error.context?.toolArgs || '{}';
       const isLastChance = error.context?.isLastChance || false;
@@ -705,6 +671,44 @@ Before retrying, ensure:
 Based on the error above, formulate and execute your recovery plan.`;
   }
 
+  private buildCustomSectionsContent(customSections: Record<string, string>): string {
+    return Object.entries(customSections).map(([name, content]) =>
+      `# ${name.toUpperCase()}\n${content}`
+    ).join('\n\n---\n\n');
+  }
+
+  private summarizeAvailableData(reports: ToolCallReport[]): string {
+    const successfulCalls = reports
+      .flatMap(r => r.toolCalls)
+      .filter(tc => tc.context.success);
+    if (successfulCalls.length === 0) {
+      return "- No successfully gathered data yet.";
+    }
+    return successfulCalls
+      .map(tc => `- ${tc.context.toolName}: Data available`)
+      .join('\n');
+  }
+
+  private buildProgressionStatus(reports: ToolCallReport[], nextTasks?: string | null): string {
+    const lastReport = reports[reports.length - 1];
+
+    if (nextTasks) {
+      return `
+### YOUR WORKFLOW PROGRESS:
+1. **Last Completed Action**: ${lastReport?.toolCalls[0]?.context.toolName || 'Unknown'}
+2. **Your Planned Next Step**: "${nextTasks}"
+3. **Current Directive**: Execute the planned step now
+
+⚠️ **IMPORTANT**: You are in the middle of a workflow. Continue with your planned action.`;
+    }
+
+    return `
+### YOUR WORKFLOW PROGRESS:
+- Review the action history above
+- Determine what data is still needed
+- Continue with the next logical step`;
+  }
+
   buildPrompt(params: BuildPromptParams): string {
     const {
       systemPrompt,
@@ -728,39 +732,23 @@ Based on the error above, formulate and execute your recovery plan.`;
     // System context
     sections.push(systemPrompt);
 
-    // Core instructions
-    sections.push(`${this.getFormatInstructions(finalToolName, reportToolName, this.responseFormat, options.batchMode)}`);
+    // Core instructions - format instructions with workflow rules and execution strategy embedded
+    sections.push(this.buildFormatInstructionsSection(finalToolName, reportToolName, this.responseFormat, options.batchMode));
 
-    // ENHANCED: Add immediate task directive if nextTasks exists
+    // Immediate task directive if nextTasks exists
     if (nextTasks) {
-      // Modify nextTasks to prioritize error fixing if lastError exists
-      const adjustednextTasks = lastError 
+      const adjustedNextTasks = lastError
         ? `Please fix this error first: ${lastError.getMessage()}, then you must continue to the following: ${nextTasks}`
         : nextTasks;
-      sections.push(this.buildImmediateTaskDirective(adjustednextTasks, finalToolName));
+      sections.push(this.buildImmediateTaskDirectiveSection(adjustedNextTasks, finalToolName));
     }
 
     // Available tools
-    sections.push(`# 🛠️ AVAILABLE TOOLS
-
-## TOOL USAGE REQUIREMENTS
-- **Parameter names are CASE-SENSITIVE** - must match exactly
-- **ALL required parameters MUST be included** - no omissions
-- **Data types MUST match specifications** - string vs number vs boolean
-- **Follow the exact schema** - no extra or modified parameters
-
-## TOOL DEFINITIONS
-${toolDefinitions}
-
-## COMMON TOOL USAGE PATTERNS
-- File operations: Always check existence before reading
-- API calls: Include all required headers and parameters
-- Data processing: Validate input format before processing
-- Error handling: Anticipate and handle potential failures`);
+    sections.push(this.buildToolDefinitionsSection(toolDefinitions));
 
     // Current state - filter toolCallReports 
     const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, nextTasks));
+    sections.push(this.buildReportsAndResultsSection(toolCallReports, finalToolName, reportToolName, nextTasks));
 
     // Context if needed
     if (options.includeContext) {
@@ -769,7 +757,7 @@ ${toolDefinitions}
 
     // Previous history if needed
     if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) {
-      sections.push(this.buildConversation(conversationEntries || [], conversationLimitNote || ''));
+      sections.push(this.buildConversationHistorySection(conversationEntries || [], conversationLimitNote || ''));
     }
 
     // Error recovery if needed
@@ -779,9 +767,7 @@ ${toolDefinitions}
 
     // Custom sections
     if (options.customSections) {
-      Object.entries(options.customSections).forEach(([name, content]) => {
-        sections.push(`# ${name.toUpperCase()}\n${content}`);
-      });
+      sections.push(this.buildCustomSectionsContent(options.customSections));
     }
 
     // Final user request
