@@ -20,7 +20,7 @@ export class DefaultPromptTemplate {
   /**
    * Enhanced workflow rules with clearer structure and examples
    */
-  private getWorkflowRules(finalToolName: string, reportToolName: string): string {
+  getWorkflowRules(finalToolName: string, reportToolName: string): string {
     return `
 ## 🧠 CORE INSTRUCTIONS & THINKING PROCESS
 
@@ -122,7 +122,7 @@ User: "Analyze Y and provide summary"
 `;
   }
 
-  private getExecutionStrategy(batchMode?: boolean): string {
+  getExecutionStrategy(batchMode?: boolean): string {
     const batchInfo = batchMode ? `
 ### BATCH MODE: ENABLED
 - **Mode**: You may receive and process multiple related requests in a single interaction.
@@ -137,7 +137,7 @@ User: "Analyze Y and provide summary"
     return batchInfo;
   }
 
-  private getFunctionCallingFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
+  getFunctionCallingFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
     return `# 🚨 RESPONSE FORMAT: JSON CODE BLOCKS ONLY 🚨
 
 ## ABSOLUTE REQUIREMENT
@@ -198,7 +198,7 @@ Ask yourself:
 `;
   }
 
-  private getYamlFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
+  getYamlFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
     return `# 📋 RESPONSE FORMAT: YAML CODE BLOCKS ONLY
 
 ## ABSOLUTE REQUIREMENT
@@ -265,8 +265,8 @@ tool_calls:
 `;
   }
 
-  private getFormatInstructions(finalToolName: string, reportToolName: string, batchMode?: boolean): string {
-    switch (this.responseFormat) {
+  getFormatInstructions(finalToolName: string, reportToolName: string, responseFormat: FormatMode, batchMode?: boolean): string {
+    switch (responseFormat) {
       case FormatMode.FUNCTION_CALLING:
         return this.getFunctionCallingFormatInstructions(finalToolName, reportToolName, batchMode);
       case FormatMode.YAML:
@@ -276,95 +276,10 @@ tool_calls:
     }
   }
 
-  buildPrompt(params: BuildPromptParams): string {
-    const {
-      systemPrompt,
-      userPrompt,
-      context,
-      currentInteractionHistory,
-      prevInteractionHistory,
-      lastError,
-      keepRetry,
-      finalToolName,
-      reportToolName,
-      toolDefinitions,
-      options,
-      nextTasks,
-      conversationEntries,
-      conversationLimitNote,
-      errorRecoveryInstructions
-    } = params;
-    const sections: string[] = [];
-
-    // System context
-    sections.push(systemPrompt);
-
-    // Core instructions
-    sections.push(`${this.getFormatInstructions(finalToolName, reportToolName, options.batchMode)}`);
-
-    // ENHANCED: Add immediate task directive if nextTasks exists
-    if (nextTasks) {
-      // Modify nextTasks to prioritize error fixing if lastError exists
-      const adjustednextTasks = lastError 
-        ? `Please fix this error first: ${lastError.getMessage()}, then you must continue to the following: ${nextTasks}`
-        : nextTasks;
-      sections.push(this.buildImmediateTaskDirective(adjustednextTasks, finalToolName));
-    }
-
-    // Available tools
-    sections.push(`# 🛠️ AVAILABLE TOOLS
-
-## TOOL USAGE REQUIREMENTS
-- **Parameter names are CASE-SENSITIVE** - must match exactly
-- **ALL required parameters MUST be included** - no omissions
-- **Data types MUST match specifications** - string vs number vs boolean
-- **Follow the exact schema** - no extra or modified parameters
-
-## TOOL DEFINITIONS
-${toolDefinitions}
-
-## COMMON TOOL USAGE PATTERNS
-- File operations: Always check existence before reading
-- API calls: Include all required headers and parameters
-- Data processing: Validate input format before processing
-- Error handling: Anticipate and handle potential failures`);
-
-    // Current state - filter toolCallReports 
-    const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, nextTasks));
-
-    // Context if needed
-    if (options.includeContext) {
-      sections.push(this.buildContextSection(context, options));
-    }
-
-    // Previous history if needed
-    if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) {
-      sections.push(this.buildConversation(conversationEntries || [], conversationLimitNote || ''));
-    }
-
-    // Error recovery if needed
-    if (lastError) {
-      sections.push(this.buildErrorRecoverySection(finalToolName, reportToolName, lastError, keepRetry, errorRecoveryInstructions));
-    }
-
-    // Custom sections
-    if (options.customSections) {
-      Object.entries(options.customSections).forEach(([name, content]) => {
-        sections.push(`# ${name.toUpperCase()}\n${content}`);
-      });
-    }
-
-    // Final user request
-    sections.push(this.buildUserRequestSection(userPrompt, finalToolName, reportToolName, nextTasks));
-
-    return sections.join('\n\n---\n\n');
-  }
-
   /**
    * ENHANCED: Build immediate task directive that appears early in the prompt
    */
-  private buildImmediateTaskDirective(nextTasks: string, finalToolName: string): string {
+  buildImmediateTaskDirective(nextTasks: string, finalToolName: string): string {
     return `# 🎯 IMMEDIATE TASK DIRECTIVE - HIGHEST PRIORITY
 
 ## ⚡ YOUR CURRENT TASK (FROM PREVIOUS ANALYSIS):
@@ -382,6 +297,41 @@ ${toolDefinitions}
 - Now execute this step without hesitation
 
 ================================================================================`;
+  }
+
+  /**
+   * ENHANCED: Build a clear progression status
+   */
+  buildProgressionStatus(reports: ToolCallReport[], nextTasks?: string | null): string {
+    const lastReport = reports[reports.length - 1];
+    
+    if (nextTasks) {
+      return `
+### YOUR WORKFLOW PROGRESS:
+1. **Last Completed Action**: ${lastReport?.toolCalls[0]?.context.toolName || 'Unknown'}
+2. **Your Planned Next Step**: "${nextTasks}"
+3. **Current Directive**: Execute the planned step now
+
+⚠️ **IMPORTANT**: You are in the middle of a workflow. Continue with your planned action.`;
+    }
+    
+    return `
+### YOUR WORKFLOW PROGRESS:
+- Review the action history above
+- Determine what data is still needed
+- Continue with the next logical step`;
+  }
+
+  summarizeAvailableData(reports: ToolCallReport[]): string {
+    const successfulCalls = reports
+      .flatMap(r => r.toolCalls)
+      .filter(tc => tc.context.success);
+    if (successfulCalls.length === 0) {
+      return "- No successfully gathered data yet.";
+    }
+    return successfulCalls
+      .map(tc => `- ${tc.context.toolName}: Data available`)
+      .join('\n');
   }
 
   buildReportSection(toolCallReports: ToolCallReport[], finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
@@ -454,41 +404,6 @@ ${this.summarizeAvailableData(toolCallReports)}
 
 ## 🎯 PROGRESSION STATUS
 ${this.buildProgressionStatus(toolCallReports, nextTasks)}`;
-  }
-
-  /**
-   * ENHANCED: Build a clear progression status
-   */
-  private buildProgressionStatus(reports: ToolCallReport[], nextTasks?: string | null): string {
-    const lastReport = reports[reports.length - 1];
-    
-    if (nextTasks) {
-      return `
-### YOUR WORKFLOW PROGRESS:
-1. **Last Completed Action**: ${lastReport?.toolCalls[0]?.context.toolName || 'Unknown'}
-2. **Your Planned Next Step**: "${nextTasks}"
-3. **Current Directive**: Execute the planned step now
-
-⚠️ **IMPORTANT**: You are in the middle of a workflow. Continue with your planned action.`;
-    }
-    
-    return `
-### YOUR WORKFLOW PROGRESS:
-- Review the action history above
-- Determine what data is still needed
-- Continue with the next logical step`;
-  }
-
-  private summarizeAvailableData(reports: ToolCallReport[]): string {
-    const successfulCalls = reports
-      .flatMap(r => r.toolCalls)
-      .filter(tc => tc.context.success);
-    if (successfulCalls.length === 0) {
-      return "- No successfully gathered data yet.";
-    }
-    return successfulCalls
-      .map(tc => `- ${tc.context.toolName}: Data available`)
-      .join('\n');
   }
 
   buildContextSection(context: Record<string, any>, options: PromptOptions): string {
@@ -788,5 +703,90 @@ Before retrying, ensure:
 
 ## YOUR RECOVERY ACTION
 Based on the error above, formulate and execute your recovery plan.`;
+  }
+
+  buildPrompt(params: BuildPromptParams): string {
+    const {
+      systemPrompt,
+      userPrompt,
+      context,
+      currentInteractionHistory,
+      prevInteractionHistory,
+      lastError,
+      keepRetry,
+      finalToolName,
+      reportToolName,
+      toolDefinitions,
+      options,
+      nextTasks,
+      conversationEntries,
+      conversationLimitNote,
+      errorRecoveryInstructions
+    } = params;
+    const sections: string[] = [];
+
+    // System context
+    sections.push(systemPrompt);
+
+    // Core instructions
+    sections.push(`${this.getFormatInstructions(finalToolName, reportToolName, this.responseFormat, options.batchMode)}`);
+
+    // ENHANCED: Add immediate task directive if nextTasks exists
+    if (nextTasks) {
+      // Modify nextTasks to prioritize error fixing if lastError exists
+      const adjustednextTasks = lastError 
+        ? `Please fix this error first: ${lastError.getMessage()}, then you must continue to the following: ${nextTasks}`
+        : nextTasks;
+      sections.push(this.buildImmediateTaskDirective(adjustednextTasks, finalToolName));
+    }
+
+    // Available tools
+    sections.push(`# 🛠️ AVAILABLE TOOLS
+
+## TOOL USAGE REQUIREMENTS
+- **Parameter names are CASE-SENSITIVE** - must match exactly
+- **ALL required parameters MUST be included** - no omissions
+- **Data types MUST match specifications** - string vs number vs boolean
+- **Follow the exact schema** - no extra or modified parameters
+
+## TOOL DEFINITIONS
+${toolDefinitions}
+
+## COMMON TOOL USAGE PATTERNS
+- File operations: Always check existence before reading
+- API calls: Include all required headers and parameters
+- Data processing: Validate input format before processing
+- Error handling: Anticipate and handle potential failures`);
+
+    // Current state - filter toolCallReports 
+    const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
+    sections.push(this.buildReportSection(toolCallReports, finalToolName, reportToolName, nextTasks));
+
+    // Context if needed
+    if (options.includeContext) {
+      sections.push(this.buildContextSection(context, options));
+    }
+
+    // Previous history if needed
+    if (options.includePreviousTaskHistory && prevInteractionHistory.length > 0) {
+      sections.push(this.buildConversation(conversationEntries || [], conversationLimitNote || ''));
+    }
+
+    // Error recovery if needed
+    if (lastError) {
+      sections.push(this.buildErrorRecoverySection(finalToolName, reportToolName, lastError, keepRetry, errorRecoveryInstructions));
+    }
+
+    // Custom sections
+    if (options.customSections) {
+      Object.entries(options.customSections).forEach(([name, content]) => {
+        sections.push(`# ${name.toUpperCase()}\n${content}`);
+      });
+    }
+
+    // Final user request
+    sections.push(this.buildUserRequestSection(userPrompt, finalToolName, reportToolName, nextTasks));
+
+    return sections.join('\n\n---\n\n');
   }
 }
