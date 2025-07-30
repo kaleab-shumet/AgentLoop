@@ -29,11 +29,17 @@ export class FileManagerConsole {
     }
 
     // Create agent
+    // this.agent = new SimpleFileManagerAgent({
+    //   service: 'azure',
+    //   apiKey: process.env.AZURE_OPENAI_API_KEY,
+    //   baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
+    //   model: 'gpt-4.1-mini'
+    // });
+
     this.agent = new SimpleFileManagerAgent({
-      service: 'azure',
-      apiKey: process.env.AZURE_OPENAI_API_KEY,
-      baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
-      model: 'gpt-4.1-mini'
+      service: 'google',
+      apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+      model: 'gemini-1.5-flash'
     });
 
     // Create readline interface

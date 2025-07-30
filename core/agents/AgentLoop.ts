@@ -406,6 +406,19 @@ export abstract class AgentLoop {
             );
           }
           
+          // Validation: Reject if only report tool is present
+          if (hasReportTool && parsedToolCalls.length < 2) {
+            throw new AgentError(
+              `INVALID TOOL USAGE: You cannot call only the '${this.REPORT_TOOL_NAME}' tool by itself. The report tool must be used alongside other tools.`,
+              AgentErrorType.TOOL_NOT_FOUND,
+              { 
+                rejectedPattern: 'report_tool_only',
+                parsedTools: parsedToolCalls.map(call => call.toolName),
+                instruction: `Call other tools alongside '${this.REPORT_TOOL_NAME}'`
+              }
+            );
+          }
+          
           connectionRetryCount = 0; // Reset retries on successful LLM response
 
           // executeToolCalls now directly adds results to toolCallHistory
@@ -519,7 +532,7 @@ export abstract class AgentLoop {
             lastError = errorResult.actualError;
             
             // Set next task to focus on fixing this specific error
-            nextTasks = `Fix this error: ${errorResult.actualError.getMessage()}`;
+            nextTasks = `Fix this error: ${errorResult.actualError.getMessage()}, after that do ${nextTasks}`;
           } else {
             // For system errors (feedbackToLLM = false), clear nextTasks and don't set lastError
             nextTasks = null;
