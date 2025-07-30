@@ -16,265 +16,247 @@ export class DefaultPromptTemplate {
     return this.responseFormat;
   }
 
-  // 1. CORE DIRECTIVE: The absolute mission, stated immediately.
+  // Core directive section: defines the agent's mission and workflow
   private buildCoreDirectiveSection(finalToolName: string, reportToolName: string): string {
-    return `# 🚨 CORE DIRECTIVE & MISSION
+    return `# CORE DIRECTIVE
 
-## YOUR PRIMARY OBJECTIVE
-Your SOLE purpose is to answer the user's request by following a strict process.
+## MISSION
+You are an agent designed to complete user requests through a structured two-phase process.
 
-### PHASE 1: DATA GATHERING
-- Use available tools to collect ALL information needed to answer the request. 
-- The gathered data will be stored in your private log, **Report and Results** section.
-- You MUST use the \`${reportToolName}\` tool with EVERY tool call in this phase.
+## PHASE 1: DATA GATHERING
+- Use appropriate tools to collect ALL necessary information
+- Track all data in the Reports and Results section
+- ALWAYS pair each tool call with the \`${reportToolName}\` tool
 
-### PHASE 2: FINAL RESPONSE
-- Once ALL data is gathered, use the \`${finalToolName}\` tool to present the complete, final answer.
-- You MUST also include the \`${reportToolName}\` tool with this final call.
+## PHASE 2: FINAL RESPONSE
+- Once all data is gathered, use \`${finalToolName}\` to deliver the complete answer
+- ALWAYS include \`${reportToolName}\` with your final answer
 
----
+## WORKFLOW
+1. Read user request and conversation history
+2. IF 'nextTasks' command exists: Execute it immediately
+3. IF no command:
+   - Review collected data in Reports and Results
+   - IF data incomplete: Call best tool + ${reportToolName}
+   - IF data complete: Call ${finalToolName} + ${reportToolName}
 
-## General Workflow Overview
-
-Follow this logic for every turn:
-1. Read the user prompt, understand the user intent, use last conversation history
-2.  **OBEY IMMEDIATE TASK**: If a 'nextTasks' command exists in '🎯 YOUR IMMEDIATE TASK', execute it immediately. This is your only priority.
-
-3.  **IF NO COMMAND, DECIDE**:
-    *   **Check Data**: Review 📊 REPORTS and RESULTS.
-    *   **If data is missing**: Call the single best tool to gather it + ${reportToolName}.
-    *   **If data is complete**: Call ${finalToolName} to present the final answer + ${reportToolName}.
-
-## 📜 RULES OF ENGAGEMENT (NON-NEGOTIABLE)
-
-* **ALWAYS** use ${reportToolName} with every tool call - NEVER call ${reportToolName} alone.
-* **ONLY** use tools from **AVAILABLE TOOLS**.
-* **ONLY** use data from **REPORTS and RESULTS** — no guessing.
-* **NEVER** reply in plain text, follow **RESPONSE FORMAT**.
-* **NEVER** use ${finalToolName} to state data — use it to show data.
-* **NEVER** end without calling ${finalToolName}.
-* **CRITICAL**: ${reportToolName} must ALWAYS accompany another action tool. If you only need to report, use ${finalToolName} + ${reportToolName} instead.
-* **INVALID**: Calling only ${reportToolName} without another tool is strictly forbidden.
-`;
+## STRICT RULES
+- ALWAYS pair every tool call with ${reportToolName}
+- ONLY use tools listed in Available Tools section
+- ONLY use data from Reports and Results - no guessing
+- NEVER respond with plain text
+- NEVER use ${finalToolName} until ready with complete answer
+- NEVER end interaction without calling ${finalToolName}
+- NEVER call ${reportToolName} alone - it must accompany another tool`;
   }
 
-  // 2. RESPONSE FORMAT: How the model MUST structure its output.
+  // Response format section: defines exactly how the agent must structure outputs
   private buildResponseFormatSection(reportToolName: string, finalToolName: string): string {
     if (this.responseFormat === FormatMode.YAML) {
-      return `# 📋 RESPONSE FORMAT: YAML CODE BLOCK ONLY
+      return `# RESPONSE FORMAT: YAML ONLY
 
-## YAML OUTPUT REQUIREMENTS
-- Your entire response MUST be a single **valid** YAML code block.
-- NO text before or after the \`\`\`yaml block.
-- Indent with 2 spaces. No tab indentation
-- use '|' for multiline
-- escape special characters
+## VALID FORMATS
 
-### Format 1: Data Gathering (Action Tool + Report Tool)
+### FORMAT 1: Data Gathering
 \`\`\`yaml
 tool_calls:
-  - name: [action_tool_name]  # MUST be a data-gathering tool, NOT ${reportToolName}
+  - name: [action_tool_name]  # Any tool except ${reportToolName}
     args:
       [param1]: [value1]
-  - name: ${reportToolName}   # ALWAYS accompanies the action tool above
+  - name: ${reportToolName}   # Must accompany action tool
     args:
-      report: "My Goal: [goal]. My Plan: [tool choice + reason]. Expected: [outcome]."
+      report: "Goal: [goal]. Plan: [plan]. Expected: [outcome]."
       nextTasks: |
-        1. [Next concrete step].
-        2. [Following step]. 
-        3. Use ${finalToolName} to present [final deliverable]."
+        1. [Next step]
+        2. [Following step]
+        3. Use ${finalToolName} to present [deliverable]
 \`\`\`
 
-### Format 2: Final Answer (Final Tool + Report Tool)
+### FORMAT 2: Final Answer
 \`\`\`yaml
 tool_calls:
-  - name: ${finalToolName}   # Present the final answer
+  - name: ${finalToolName}
     args:
-      [check tool schema for required parameters]
-  - name: ${reportToolName}  # ALWAYS accompanies the final tool
+      [required_parameters]
+  - name: ${reportToolName}
     args:
       report: "Task complete. Presenting final answer."
       nextTasks: "Task is complete."
 \`\`\`
 
-### ❌ INVALID FORMAT - NEVER DO THIS:
-\`\`\`yaml
-tool_calls:
-  - name: ${reportToolName}  # ❌ FORBIDDEN: ${reportToolName} alone
-    args:
-      report: "..."
-\`\`\`
-`;
+## REQUIREMENTS
+- Use ONLY valid YAML syntax with 2-space indentation
+- Use '|' for multiline text
+- Escape special characters
+- NEVER respond with plain text outside YAML block
+- NEVER call ${reportToolName} alone`;
     }
 
     // Default to Function Calling JSON
-    return `# 📋 RESPONSE FORMAT: JSON CODE BLOCK ONLY
+    return `# RESPONSE FORMAT: JSON ONLY
 
-## JSON OUTPUT REQUIREMENTS
-- Your entire response MUST be a single JSON code block.
-- NO text before or after the \`\`\`json block.
-- You should escape escape characters
-- Arguments MUST be a stringified JSON. Double-escape quotes (\`\\"\`).
+## VALID FORMATS
 
-### Format 1: Data Gathering (Action Tool + Report Tool)
+### FORMAT 1: Data Gathering
 \`\`\`json
 {
   "functionCalls": [
     { "name": "[action_tool_name]", "arguments": "{\\"param1\\": \\"value1\\"}" },
-    { "name": "${reportToolName}", "arguments": "{\\"report\\": \\"My Goal: [goal]. My Plan: [tool choice + reason]. Expected: [outcome].\\", \\"nextTasks\\": \\"1. [Next concrete step]. 2. [Following step]. 3. Use ${finalToolName} to present [final deliverable].\\"}" }
+    { "name": "${reportToolName}", "arguments": "{\\"report\\": \\"Goal: [goal]. Plan: [plan]. Expected: [outcome].\\", \\"nextTasks\\": \\"1. [Next step]. 2. [Following step]. 3. Use ${finalToolName} to present [deliverable].\\"}" }
   ]
 }
 \`\`\`
 
-### Format 2: Final Answer (Final Tool + Report Tool)
+### FORMAT 2: Final Answer
 \`\`\`json
 {
   "functionCalls": [
-    { "name": "${finalToolName}", "arguments": "[check tool schema for required parameters as stringified JSON]" },
+    { "name": "${finalToolName}", "arguments": "[required_parameters_as_stringified_JSON]" },
     { "name": "${reportToolName}", "arguments": "{\\"report\\": \\"Task complete. Presenting final answer.\\", \\"nextTasks\\": \\"Task is complete.\\"}" }
   ]
 }
 \`\`\`
 
-### ❌ INVALID FORMAT - NEVER DO THIS:
-\`\`\`json
-{
-  "functionCalls": [
-    { "name": "${reportToolName}", "arguments": "{\\"report\\": \\"....\\"}" }
-  ]
-}
-\`\`\`
-`;
+## REQUIREMENTS
+- Entire response must be a single valid JSON code block
+- No text before or after JSON block
+- Double-escape quotes in nested JSON strings
+- Arguments must be stringified JSON
+- NEVER call ${reportToolName} alone`;
   }
 
-  // 3. AVAILABLE TOOLS: The model's capabilities.
+  // Tools section: defines the agent's available capabilities
   private buildToolsSection(toolDefinitions: string): string {
-    return `# 🛠️ AVAILABLE TOOLS
+    return `# AVAILABLE TOOLS
 
-## TOOL USAGE RULES
-- Tool and parameter names are CASE-SENSITIVE. Match them exactly.
-- Provide ALL required parameters.
-- Data types MUST match the schema (string, number, etc.).
-- DO NOT use tools that are not on this list.
+## USAGE RULES
+- Tool and parameter names are CASE-SENSITIVE
+- Provide ALL required parameters
+- Match exact data types (string, number, boolean, etc.)
+- ONLY use tools listed below
 
 ${toolDefinitions}`;
   }
 
-  // 4. CONVERSATION HISTORY: Fixed to be properly read by the AI
+  // Conversation history section: provides context from previous interactions
   private buildConversationHistorySection(conversationEntries: ConversationEntry[], limitNote: string): string {
     if (conversationEntries.length === 0) return '';
     
     const formattedEntries = conversationEntries.map((entry, idx) => {
         let content = `## Turn ${idx + 1}`;
         if (entry.user) content += `\n**User**: ${entry.user}`;
-        if (entry.ai) {
-            // Include actual AI response if available, not just "(Responded with tool calls)"
-            content += `\n**Assistant**: ${entry.ai}`;
-        }
+        if (entry.ai) content += `\n**Assistant**: ${entry.ai}`;
         return content;
     }).join('\n\n');
 
-    return `# 💬 CONVERSATION HISTORY
-**Use this information** to understand the conversation context and maintain continuity.
+    return `# CONVERSATION HISTORY
 ${limitNote}
 
 ${formattedEntries}`;
   }
 
-  // 5. STATE & HISTORY: The model's "memory", most recent first.
-  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[]): string {
+  // Reports and results section: the agent's "memory" of previous actions
+  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], reportToolName:string): string {
     if (toolCallReports.length === 0) {
-      return `# 📊 REPORTS and RESULTS (Your Internal Monologue)
-**Status**: No actions taken yet. You have no data. Your first step MUST be to gather data using an action tool + report tool combination.`;
+      return `# REPORTS AND RESULTS
+
+**Status**: No data collected yet. First step: gather data using action tool + ${reportToolName}.`;
     }
 
     const reportEntries = toolCallReports.map((report, idx) => {
-      const toolSummary = report.toolCalls.map(tc => `  - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'}`).join('\n');
+      const toolSummary = report.toolCalls.map(tc => 
+        `  - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'}`
+      ).join('\n');
+      
       return `### Action #${idx + 1}
 **Reasoning**: ${report.report || 'N/A'}
 **Tools Used**:
 ${toolSummary}
 **Results**:
 \`\`\`json
-${JSON.stringify(report.toolCalls.map(tc => ({ name: tc.context.toolName, success: tc.context.success, context: tc.context })), null, 2)}
+${JSON.stringify(report.toolCalls.map(tc => ({ 
+  name: tc.context.toolName, 
+  success: tc.context.success, 
+  context: tc.context 
+})), null, 2)}
 \`\`\``;
-    }).join('\n');
+    }).join('\n\n');
 
-    return `# 📊 REPORTS & RESULTS (YOUR MEMORY)
+    return `# REPORTS AND RESULTS
 
-## DATA SOURCE HIERARCHY
-1. **TRUST THIS SECTION**: This is your SINGLE SOURCE OF TRUTH for data.
-2. **Latest Data**: This section contains latest updated data.
+## IMPORTANT
+- This is your SINGLE SOURCE OF TRUTH for all data
+- Latest actions appear first
+- Use ONLY this data for your responses
 
 ## ACTION LOG
 ${reportEntries}`;
   }
 
-  // 6. ERROR RECOVERY: Specific instructions for when things go wrong.
+  // Error recovery section: instructions for handling errors
   private buildErrorRecoverySection(finalToolName: string, reportToolName: string, error: AgentError | null): string {
     if (!error) return '';
 
-    return `# 🆘 ERROR DETECTED: RECOVERY PROTOCOL
+    return `# ERROR RECOVERY
 
 ## ERROR DETAILS
 - **Type**: ${error.type || 'Unknown'}
 - **Message**: ${error.message}
 
-## RECOVERY INSTRUCTIONS
-1.  **Analyze**: Read the error message. Why did it happen? (e.g., wrong parameter, missing data, calling ${reportToolName} alone).
-2.  **Re-plan**: Formulate a new plan to fix the error. DO NOT repeat the same action.
-3.  **Execute**: Call the correct action tool + ${reportToolName} combination with corrected parameters.
-4.  **Report**: In your \`${reportToolName}\` call, explain what you have already done and its result. Then plan your next task
-    - **Example Report**: "My Goal: [original goal]. I have done this [task] but failed due to [error cause]. My new plan is to [new action] to fix it. Expected: [new outcome]."
+## RECOVERY STEPS
+1. Analyze the error cause
+2. Create a new plan that avoids repeating the error
+3. Execute corrected action + ${reportToolName}
+4. Explain in your report:
+   - What you attempted
+   - Why it failed
+   - Your new approach
 
-## COMMON ERROR FIXES
-- **If you called ${reportToolName} alone**: You must call an action tool + ${reportToolName} together.
-- **If you need to just report status**: Use ${finalToolName} + ${reportToolName} instead of ${reportToolName} alone.`;
+## COMMON FIXES
+- If you called ${reportToolName} alone: ALWAYS pair with an action tool
+- If you need to just report: Use ${finalToolName} + ${reportToolName}
+- If parameter error: Check exact parameter names and data types
+- If missing data: Gather required information first`;
   }
 
-  // 7. THE TASK: The final, immediate command.
+  // Task section: defines the immediate action for the agent
   private buildTaskSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
     if (nextTasks) {
-      return `# 🎯 YOUR IMMEDIATE TASK
+      return `# IMMEDIATE TASK
 
-## CONTEXT
-You are in the middle of executing a plan. You previously decided on the following action.
-
-## ⚡ YOUR COMMAND
-> **${nextTasks}**
+## COMMAND
+> ${nextTasks}
 
 ## INSTRUCTIONS
-- **DO NOT RE-EVALUATE**. Execute this command immediately.
-- This is your plan. Follow it.
-- Your next response must be a tool call to perform this task.
-- **REMEMBER**: Always use action tool + ${reportToolName} together, never ${reportToolName} alone.`;
+- Execute this command immediately without re-evaluation
+- This is your previously determined plan
+- REMEMBER: Always pair tools with ${reportToolName}`;
     }
 
-    return `# 🎯 YOUR IMMEDIATE TASK
+    return `# IMMEDIATE TASK
 
 ## USER REQUEST
-> **${userPrompt}**
+> ${userPrompt}
 
-## EXECUTION REMINDER
-- If you need to gather data: Use [action_tool] + ${reportToolName}
-- If you're ready to answer: Use ${finalToolName} + ${reportToolName}
-- **NEVER** use ${reportToolName} by itself`;
+## EXECUTION STEPS
+1. If data needed: Use [action_tool] + ${reportToolName}
+2. If data complete: Use ${finalToolName} + ${reportToolName}
+3. NEVER use ${reportToolName} alone`;
   }
 
-  // This is a helper not directly used in the final prompt string but good for organization.
+  // Helper for building custom sections
   private buildCustomSectionsContent(customSections: Record<string, string>): string {
     return Object.entries(customSections).map(([name, content]) =>
       `# ${name.toUpperCase()}\n${content}`
-    ).join('\n\n---\n\n');
+    ).join('\n\n');
   }
 
-  // Main build method with optimized order and structure.
+  // Main method to build the complete prompt
   buildPrompt(params: BuildPromptParams): string {
     const {
       systemPrompt,
       userPrompt,
       currentInteractionHistory,
-      prevInteractionHistory,
       lastError,
       finalToolName,
       reportToolName,
@@ -283,45 +265,43 @@ You are in the middle of executing a plan. You previously decided on the followi
       nextTasks,
       conversationEntries,
       conversationLimitNote,
-      // `context`, `keepRetry`, `errorRecoveryInstructions` are simplified/handled within sections
     } = params;
+    
     const sections: string[] = [];
 
-    // --- PROMPT STRUCTURE ---
-    // The order is critical for guiding the model's focus.
-
-    // 1. System Prompt & Core Mission: Who you are and your fundamental objective.
-    sections.push(systemPrompt);
-    sections.push(this.buildCoreDirectiveSection(finalToolName, reportToolName));
-
-    // 2. Response Format: The syntax you MUST use for every response.
-    sections.push(this.buildResponseFormatSection(reportToolName, finalToolName));
-
-    // 3. Tools: Your available capabilities.
-    sections.push(this.buildToolsSection(toolDefinitions));
-
-    // 4. CONVERSATION HISTORY MOVED BEFORE REPORTS for better context awareness
-    if (options.includePreviousTaskHistory && conversationEntries && conversationEntries.length > 0) {
-        sections.push(this.buildConversationHistorySection(conversationEntries, conversationLimitNote || ''));
+    // Add system prompt if provided
+    if (systemPrompt) {
+      sections.push(systemPrompt);
     }
 
-    // 5. State & History: Your memory of what has been done.
-    const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportsAndResultsSection(toolCallReports));
+    // Add core sections in logical order
+    sections.push(this.buildCoreDirectiveSection(finalToolName, reportToolName));
+    sections.push(this.buildResponseFormatSection(reportToolName, finalToolName));
+    sections.push(this.buildToolsSection(toolDefinitions));
 
-    // 6. Error Handling (if applicable): A special state that overrides the normal flow.
+    // Add conversation history if enabled and available
+    if (options.includePreviousTaskHistory && conversationEntries && conversationEntries.length > 0) {
+      sections.push(this.buildConversationHistorySection(conversationEntries, conversationLimitNote || ''));
+    }
+
+    // Add reports and results from current interaction
+    const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
+    sections.push(this.buildReportsAndResultsSection(toolCallReports, reportToolName));
+
+    // Add error recovery if an error occurred
     if (lastError) {
       sections.push(this.buildErrorRecoverySection(finalToolName, reportToolName, lastError));
     }
     
-    // 7. Custom Sections (if any)
+    // Add custom sections if provided
     if (options.customSections) {
-        sections.push(this.buildCustomSectionsContent(options.customSections));
+      sections.push(this.buildCustomSectionsContent(options.customSections));
     }
 
-    // 8. The Final Command: The specific, immediate action to take.
+    // Add immediate task section
     sections.push(this.buildTaskSection(userPrompt, finalToolName, reportToolName, nextTasks));
 
+    // Join all sections with clear separation
     return sections.join('\n\n---\n\n');
   }
 }

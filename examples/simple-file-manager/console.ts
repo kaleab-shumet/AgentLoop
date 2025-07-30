@@ -39,7 +39,7 @@ export class FileManagerConsole {
     this.agent = new SimpleFileManagerAgent({
       service: 'google',
       apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-      model: 'gemini-1.5-flash'
+      model: 'gemini-2.0-flash'
     });
 
     // Create readline interface
