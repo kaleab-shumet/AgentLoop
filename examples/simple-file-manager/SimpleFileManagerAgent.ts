@@ -131,7 +131,7 @@ Always be helpful and respond to the user's communication style!`;
       description: 'Delete one or more files from the filesystem. Use with caution as this cannot be undone. Note: Never use this tool without user confirmation to delete. Use your the final tool to confirm the user first',
       argsSchema: z.object({
         paths: z.array(z.string()).describe('Array of file paths to delete (relative or absolute). Can be a single file or multiple files.'),
-        askedForConfirmation: z.boolean().default(false).describe("Only set this to true after explicitly asking the user to confirm the deletion. Do not set it to true without confirming deletion for ALL specified paths.")
+        askedForConfirmation: z.boolean().describe("Only set this to true after explicitly asking the user to confirm the deletion. Do not set it to true without confirming deletion for ALL specified paths.")
       }),
       handler: this.toolHandlers.deleteFiles.bind(this.toolHandlers)
     }));

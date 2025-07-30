@@ -33,9 +33,9 @@ You are an agent designed to complete user requests through a structured two-pha
 - ALWAYS include \`${reportToolName}\` with your final answer
 
 ## WORKFLOW
-1. Read user request and conversation history
-2. IF 'nextTasks' command exists: Execute it immediately
-3. IF no command:
+1. Read and understand user request and conversation history
+2. IF 'nextTasks' section exists: Execute it immediately
+3. IF 'nextTasks' section does not section exist:
    - Review collected data in Reports and Results
    - IF data incomplete: Call best tool + ${reportToolName}
    - IF data complete: Call ${finalToolName} + ${reportToolName}
@@ -65,11 +65,11 @@ tool_calls:
       [param1]: [value1]
   - name: ${reportToolName}   # Must accompany action tool
     args:
-      report: "Goal: [goal]. Plan: [plan]. Expected: [outcome]."
+      report: "Goal: [goal]. Action: [what u did]. Expected: [outcome]."
       nextTasks: |
-        1. [Next step]
-        2. [Following step]
-        3. Use ${finalToolName} to present [deliverable]
+        => [Next step]
+        => [Following step]
+        => Use ${finalToolName} to present [deliverable]
 \`\`\`
 
 ### FORMAT 2: Final Answer
@@ -88,8 +88,7 @@ tool_calls:
 - Use ONLY valid YAML syntax with 2-space indentation
 - Use '|' for multiline text
 - Escape special characters
-- NEVER respond with plain text outside YAML block
-- NEVER call ${reportToolName} alone`;
+- NEVER respond with plain text outside YAML block`;
     }
 
     // Default to Function Calling JSON
@@ -102,7 +101,7 @@ tool_calls:
 {
   "functionCalls": [
     { "name": "[action_tool_name]", "arguments": "{\\"param1\\": \\"value1\\"}" },
-    { "name": "${reportToolName}", "arguments": "{\\"report\\": \\"Goal: [goal]. Plan: [plan]. Expected: [outcome].\\", \\"nextTasks\\": \\"1. [Next step]. 2. [Following step]. 3. Use ${finalToolName} to present [deliverable].\\"}" }
+    { "name": "${reportToolName}", "arguments": "{\\"report\\": \\"Goal: [goal]. Action: [what u did]. Expected: [outcome].\\", \\"nextTasks\\": \\"=> [Next step]. => [Following step]. => Use ${finalToolName} to present [deliverable].\\"}" }
   ]
 }
 \`\`\`
@@ -141,22 +140,27 @@ ${toolDefinitions}`;
   // Conversation history section: provides context from previous interactions
   private buildConversationHistorySection(conversationEntries: ConversationEntry[], limitNote: string): string {
     if (conversationEntries.length === 0) return '';
-    
+
     const formattedEntries = conversationEntries.map((entry, idx) => {
-        let content = `## Turn ${idx + 1}`;
-        if (entry.user) content += `\n**User**: ${entry.user}`;
-        if (entry.ai) content += `\n**Assistant**: ${entry.ai}`;
-        return content;
+      let content = `## Turn ${idx + 1}`;
+      if (entry.user) content += `\n**User**: ${entry.user}`;
+      if (entry.ai) content += `\n**Assistant**: ${entry.ai}`;
+      return content;
     }).join('\n\n');
 
-    return `# CONVERSATION HISTORY
+    return `# CONVERSATION HISTORY  
 ${limitNote}
+${formattedEntries}
 
-${formattedEntries}`;
+ **
+ Note: Use this section to maintain the flow and continuity of the conversation.
+ Do NOT greet or introduce yourself repeatedly
+ **
+`;
   }
 
   // Reports and results section: the agent's "memory" of previous actions
-  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], reportToolName:string): string {
+  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], reportToolName: string): string {
     if (toolCallReports.length === 0) {
       return `# REPORTS AND RESULTS
 
@@ -164,21 +168,20 @@ ${formattedEntries}`;
     }
 
     const reportEntries = toolCallReports.map((report, idx) => {
-      const toolSummary = report.toolCalls.map(tc => 
+      const toolSummary = report.toolCalls.map(tc =>
         `  - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'}`
       ).join('\n');
-      
+
       return `### Action #${idx + 1}
-**Reasoning**: ${report.report || 'N/A'}
 **Tools Used**:
 ${toolSummary}
 **Results**:
 \`\`\`json
-${JSON.stringify(report.toolCalls.map(tc => ({ 
-  name: tc.context.toolName, 
-  success: tc.context.success, 
-  context: tc.context 
-})), null, 2)}
+${JSON.stringify(report.toolCalls.map(tc => ({
+        name: tc.context.toolName,
+        success: tc.context.success,
+        context: tc.context
+      })), null, 2)}
 \`\`\``;
     }).join('\n\n');
 
@@ -186,7 +189,6 @@ ${JSON.stringify(report.toolCalls.map(tc => ({
 
 ## IMPORTANT
 - This is your SINGLE SOURCE OF TRUTH for all data
-- Latest actions appear first
 - Use ONLY this data for your responses
 
 ## ACTION LOG
@@ -238,10 +240,11 @@ ${reportEntries}`;
 ## USER REQUEST
 > ${userPrompt}
 
-## EXECUTION STEPS
-1. If data needed: Use [action_tool] + ${reportToolName}
-2. If data complete: Use ${finalToolName} + ${reportToolName}
-3. NEVER use ${reportToolName} alone`;
+## Reminder
+1. Understand user request, refer Conversation History
+2. If data needed: Use [action_tool] + ${reportToolName}
+3. If data complete: Use ${finalToolName} + ${reportToolName}
+note:  NEVER use ${reportToolName} alone`;
   }
 
   // Helper for building custom sections
@@ -266,7 +269,7 @@ ${reportEntries}`;
       conversationEntries,
       conversationLimitNote,
     } = params;
-    
+
     const sections: string[] = [];
 
     // Add system prompt if provided
@@ -292,7 +295,7 @@ ${reportEntries}`;
     if (lastError) {
       sections.push(this.buildErrorRecoverySection(finalToolName, reportToolName, lastError));
     }
-    
+
     // Add custom sections if provided
     if (options.customSections) {
       sections.push(this.buildCustomSectionsContent(options.customSections));
