@@ -154,7 +154,6 @@ ${formattedEntries}
 
  **
  Note: Use this section to maintain the flow and continuity of the conversation.
- Do NOT greet or introduce yourself repeatedly
  **
 `;
   }
