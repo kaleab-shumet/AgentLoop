@@ -3,11 +3,11 @@ import { TurnState } from "../agents/TurnState";
 import { AgentError } from "../utils/AgentError";
 
 /**
- * Format mode for the agent - function calling and YAML mode are supported
+ * Format mode for the agent - function calling and TOML modes are supported
  */
 export enum FormatMode {
   FUNCTION_CALLING = "function_calling",
-  YAML = "yaml"
+  TOML = "toml"
 }
 
 /**

@@ -1,10 +1,10 @@
 import { FormatMode, FormatHandler } from "../types/types";
 import { FunctionCallingFormatHandler } from "./FunctionCallingFormatHandler";
-import { YamlFormatHandler } from "./YamlFormatHandler";
+import { TomlFormatHandler } from "./TomlFormatHandler";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 
 /**
- * Factory for creating response handlers - function calling and YAML mode are supported
+ * Factory for creating response handlers - function calling and TOML modes are supported
  */
 export class FormatHandlerFactory {
   private static handlers: Map<FormatMode, FormatHandler> = new Map();
@@ -18,8 +18,8 @@ export class FormatHandlerFactory {
         case FormatMode.FUNCTION_CALLING:
           this.handlers.set(mode, new FunctionCallingFormatHandler());
           break;
-        case FormatMode.YAML:
-          this.handlers.set(mode, new YamlFormatHandler());
+        case FormatMode.TOML:
+          this.handlers.set(mode, new TomlFormatHandler());
           break;
         default:
           throw new AgentError(

@@ -1,13 +1,14 @@
 import { ZodTypeAny } from "zod";
 import { Tool, PendingToolCall, FormatHandler, FunctionCallTool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
-import { parse as parseYaml } from "yaml";
+import { TomlSanitizer } from "../utils/TomlSanitizer";
+import * as TOML from "@iarna/toml";
 import zodToJsonSchema from "zod-to-json-schema";
 
 /**
- * Handles YAML-based response format for tool calls
+ * Handles TOML-based response format for tool calls
  */
-export class YamlFormatHandler implements FormatHandler {
+export class TomlFormatHandler implements FormatHandler {
   
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     const schemaMap = tools.map(t => {
@@ -30,42 +31,49 @@ export class YamlFormatHandler implements FormatHandler {
 
 
 parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[] {
-  // Look for YAML blocks in the response
-  const yamlMatch = response.match(/```ya?ml\s*\n([\s\S]+?)\n?```/);
-  if (!yamlMatch) {
+  // Look for TOML blocks in the response (with or without code block markers)
+  let tomlMatch = response.match(/```toml\s*\n([\s\S]+?)\n?```/);
+  let tomlContent: string;
+  
+  if (tomlMatch) {
+    tomlContent = tomlMatch[1].trim();
+  } else if (response.trim().includes('tool_calls') || response.includes('[[tool_calls]]')) {
+    // Handle raw TOML without code block markers
+    tomlContent = response.trim();
+  } else {
     throw new AgentError(
-      "No YAML block found in response", 
+      "No TOML block found in response", 
       AgentErrorType.INVALID_RESPONSE,
       { response: response.substring(0, 500) + (response.length > 500 ? '...' : '') }
     );
   }
 
-  const yamlContent = yamlMatch[1].trim();
+  const sanitizedTomlContent = TomlSanitizer.sanitizeTomlContent(tomlContent);
 
   try {
-    const parsedYaml = parseYaml(yamlContent);
+    const parsedToml = TOML.parse(sanitizedTomlContent);
     
 
-    // Handle different YAML structures
+    // Handle different TOML structures
     let toolCalls: any[] = [];
 
-    if (Array.isArray(parsedYaml)) {
+    if (Array.isArray(parsedToml)) {
       // Direct array of tool calls
-      toolCalls = parsedYaml;
-    } else if (parsedYaml.tools && Array.isArray(parsedYaml.tools)) {
+      toolCalls = parsedToml;
+    } else if (parsedToml.tools && Array.isArray(parsedToml.tools)) {
       // Tools wrapped in a tools array
-      toolCalls = parsedYaml.tools;
-    } else if (parsedYaml.tool_calls && Array.isArray(parsedYaml.tool_calls)) {
+      toolCalls = parsedToml.tools;
+    } else if (parsedToml.tool_calls && Array.isArray(parsedToml.tool_calls)) {
       // Tools wrapped in a tool_calls array
-      toolCalls = parsedYaml.tool_calls;
-    } else if (parsedYaml.name) {
+      toolCalls = parsedToml.tool_calls;
+    } else if (parsedToml.name) {
       // Single tool call object
-      toolCalls = [parsedYaml];
+      toolCalls = [parsedToml];
     } else {
       throw new AgentError(
-        "Invalid YAML structure for tool calls - expected array of tools or single tool with 'name' field", 
+        "Invalid TOML structure for tool calls - expected array of tools or single tool with 'name' field", 
         AgentErrorType.INVALID_RESPONSE,
-        { parsedYaml: parsedYaml, expectedStructure: 'array of tools or single tool with name field' }
+        { parsedToml: parsedToml, expectedStructure: 'array of tools or single tool with name field' }
       );
     }
 
@@ -124,11 +132,11 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
       throw error;
     }
     throw new AgentError(
-      `Failed to parse YAML response: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to parse TOML response: ${error instanceof Error ? error.message : String(error)}`,
       AgentErrorType.INVALID_RESPONSE,
       { 
         originalError: error instanceof Error ? error.message : String(error),
-        yamlContent: yamlContent.substring(0, 500) + (yamlContent.length > 500 ? '...' : '')
+        tomlContent: tomlContent.substring(0, 500) + (tomlContent.length > 500 ? '...' : '')
       }
     );
   }

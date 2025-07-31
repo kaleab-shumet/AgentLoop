@@ -208,7 +208,9 @@ export abstract class AgentLoop {
       const latestReport = reportResults[reportResults.length - 1];
       const nextTasks = latestReport.context.nextTasks;
       const report = latestReport.context.report;
+      const goal = latestReport.context.goal;
       console.log("---------------------------------------");
+      console.log("goal: ", goal);
       console.log("report: ", report);
       console.log("nextTasks: ", nextTasks);
       console.log("---------------------------------------");
@@ -276,8 +278,8 @@ export abstract class AgentLoop {
    * Get default prompt manager configuration based on execution mode
    */
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
-    const responseFormat = formatMode === FormatMode.YAML
-      ? FormatMode.YAML
+    const responseFormat = formatMode === FormatMode.TOML
+      ? FormatMode.TOML
       : FormatMode.FUNCTION_CALLING;
 
     return {
@@ -1063,6 +1065,7 @@ export abstract class AgentLoop {
         name: this.REPORT_TOOL_NAME,
         description: `Report which tools you called in this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this report.`,
         argsSchema: z.object({
+          goal: z.string().describe("The user's primary goal or intent that this iteration is working towards achieving."),
           report: z.string().describe("State which specific tools you called in this iteration and the reason why. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
           nextTasks: z.string().describe("Describe the complete plan from the next action all the way to the final tool call using numbered listing format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'.")
         }),
@@ -1070,6 +1073,7 @@ export abstract class AgentLoop {
           return {
             toolName: name,
             success: true,
+            goal: args.goal,
             report: args.report,
             nextTasks: args.nextTasks,
           };

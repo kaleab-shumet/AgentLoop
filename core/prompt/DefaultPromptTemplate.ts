@@ -52,43 +52,51 @@ You are an agent designed to complete user requests through a structured two-pha
 
   // Response format section: defines exactly how the agent must structure outputs
   private buildResponseFormatSection(reportToolName: string, finalToolName: string): string {
-    if (this.responseFormat === FormatMode.YAML) {
-      return `# RESPONSE FORMAT: YAML ONLY
+    if (this.responseFormat === FormatMode.TOML) {
+      return `# RESPONSE FORMAT: TOML ONLY
 
 ## VALID FORMATS
 
 ### FORMAT 1: Data Gathering
-\`\`\`yaml
-tool_calls:
-  - name: [action_tool_name]  # Any tool except ${reportToolName}
-    args:
-      [param1]: [value1]
-  - name: ${reportToolName}   # Must accompany action tool
-    args:
-      report: "Goal: [goal]. Action: [what u did]. Expected: [outcome]."
-      nextTasks: |
-        => [Next step]
-        => [Following step]
-        => Use ${finalToolName} to present [deliverable]
+\`\`\`toml
+[[tool_calls]]
+name = """[action_tool_name]"""  # Any tool except ${reportToolName}
+[tool_calls.args]
+param1 = """value1"""
+
+[[tool_calls]]
+name = """${reportToolName}"""   # Must accompany action tool
+[tool_calls.args]
+goal = """[user's primary intent or objective]"""
+report = """Action: [what u did]. Expected: [outcome]."""
+nextTasks = """
+1. [Next step]
+2. [Following step]
+3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].
+"""
 \`\`\`
 
 ### FORMAT 2: Final Answer
-\`\`\`yaml
-tool_calls:
-  - name: ${finalToolName}
-    args:
-      [required_parameters]
-  - name: ${reportToolName}
-    args:
-      report: "Task complete. Presenting final answer."
-      nextTasks: "Task is complete."
+\`\`\`toml
+[[tool_calls]]
+name = """${finalToolName}"""
+[tool_calls.args]
+# required parameters here
+
+[[tool_calls]]
+name = """${reportToolName}"""
+[tool_calls.args]
+goal = """[user's primary intent or objective]"""
+report = """Task complete. Presenting final answer."""
+nextTasks = """Task is complete."""
 \`\`\`
 
 ## REQUIREMENTS
-- Use ONLY valid YAML syntax with 2-space indentation
-- Use '|' for multiline text
-- Escape special characters
-- NEVER respond with plain text outside YAML block`;
+- Use ONLY valid TOML syntax
+- Use triple double quotes """ for ALL string values (not single quotes)
+- If string contains triple quotes, escape them as \\"""
+- Quote string values properly with triple double quotes
+- NEVER respond with plain text outside TOML block`;
     }
 
     // Default to Function Calling JSON
@@ -101,7 +109,7 @@ tool_calls:
 {
   "functionCalls": [
     { "name": "[action_tool_name]", "arguments": "{\\"param1\\": \\"value1\\"}" },
-    { "name": "${reportToolName}", "arguments": "{\\"report\\": \\"Goal: [goal]. Action: [what u did]. Expected: [outcome].\\", \\"nextTasks\\": \\"=> [Next step]. => [Following step]. => Use ${finalToolName} to present [deliverable].\\"}" }
+    { "name": "${reportToolName}", "arguments": "{\\"goal\\": \\"[user's primary intent or objective]\\", \\"report\\": \\"Action: [what u did]. Expected: [outcome].\\", \\"nextTasks\\": \\"1. [Next step]. 2. [Following step]. 3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].\\"}" }
   ]
 }
 \`\`\`
@@ -111,7 +119,7 @@ tool_calls:
 {
   "functionCalls": [
     { "name": "${finalToolName}", "arguments": "[required_parameters_as_stringified_JSON]" },
-    { "name": "${reportToolName}", "arguments": "{\\"report\\": \\"Task complete. Presenting final answer.\\", \\"nextTasks\\": \\"Task is complete.\\"}" }
+    { "name": "${reportToolName}", "arguments": "{\\"goal\\": \\"[user's primary intent or objective]\\", \\"report\\": \\"Task complete. Presenting final answer.\\", \\"nextTasks\\": \\"Task is complete.\\"}" }
   ]
 }
 \`\`\`
