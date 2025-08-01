@@ -4,6 +4,7 @@ import { DefaultAIProvider } from '../../core/providers/DefaultAIProvider';
 import { AIConfig } from '../../core/types/types';
 import { ToolHandlers } from './ToolHandlers';
 import * as dotenv from 'dotenv';
+import * as path from 'path';
 
 // Load environment variables
 dotenv.config();
@@ -52,7 +53,7 @@ Always be helpful and respond to the user's communication style!`;
 
   private toolHandlers: ToolHandlers;
 
-  constructor(providerConfig: ProviderConfig & { baseURL?: string }, basePath: string = process.cwd()+"\\testfolder") {
+  constructor(providerConfig: ProviderConfig & { baseURL?: string }, basePath: string = path.join(process.cwd(), 'testfolder')) {
     // Configure AI provider
     const aiConfig: AIConfig = {
       service: providerConfig.service as any,

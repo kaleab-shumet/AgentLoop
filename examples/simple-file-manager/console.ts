@@ -2,6 +2,7 @@ import { SimpleFileManagerAgent } from './SimpleFileManagerAgent';
 import { Interaction } from '../../core/types/types';
 import * as dotenv from 'dotenv';
 import * as readline from 'readline';
+import * as path from 'path';
 
 // Load environment variables
 dotenv.config();
@@ -39,7 +40,7 @@ export class FileManagerConsole {
     this.agent = new SimpleFileManagerAgent({
       service: 'google',
       apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-      model: 'gemini-2.5-flash'
+      model: 'gemini-1.5-flash'
     });
 
     // Create readline interface
@@ -104,7 +105,7 @@ export class FileManagerConsole {
           userPrompt: input,
           prevInteractionHistory: this.conversationHistory,
           context: {
-            workingDirectory: process.cwd()+"\\testfolder",
+            workingDirectory: path.join(process.cwd(), 'testfolder'),
             timestamp: new Date().toISOString()
           }
         });
