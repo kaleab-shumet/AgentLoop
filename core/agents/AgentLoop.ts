@@ -249,7 +249,7 @@ export abstract class AgentLoop {
         const isLastChance = existingData.count === terminationThreshold;
         
         return new AgentError(
-          `Stagnation detected: Agent is repeating similar reasoning. Similarity: ${(similarity * 100).toFixed(1)}% (occurrence #${existingData.count})${isLastChance ? ' - FINAL WARNING: Next similar attempt will terminate the agent!' : ''}`,
+          `Stagnation detected: ${(similarity * 100).toFixed(1)}% similarity (#${existingData.count})${isLastChance ? ' - Final warning!' : ''}`,
           AgentErrorType.STAGNATION_ERROR,
           { 
             currentHash: currentSimhash, 
@@ -397,7 +397,7 @@ export abstract class AgentLoop {
           if (!hasReportTool) {
             const toolsList = parsedToolCalls.map(call => call.toolName).join(', ');
             throw new AgentError(
-              `CRITICAL ERROR: You MUST include the '${this.REPORT_TOOL_NAME}' tool with EVERY response. You called these tools: [${toolsList}] but forgot to include '${this.REPORT_TOOL_NAME}'. Please retry your response and include '${this.REPORT_TOOL_NAME}' along with your other tool calls.`,
+              `Missing required '${this.REPORT_TOOL_NAME}' tool. Called: [${toolsList}]`,
               AgentErrorType.TOOL_NOT_FOUND,
               { 
                 requiredTool: this.REPORT_TOOL_NAME,
@@ -411,7 +411,7 @@ export abstract class AgentLoop {
           // Validation: Reject if only report tool is present
           if (hasReportTool && parsedToolCalls.length < 2) {
             throw new AgentError(
-              `INVALID TOOL USAGE: You cannot call only the '${this.REPORT_TOOL_NAME}' tool by itself. The report tool must be used alongside other tools.`,
+              `Cannot call '${this.REPORT_TOOL_NAME}' tool alone. Use with other tools.`,
               AgentErrorType.TOOL_NOT_FOUND,
               { 
                 rejectedPattern: 'report_tool_only',

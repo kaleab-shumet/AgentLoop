@@ -48,7 +48,7 @@ export class FunctionCallingFormatHandler implements FormatHandler {
 
     if (!result.success) {
       throw new AgentError(
-        `Invalid arguments for function "${functionName}": ${JSON.stringify(result.error.issues)}`,
+        `Invalid arguments for function "${functionName}": ${result.error.message}`,
         AgentErrorType.INVALID_INPUT,
         { 
           toolName: functionName, 
@@ -145,7 +145,7 @@ export class FunctionCallingFormatHandler implements FormatHandler {
       } catch (secondError) {
         // If all parsing attempts fail, throw the original error
         throw new AgentError(
-          `Failed to parse JSON arguments: ${error instanceof Error ? error.message : String(error)}`,
+          `JSON parse failed: ${error instanceof Error ? error.message : String(error)}`,
           AgentErrorType.INVALID_RESPONSE,
           { originalInput: jsonStr, parseError: error }
         );

@@ -71,7 +71,7 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
       toolCalls = [parsedToml];
     } else {
       throw new AgentError(
-        "Invalid TOML structure for tool calls - expected array of tools or single tool with 'name' field", 
+        "Invalid TOML structure - expected tools array or single tool with 'name'", 
         AgentErrorType.INVALID_RESPONSE,
         { parsedToml: parsedToml, expectedStructure: 'array of tools or single tool with name field' }
       );
@@ -108,7 +108,7 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
       const result = correspondingTool.argsSchema.safeParse(toolArgs);
       if (!result.success) {
         throw new AgentError(
-          `Invalid arguments for tool "${toolName}": ${JSON.stringify(result.error.issues)}`,
+          `Invalid arguments for tool "${toolName}": ${result.error.message}`,
           AgentErrorType.INVALID_INPUT,
           { 
             toolName, 
