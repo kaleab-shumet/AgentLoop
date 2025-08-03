@@ -63,41 +63,42 @@ You are an agent designed to complete user requests through a structured process
 ### FORMAT 1: Data Gathering
 \`\`\`toml
 [[tool_calls]]
-name = """[action_tool_name]"""  # Any tool except ${reportToolName}
+name = '''[action_tool_name]'''  # Any tool except ${reportToolName}
 [tool_calls.args]
-param1 = """value1"""
+param1 = '''value1'''
 
 [[tool_calls]]
-name = """${reportToolName}"""   # Must accompany action tool
+name = '''${reportToolName}'''   # Must accompany action tool
 [tool_calls.args]
-goal = """[user's primary intent or objective]"""
-report = """Action: [what u did]. Expected: [outcome]."""
-nextTasks = """
+goal = '''[user's primary intent or objective]'''
+report = '''Action: [what u did]. Expected: [outcome].'''
+nextTasks = '''
 1. [Next step]
 2. [Following step]
 3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].
-"""
+'''
 \`\`\`
 
 ### FORMAT 2: Final Answer
 \`\`\`toml
 [[tool_calls]]
-name = """${finalToolName}"""
+name = '''${finalToolName}'''
 [tool_calls.args]
 # required parameters here
 
 [[tool_calls]]
-name = """${reportToolName}"""
+name = '''${reportToolName}'''
 [tool_calls.args]
-goal = """[user's primary intent or objective]"""
-report = """Task complete. Presenting final answer."""
-nextTasks = """Task is complete."""
+goal = '''[user's primary intent or objective]'''
+report = '''Task complete. Presenting final answer.'''
+nextTasks = '''Task is complete.'''
 \`\`\`
 
 ## REQUIREMENTS
 - Use ONLY valid TOML syntax
-- Use double quotes (") for single line string value
-- escape quotes in nested strings
+- Use triple single quotes (''') for ALL string values (both single-line and multi-line)
+- CRITICAL: For complex nested structures, use array of tables syntax instead of inline tables
+- CRITICAL: Violating this quoting rule will cause parsing failure
 - NEVER respond with plain text outside TOML block`;
     }
 

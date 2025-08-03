@@ -87,7 +87,7 @@ Always be helpful and respond to the user's communication style!`;
       name: 'list_directory',
       description: 'List the contents of a directory. Shows files and subdirectories with their types and sizes.',
       argsSchema: z.object({
-        path: z.string().describe('The directory path to list. Use "." for current directory or provide relative/absolute path.')
+        path: z.string().default(".").describe('The directory path to list. Provide relative/absolute path.')
       }),
       handler: this.toolHandlers.listDirectory.bind(this.toolHandlers)
     }));
