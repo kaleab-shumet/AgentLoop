@@ -1,9 +1,8 @@
 import { ZodTypeAny } from "zod";
 import { Tool, PendingToolCall, FormatHandler, FunctionCallTool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
-
-import * as TOML from "@iarna/toml";
 import zodToJsonSchema from "zod-to-json-schema";
+import { processTomlWithEscaping } from "../utils";
 
 /**
  * Handles TOML-based response format for tool calls
@@ -51,7 +50,7 @@ parseResponse(response: string, tools: Tool < ZodTypeAny > []): PendingToolCall[
   const sanitizedTomlContent = tomlContent;
 
   try {
-    const parsedToml = TOML.parse(sanitizedTomlContent);
+    const parsedToml = processTomlWithEscaping(sanitizedTomlContent);
     
 
     // Handle different TOML structures

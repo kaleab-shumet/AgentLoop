@@ -96,8 +96,9 @@ nextTasks = """Task is complete."""
 
 ## REQUIREMENTS
 - Use ONLY valid TOML syntax
-- Use triple double quotes """ for ALL string values (not single quotes)
-- If string contains triple quotes, escape them as \\"""
+- Use triple double quotes """ for multiline string values (not single quotes)
+- Use double quotes " for single line string value
+- If string contains triple quotes, escape them as \"\"\"
 - Quote string values properly with triple double quotes
 - NEVER respond with plain text outside TOML block`;
     }
