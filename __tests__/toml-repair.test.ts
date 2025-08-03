@@ -5,34 +5,34 @@ describe('TOML Repair Function', () => {
   const testCases = [
     {
       name: 'Python with nested triple quotes in docstrings',
-      toml: `python_code = """
+      toml: `python_code = '''
 class DataProcessor:
-    \\"\\"\\"
+    '''
     A class for processing data with embedded quotes: "example"
-    \\"\\"\\"
+    '''
     
     def process(self):
-        \\"\\"\\"Method with 'single' quotes\\"\\"\\"
+        '''Method with 'single' quotes'''
         return "result"
     
     def complex_method(self):
-        \\"\\"\\"
-        Method with embedded \\"\\"\\"triple quotes\\"\\"\\" in docstring
-        \\"\\"\\"
+        '''
+        Method with embedded triple quotes in docstring
+        '''
         code = '''
         def inner():
             print("nested quotes")
         '''
         return code
-"""`
+'''`
     },
     {
       name: 'TOML configuration embedded in TOML',
       toml: `[[tool_calls]]
-name = "write_config"
+name = '''write_config'''
 [tool_calls.args]
-filename = "app.toml"
-content = """
+filename = '''app.toml'''
+content = '''
 [database]
 host = "localhost"
 port = 5432
@@ -46,21 +46,21 @@ debug = true
 [logging]
 level = "info"
 format = "json"
-"""
+'''
 
 [[tool_calls]]
-name = "report_action"
+name = '''report_action'''
 [tool_calls.args]
-goal = "Create configuration file"
-report = "Created TOML config with database, server, and logging sections"`
+goal = '''Create configuration file'''
+report = '''Created TOML config with database, server, and logging sections'''`
     },
     {
       name: 'JSON configuration embedded in TOML',
       toml: `[[tool_calls]]
-name = "create_json_config"
+name = '''create_json_config'''
 [tool_calls.args]
 config_name = "api_settings"
-json_content = """
+json_content = '''
 {
   "api": {
     "base_url": "https://api.example.com",
@@ -76,15 +76,15 @@ json_content = """
     "logging": "debug"
   }
 }
-"""`
+'''`
     },
     {
       name: 'Shell script with mixed quotes',
       toml: `[[tool_calls]]
-name = "create_script"
+name = '''create_script'''
 [tool_calls.args]
 filename = "deploy.sh"
-script_content = """
+script_content = '''
 #!/bin/bash
 echo "Starting deployment..."
 export DATABASE_URL="postgresql://user:pass@localhost/db"
@@ -95,15 +95,15 @@ else
     echo "Deployment failed!"
     exit 1
 fi
-"""`
+'''`
     },
     {
       name: 'SQL queries with complex quoting',
       toml: `[[tool_calls]]
-name = "execute_sql"
+name = '''execute_sql'''
 [tool_calls.args]
 query_name = "user_report"
-sql_content = """
+sql_content = '''
 SELECT 
     u.id,
     u.name AS "User Name",
@@ -116,7 +116,7 @@ WHERE u.created_at >= '2024-01-01'
 GROUP BY u.id, u.name, u.email
 HAVING COUNT(o.id) > 0
 ORDER BY "Order Count" DESC;
-"""`
+'''`
     },
     {
       name: 'Markdown with code blocks',
@@ -124,7 +124,7 @@ ORDER BY "Order Count" DESC;
 name = "create_documentation"
 [tool_calls.args]
 filename = "README.md"
-markdown_content = """
+markdown_content = '''
 # Project Documentation
 
 ## Python Example
@@ -142,7 +142,7 @@ def example():
 \`\`\`bash
 echo "Command with 'mixed' \\"quotes\\""
 \`\`\`
-"""`
+'''`
     },
     {
       name: 'Working Python code with string literals',
@@ -150,7 +150,7 @@ echo "Command with 'mixed' \\"quotes\\""
 name = "write_python_file"
 [tool_calls.args]
 filename = "data_processor.py"
-python_code = """
+python_code = '''
 import json
 import logging
 
@@ -200,7 +200,7 @@ class DataProcessor:
         AND data = '{json.dumps(conditions)}'
         '''
         return sql.strip()
-"""`
+'''`
     },
     {
       name: 'Working Java code with string handling',
@@ -208,7 +208,7 @@ class DataProcessor:
 name = "write_java_file"
 [tool_calls.args]
 filename = "StringProcessor.java"
-java_code = """
+java_code = '''
 package com.example.processor;
 
 import java.util.*;
@@ -297,20 +297,20 @@ public class StringProcessor {
         System.out.println("JSON: " + processor.generateJson(data));
     }
 }
-"""`
+'''`
     },
     {
       name: 'Working Kotlin code with string templates',
       toml: `[script]
-code2 = """
+code2 = '''
 def greet2(name):
-    """
+    '''
     This is a multiline comment in Python structure.
     It explains that this function greets the user by name.
-    """
+    '''
     print("hello")
-    return """Greet2"""
-"""`
+    return '''Greet2'''
+'''`
     },
     {
       name: 'Working Kotlin code with string templates',
@@ -318,7 +318,7 @@ def greet2(name):
     name = "write_kotlin_file"
     [tool_calls.args]
     filename = "DataFormatter.kt"
-    kotlin_code = """
+    kotlin_code = '''
     package com.example.formatter
 
     import kotlinx.serialization.json.*
@@ -452,36 +452,36 @@ def greet2(name):
         println("\\\\nConfig JSON:")
         println(configJson)
     }
-    """`
+    '''`
     },
     {
       name: 'Simple nested quotes - print function',
-      toml: `code = "print("hello")"`
+      toml: `code = '''print("hello")'''`
     },
     {
       name: 'Simple nested quotes - dialogue',
-      toml: `message = "He said "Hi" to me"`
+      toml: `message = '''He said "Hi" to me'''`
     },
     {
       name: 'Simple nested quotes - file path',
-      toml: `path = "C:\\\\Users\\\\John"s Documents\\\\file.txt"`
+      toml: `path = '''C:\\Users\\John"s Documents\\file.txt'''`
     },
     {
       name: 'Simple nested quotes - SQL query',
-      toml: `query = "SELECT * FROM users WHERE name = "John""`
+      toml: `query = '''SELECT * FROM users WHERE name = "John"'''`
     },
     {
       name: 'Complex Python with nested quotes in return statement',
       toml: `[script]
-code2 = """
+code2 = '''
 def greet2(name):
-    """
+    '''
     This is a multiline comment in Python structure.
     It explains that this function greets the user by name.
-    """
+    '''
     print("hello")
-    return """She says "Hello""""
-"""`
+    return '''She says "Hello'''"
+'''`
     }
   ];
 
@@ -499,46 +499,46 @@ def greet2(name):
   // Additional sophisticated edge cases
   describe('Sophisticated Edge Cases', () => {
     test('Mixed quote types in single string', () => {
-      const toml = `text = "She said 'Hello "world"!' yesterday"`;
+      const toml = `text = '''She said 'Hello "world"!' yesterday'''`;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
 
     test('Nested JSON with escaped quotes', () => {
-      const toml = `config = "{\\"key\\": \\"value with \\"nested\\" quotes\\"}"`;
+      const toml = `config = '''{"key": "value with "nested" quotes"}'''`;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
 
     test('Unicode characters with quotes', () => {
-      const toml = `message = "Unicode: 你好 "world" 🌍"`;
+      const toml = `message = '''Unicode: 你好 "world" 🌍'''`;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
 
     test('Very long string with multiple quote types', () => {
       const longString = 'a'.repeat(1000) + '"nested"' + 'b'.repeat(1000);
-      const toml = `long_text = "${longString}"`;
+      const toml = `long_text = '''${longString}'''`;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
 
     test('Empty triple quote strings', () => {
-      const toml = `empty = """"""`;
+      const toml = `empty = ''''''`;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
 
     test('Regex patterns with quotes', () => {
-      const toml = `pattern = "\\\\w+@[a-zA-Z_]+?\\\\.[a-zA-Z]{2,3}\\"test\\""`;
+      const toml = `pattern = '''\\w+@[a-zA-Z_]+?\\.a-zA-Z]{2,3}"test"'''`;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
 
     test('HTML with quotes', () => {
-      const toml = `html = "<div class=\\"container\\"><p>Hello \\"world\\"!</p></div>"`;
+      const toml = `html = '''<div class="container"><p>Hello "world"!</p></div>'''`;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
 
     test('Multiple TOML entries with quote conflicts', () => {
       const toml = `
-        entry1 = "First "quoted" entry"
-        entry2 = "Second "different" entry"
-        entry3 = "Third "another" entry"
+        entry1 = '''First "quoted" entry'''
+        entry2 = '''Second "different" entry'''
+        entry3 = '''Third "another" entry'''
       `;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
@@ -547,7 +547,7 @@ def greet2(name):
   // Performance tests
   describe('Performance Tests', () => {
     test('Large input with many quotes', () => {
-      const largeToml = `data = "${'quote nested'.repeat(100)}"`;
+      const largeToml = `data = '''${'quote nested'.repeat(100)}'''`;
       const startTime = Date.now();
       expect(() => processTomlWithEscaping(largeToml)).not.toThrow();
       const endTime = Date.now();
@@ -555,7 +555,7 @@ def greet2(name):
     });
 
     test('Multiple quote pairs', () => {
-      const toml = `entry1 = "value1"\nentry2 = "value2"\nentry3 = "value3"`;
+      const toml = `entry1 = '''value1'''\nentry2 = '''value2'''\nentry3 = '''value3'''`;
       expect(() => processTomlWithEscaping(toml)).not.toThrow();
     });
   });
@@ -576,7 +576,7 @@ def greet2(name):
     });
 
     test('Max attempts exceeded should throw original error', () => {
-      const problematicToml = `value = "${'"'.repeat(10)}"`;
+      const problematicToml = `value = '''${"'".repeat(10)}'''`;
       expect(() => processTomlWithEscaping(problematicToml, [], 3)).toThrow();
     });
   });

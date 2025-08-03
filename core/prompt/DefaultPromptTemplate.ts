@@ -63,15 +63,15 @@ You are an agent designed to complete user requests through a structured process
 ### FORMAT 1: Data Gathering
 \`\`\`toml
 [[tool_calls]]
-name = '''[action_tool_name]'''  # Any tool except ${reportToolName}
+name = "[action_tool_name]"  # Any tool except ${reportToolName}
 [tool_calls.args]
-param1 = '''value1'''
+param1 = "value1"
 
 [[tool_calls]]
-name = '''${reportToolName}'''   # Must accompany action tool
+name = "${reportToolName}"   # Must accompany action tool
 [tool_calls.args]
-goal = '''[user's primary intent or objective]'''
-report = '''Action: [what u did]. Expected: [outcome].'''
+goal = "[user's primary intent or objective]"
+report = "Action: [what u did]. Expected: [outcome]."
 nextTasks = '''
 1. [Next step]
 2. [Following step]
@@ -82,23 +82,30 @@ nextTasks = '''
 ### FORMAT 2: Final Answer
 \`\`\`toml
 [[tool_calls]]
-name = '''${finalToolName}'''
+name = "${finalToolName}"
 [tool_calls.args]
 # required parameters here
 
 [[tool_calls]]
-name = '''${reportToolName}'''
+name = "${reportToolName}"
 [tool_calls.args]
-goal = '''[user's primary intent or objective]'''
-report = '''Task complete. Presenting final answer.'''
-nextTasks = '''Task is complete.'''
+goal = "[user's primary intent or objective]"
+report = "Task complete. Presenting final answer."
+nextTasks = "Task is complete."
 \`\`\`
 
 ## REQUIREMENTS
 - Use ONLY valid TOML syntax
-- Use triple single quotes (''') for ALL string values (both single-line and multi-line)
+- Use appropriate TOML string syntax (single quotes for simple strings, triple quotes for multiline)
+- RECOMMENDED: For multiline string content with quotes, use <literal> tags to prevent system failures:
+  content = '''<literal>
+  no need to escape quotes here because it's inside <literal> tags
+  '''
+  this is a content inside triple quotes
+  '''
+  </literal>'''
+- WARNING: Without <literal> tags, system parsing failures may occur
 - CRITICAL: For complex nested structures, use array of tables syntax instead of inline tables
-- CRITICAL: Violating this quoting rule will cause parsing failure
 - NEVER respond with plain text outside TOML block`;
     }
 
