@@ -469,6 +469,19 @@ def greet2(name):
     {
       name: 'Simple nested quotes - SQL query',
       toml: `query = "SELECT * FROM users WHERE name = "John""`
+    },
+    {
+      name: 'Complex Python with nested quotes in return statement',
+      toml: `[script]
+code2 = """
+def greet2(name):
+    """
+    This is a multiline comment in Python structure.
+    It explains that this function greets the user by name.
+    """
+    print("hello")
+    return """She says "Hello""""
+"""`
     }
   ];
 
