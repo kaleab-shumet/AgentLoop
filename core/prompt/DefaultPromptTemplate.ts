@@ -110,28 +110,65 @@ nextTasks = "Task is complete."
     }
 
     if (this.responseFormat === FormatMode.JSOBJECT) {
-      return `
-      # RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION
+      return `# RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION WITH LITERAL BLOCK SUPPORT
 
-Your response must be a single JavaScript function, 'callTools()', that returns an array of tool calls. Choose one of the two scenarios below based on your progress.
+Your response must be a single JavaScript function, \`callTools()\`, that returns an array of tool calls.
 
-### \#\# Scenario 1: Gathering Information or Performing Actions
+**IMPORTANT: ALWAYS start your code with \`import { LiteralLoader } from './utils';\` - this import is MANDATORY for every response.**
 
-Use this format when you need to take intermediate steps to gather data or perform actions.
+---
+
+## Handling Long Data (e.g. large code snippets, large texts)
+
+**CRITICAL: If any string parameter is longer than 100 characters OR contains multiple lines OR has complex quoting/escaping**, **do NOT embed it directly as a string literal** inside the JavaScript code. Instead, do the following:
+
+1. Output the long data separately **outside and after** the \`callTools\` function as \`<literal>\` blocks inside a \`<literals>\` root container, for example:
+
+   \`\`\`xml
+   <literals>
+   <literal id="unique-id">
+   ... your very long content here, no escaping needed ...
+   </literal>
+   <literal id="another-id">
+   ... more content if needed ...
+   </literal>
+   </literals>
+   \`\`\`
+
+2. Inside your \`callTools\` function, assign the tool call parameter the value by calling \`LiteralLoader("unique-id")\`. For example:
+
+   \`\`\`javascript
+   calledToolsList.push({
+     toolName: "someTool",
+     longDataParam: LiteralLoader("unique-id")
+   });
+   \`\`\`
+
+---
+
+## Scenarios
+
+### Scenario 1: Gathering Information or Performing Actions
+
+Use this format when intermediate steps are needed.
 
 \`\`\`javascript
+import { LiteralLoader } from './utils';
+
 function callTools() {
   const calledToolsList = [];
 
   // 1. Call any tool EXCEPT ${finalToolName}.
   calledToolsList.push({
-    toolName: "some_action_tool", // e.g., searchWeb, createFile
+    toolName: "some_action_tool",
     // IMPORTANT: Use the EXACT parameter names from the tool's schema.
     param1: "value for the first parameter",
-    param2: 123
+    param2: 123,
+    // For long data, use LiteralLoader instead of inline strings
+    longContent: LiteralLoader("data-id") // if needed
   });
 
-  // 2. ALWAYS add a report on your progress.
+  // 2. Always add a report on your progress.
   calledToolsList.push({
     toolName: "${reportToolName}",
     goal: "The user's primary objective.",
@@ -142,22 +179,25 @@ function callTools() {
   return calledToolsList;
 }
 \`\`\`
-### \#\# Scenario 2: Providing the Final Answer
 
-Use this format only when all necessary information has been gathered and you are ready to present the final answer to the user.
+### Scenario 2: Providing the Final Answer
+
+Use this format only when ready to present the final answer.
 
 \`\`\`javascript
+import { LiteralLoader } from './utils';
+
 function callTools() {
   const calledToolsList = [];
 
   // 1. Call the final tool to deliver the complete answer.
   calledToolsList.push({
     toolName: "${finalToolName}",
-    // IMPORTANT: Populate with the actual data gathered in previous steps.
-    finalAnswerParameter: "The complete, final answer for the user."
+    // IMPORTANT: Use EXACT parameter names from schema
+    finalAnswerParameter: "short answer or use LiteralLoader if long"
   });
 
-  // 2. ALWAYS add a final report.
+  // 2. Always add a final report.
   calledToolsList.push({
     toolName: "${reportToolName}",
     goal: "The user's primary objective.",
@@ -169,14 +209,69 @@ function callTools() {
 }
 \`\`\`
 
-### \#\# Core Rules
+---
 
-  * **Function Only:** Your entire response must be *only* the 'callTools' function. Do not include any other text or explanations.
-  * **Valid JavaScript Syntax:** Ensure your code has proper JavaScript syntax - valid variable names, correct bracket matching, proper string escaping, and syntactically correct object literals.
-  * **Adhere to Schema:** You must use the **exact parameter names and data types** (string, number, array, etc.) specified in the tool schemas.
-  * **No Placeholders:** Replace all descriptive text (e.g., "The user's primary objective.") with real, specific values based on the user's request.
-  * **Mandatory Reporting:** The '${reportToolName}' tool is required and must **always** accompany another tool call. It can never be called by itself.
-  * **String Formatting:** Use template literals for multiline strings.
+## Core Rules
+
+* **Function Only:** Your entire response must be *only* the \`callTools\` function plus any necessary \`<literal>\` blocks after it.
+* **MANDATORY Import:** ALWAYS start your JavaScript code with \`import { LiteralLoader } from './utils';\` even if you don't use it.
+* **Valid JavaScript Syntax:** Ensure your code has proper JavaScript syntax - valid variable names, correct bracket matching, proper string escaping, and syntactically correct object literals.
+* **Use LiteralLoader for long data:** MANDATORY for any string longer than 100 characters, multiline content, or content with complex quotes. Place it in a \`<literal>\` block after the function and refer to it with \`LiteralLoader("id")\` inside the function.
+* **No text outside literal blocks:** Only the function and the \`<literal>\` blocks are allowed.
+* **Adhere to Schema:** You must use the **exact parameter names and data types** (string, number, array, etc.) specified in the tool schemas.
+* **No Placeholders:** Replace all descriptive text with real, specific values based on the user's request.
+* **Mandatory Reporting:** The \`${reportToolName}\` tool is required and must **always** accompany another tool call. It can never be called by itself.
+* **String Formatting:** Use template literals for multiline strings if needed, except for long data which should go in \`<literal>\` blocks.
+* **Literal block format:**
+  \`\`\`xml
+  <literals>
+  <literal id="unique-id">
+  ... long data here ...
+  </literal>
+  </literals>
+  \`\`\`
+* **Example of referencing a literal:**
+  \`\`\`javascript
+  someParam: LiteralLoader("unique-id")
+  \`\`\`
+
+## ❌ WRONG - DO NOT DO THIS:
+\`\`\`javascript
+// BAD: Long string with escaping issues
+content: \`\\\'\\\'\\\' This is a long multiline string with escaping problems \\\'\\\'\\\`
+\`\`\`
+
+## ✅ CORRECT - DO THIS INSTEAD:
+\`\`\`javascript
+import { LiteralLoader } from './utils';
+
+function callTools() {
+  const calledToolsList = [];
+  
+  calledToolsList.push({
+    toolName: "create_file",
+    // GOOD: Clean reference to literal block  
+    content: LiteralLoader("my-content")
+  });
+  
+  return calledToolsList;
+}
+\`\`\`
+
+\`\`\`xml
+<literals>
+<literal id="my-content">
+This is the actual long content that would be 
+error-prone to embed directly in JavaScript.
+It can contain quotes, newlines, and any characters
+without needing escaping.
+</literal>
+</literals>
+\`\`\`
+
+---
+
+Please follow these instructions exactly.
       `;
     }
 

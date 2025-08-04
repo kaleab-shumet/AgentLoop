@@ -61,6 +61,9 @@ function callTools() {
   }
 
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
+    // First, extract any literal blocks from the response
+    const literalBlocks = this.extractLiteralBlocks(response);
+    
     // Look for JavaScript function blocks in the response
     let jsMatch = response.match(/```javascript\s*\n([\s\S]+?)\n?```/);
     let jsContent: string;
@@ -84,7 +87,7 @@ function callTools() {
 
     try {
       // Execute the JavaScript function in a safe environment
-      const toolCalls = this.executeCallToolsFunction(jsContent);
+      const toolCalls = this.executeCallToolsFunction(jsContent, literalBlocks);
       
       if (!Array.isArray(toolCalls)) {
         throw new AgentError(
@@ -155,6 +158,40 @@ function callTools() {
   }
 
   /**
+   * Extract literal blocks from response
+   */
+  private extractLiteralBlocks(response: string): Map<string, string> {
+    const literalBlocks = new Map<string, string>();
+    
+    // First try to find literals inside a <literals> root tag
+    const literalsBlockMatch = response.match(/<literals\s*>([\s\S]*?)<\/literals>/);
+    if (literalsBlockMatch) {
+      // Extract individual literal blocks from within the literals container
+      const literalsContent = literalsBlockMatch[1];
+      const literalRegex = /<literal\s+id="([^"]+)"\s*>([\s\S]*?)<\/literal>/g;
+      
+      let match;
+      while ((match = literalRegex.exec(literalsContent)) !== null) {
+        const id = match[1];
+        const content = match[2];
+        literalBlocks.set(id, content);
+      }
+    } else {
+      // Fallback: look for standalone literal blocks (for backward compatibility)
+      const literalRegex = /<literal\s+id="([^"]+)"\s*>([\s\S]*?)<\/literal>/g;
+      
+      let match;
+      while ((match = literalRegex.exec(response)) !== null) {
+        const id = match[1];
+        const content = match[2];
+        literalBlocks.set(id, content);
+      }
+    }
+    
+    return literalBlocks;
+  }
+
+  /**
    * Extract function from text using balanced brace matching
    */
   private extractFunctionFromText(text: string): string | null {
@@ -189,8 +226,20 @@ function callTools() {
   /**
    * Safely execute the callTools JavaScript function
    */
-  private executeCallToolsFunction(jsCode: string): any[] {
+  private executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map()): any[] {
     try {
+      // Create LiteralLoader function that can access the literal blocks
+      const LiteralLoader = (id: string): string => {
+        if (!literalBlocks.has(id)) {
+          throw new AgentError(
+            `Literal block with id "${id}" not found`,
+            AgentErrorType.INVALID_RESPONSE,
+            { literalId: id, availableLiterals: Array.from(literalBlocks.keys()) }
+          );
+        }
+        return literalBlocks.get(id)!;
+      };
+
       // Create a safe execution environment using eval in a limited scope
       // Note: This is intentionally limited for security
       const context = {
@@ -202,13 +251,17 @@ function callTools() {
         Math: Math,
         Date: Date,
         JSON: JSON,
+        LiteralLoader: LiteralLoader, // Add LiteralLoader to the context
         console: { log: () => {} } // Stub console for safety
       };
+
+      // Strip any import statements since we provide LiteralLoader in context
+      const cleanedJsCode = jsCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
 
       // Create a function that executes the code in our controlled context
       const executeCode = new Function('context', `
         with (context) {
-          ${jsCode}
+          ${cleanedJsCode}
           return callTools();
         }
       `);
