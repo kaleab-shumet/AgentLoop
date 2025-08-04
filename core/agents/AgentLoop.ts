@@ -121,7 +121,7 @@ export abstract class AgentLoop {
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.FUNCTION_CALLING);
+    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.LITERALJS);
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
   }
@@ -141,7 +141,7 @@ export abstract class AgentLoop {
     this.failureHandlingMode = options.failureHandlingMode || (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
     this.failureTolerance = options.failureTolerance !== undefined ? options.failureTolerance : 0.0;
     this.hooks = options.hooks || {};
-    this.formatMode = options.formatMode || FormatMode.FUNCTION_CALLING;
+    this.formatMode = options.formatMode || FormatMode.LITERALJS;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
     this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
@@ -285,13 +285,7 @@ export abstract class AgentLoop {
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
     let responseFormat: FormatMode;
     
-    if (formatMode === FormatMode.TOML) {
-      responseFormat = FormatMode.TOML;
-    } else if (formatMode === FormatMode.JSOBJECT) {
-      responseFormat = FormatMode.JSOBJECT;
-    } else {
-      responseFormat = FormatMode.FUNCTION_CALLING;
-    }
+    responseFormat = FormatMode.LITERALJS;
 
     return {
       responseFormat,
@@ -823,11 +817,9 @@ export abstract class AgentLoop {
       try {
         await this.hooks.onAIRequestStart?.(prompt);
 
+        // For LiteralJS format, we don't pass function tools - the tools are described in the prompt
         let functionTools: FunctionCallTool[] | undefined = undefined;
-        if (this.formatMode === FormatMode.FUNCTION_CALLING) {
-          functionTools = this.aiDataHandler.formatToolDefinitions(this.tools) as FunctionCallTool[];
-        }
-
+        
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
         if (!response || typeof response !== "object" || typeof response.text !== "string") {
           throw new AgentError(
@@ -1055,7 +1047,7 @@ export abstract class AgentLoop {
     if (!this.tools.some(t => t.name === this.FINAL_TOOL_NAME)) {
       this.defineTool((z) => ({
         name: this.FINAL_TOOL_NAME,
-        description: `Call this tool to provide your final answer when the task is complete. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response, or (4) You need to explain why the task cannot be completed. This tool ends the conversation.`,
+        description: `Call this tool to provide your final answer when the task is complete. Use when: (1) You have completed the user's request and display data to the user, (2) All necessary operations are done, (3) You can provide a complete response, or (4) You need to explain why the task cannot be completed. This tool ends the conversation.`,
         argsSchema: z.object({
           value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.")
         }),

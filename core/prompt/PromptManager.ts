@@ -51,8 +51,7 @@ export class PromptManager {
       this.isCustomTemplate = true;
     } else {
       // Use default template with specified response format
-      const responseFormat = config.responseFormat || FormatMode.FUNCTION_CALLING;
-      this.template = new DefaultPromptTemplate(responseFormat);
+      this.template = new DefaultPromptTemplate();
       this.isCustomTemplate = false;
     }
   }
@@ -85,7 +84,7 @@ export class PromptManager {
         { currentTemplate: 'custom', attemptedFormat: format }
       );
     }
-    (this.template as DefaultPromptTemplate).setResponseFormat(format);
+    // Template only supports LiteralJS format - no format switching available
     return this;
   }
 
@@ -101,8 +100,8 @@ export class PromptManager {
   /**
    * Switch back to default template with specified format
    */
-  setDefaultTemplate(format: FormatMode = FormatMode.FUNCTION_CALLING): PromptManager {
-    this.template = new DefaultPromptTemplate(format);
+  setDefaultTemplate(format: FormatMode = FormatMode.LITERALJS): PromptManager {
+    this.template = new DefaultPromptTemplate();
     this.isCustomTemplate = false;
     return this;
   }

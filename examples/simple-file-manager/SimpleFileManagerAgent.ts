@@ -67,7 +67,7 @@ Always be helpful and respond to the user's communication style!`;
     const aiProvider = new DefaultAIProvider(aiConfig);
     
     super(aiProvider, {
-      formatMode: FormatMode.JSOBJECT,
+      formatMode: FormatMode.LITERALJS,
       parallelExecution: true,
       batchMode: true,
       sleepBetweenIterationsMs: 3000,

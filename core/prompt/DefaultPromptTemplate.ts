@@ -2,18 +2,12 @@ import { PromptOptions, ToolCallReport, BuildPromptParams, ConversationEntry, Fo
 import { AgentError } from '../utils/AgentError';
 
 export class DefaultPromptTemplate {
-  private responseFormat: FormatMode;
-
-  constructor(responseFormat: FormatMode = FormatMode.FUNCTION_CALLING) {
-    this.responseFormat = responseFormat;
-  }
-
-  setResponseFormat(format: FormatMode): void {
-    this.responseFormat = format;
+  constructor() {
+    // Only supports LiteralJS format
   }
 
   getResponseFormat(): FormatMode {
-    return this.responseFormat;
+    return FormatMode.LITERALJS;
   }
 
   // Core directive section: defines the agent's mission and workflow
@@ -31,6 +25,7 @@ You are an agent designed to complete user requests through a structured process
 ## PHASE 2: FINAL RESPONSE
 
 * After collecting all necessary data, deliver the comprehensive answer using '${finalToolName}'.
+* **CRITICAL**: ${finalToolName} must contain the ACTUAL DATA/RESULTS for the user - not just "task complete"
 * Always include the '${reportToolName}' tool alongside '${finalToolName}' both must be called together.
 
 
@@ -40,7 +35,7 @@ You are an agent designed to complete user requests through a structured process
 3. IF 'nextTasks' section does not section exist:
    - Review collected data in Reports and Results
    - IF data incomplete: Call best tool + ${reportToolName}
-   - IF data complete: Call ${finalToolName} + ${reportToolName}
+   - IF data complete: Call ${finalToolName} (with actual results) + ${reportToolName}
 
 ## STRICT RULES
 - ALWAYS pair every tool call with ${reportToolName}
@@ -50,208 +45,70 @@ You are an agent designed to complete user requests through a structured process
 - NEVER respond with plain text
 - NEVER use ${finalToolName} until ready with complete answer
 - NEVER end interaction without calling ${finalToolName}
+- **${finalToolName} MUST present actual data/results to user - not just "task complete"**
 - NEVER call ${reportToolName} alone - it must accompany another tool`;
   }
 
-  // Response format section: defines exactly how the agent must structure outputs
+  // Response format section: defines exactly how the agent must structure outputs  
   private buildResponseFormatSection(reportToolName: string, finalToolName: string): string {
-    if (this.responseFormat === FormatMode.TOML) {
-      return `# RESPONSE FORMAT: TOML ONLY
+    return `# RESPONSE FORMAT: LITERALJS
 
-## VALID FORMATS
+**ONLY OUTPUT THE CODE BLOCK - NO OTHER TEXT!**
 
-### FORMAT 1: Data Gathering
-\`\`\`toml
-[[tool_calls]]
-name = "[action_tool_name]"  # Any tool except ${reportToolName}
-[tool_calls.args]
-param1 = "value1"
+## Structure
+1. **Import**: \`import { LiteralLoader } from './utils';\`
+2. **Function**: \`function callTools() { return [...] }\`  
+3. **Literals**: \`<literals><literal id="...">...</literal></literals>\` (if needed)
 
-[[tool_calls]]
-name = "${reportToolName}"   # Must accompany action tool
-[tool_calls.args]
-goal = "[user's primary intent or objective]"
-report = "Action: [what u did]. Expected: [outcome]."
-nextTasks = '''
-1. [Next step]
-2. [Following step]
-3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].
-'''
-\`\`\`
+**DO NOT include any explanatory text outside the code block!**
 
-### FORMAT 2: Final Answer
-\`\`\`toml
-[[tool_calls]]
-name = "${finalToolName}"
-[tool_calls.args]
-# required parameters here
+## ⚠️  SCHEMA VALIDATION WARNING
+Your tool calls will be validated against schemas. Failures cause errors like:
+- "Missing required parameter 'path'"
+- "Invalid parameter name 'filepath' (expected 'path')"
+- "Wrong data type: expected string, got number"
 
-[[tool_calls]]
-name = "${reportToolName}"
-[tool_calls.args]
-goal = "[user's primary intent or objective]"
-report = "Task complete. Presenting final answer."
-nextTasks = "Task is complete."
-\`\`\`
+**ALWAYS double-check tool schemas before responding!**
 
-## REQUIREMENTS
-- Use ONLY valid TOML syntax
-- Use appropriate TOML string syntax (single quotes for simple strings, triple quotes for multiline)
-- RECOMMENDED: For multiline string content with quotes, use <literal> tags to prevent system failures:
-  content = '''<literal>
-  no need to escape quotes here because it's inside <literal> tags
-  '''
-  this is a content inside triple quotes
-  '''
-  </literal>'''
-- WARNING: Without <literal> tags, system parsing failures may occur
-- CRITICAL: For complex nested structures, use array of tables syntax instead of inline tables
-- NEVER respond with plain text outside TOML block`;
-    }
+## CRITICAL RULES
 
-    if (this.responseFormat === FormatMode.JSOBJECT) {
-      return `# RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION WITH LITERAL BLOCK SUPPORT
+🚨 **NEVER CALL \`${reportToolName}\` ALONE**: Always pair with another tool!
 
-Your response must be a single JavaScript function, \`callTools()\`, that returns an array of tool calls.
+- **PAIRING REQUIREMENT**: \`${reportToolName}\` MUST be called with another tool - never by itself
+- **EXACT SCHEMA MATCH**: Use EXACT parameter names from tool schemas - case-sensitive!
+- **ALL REQUIRED PARAMS**: Include ALL required parameters - check tool definitions carefully
+- **CORRECT DATA TYPES**: String parameters must be strings, numbers must be numbers, etc.
+- **Long content** (multiline): Use \`LiteralLoader("id")\` + \`<literal>\` blocks
 
-**IMPORTANT: ALWAYS start your code with \`import { LiteralLoader } from './utils';\` - this import is MANDATORY for every response.**
+## VALID PAIRING PATTERNS
+✅ **Action + Report**: \`action_tool\` + \`${reportToolName}\`
+✅ **Multiple Actions + Report**: \`tool1\` + \`tool2\` + \`${reportToolName}\`
+✅ **Final + Report**: \`${finalToolName}\` + \`${reportToolName}\`
+❌ **NEVER**: \`${reportToolName}\` alone
 
----
+**MINIMUM**: AT LEAST 2 tools (1+ action tools + \`${reportToolName}\`)
 
-## Handling Long Data (e.g. large code snippets, large texts)
-
-**CRITICAL: If any string parameter is longer than 100 characters OR contains multiple lines OR has complex quoting/escaping**, **do NOT embed it directly as a string literal** inside the JavaScript code. Instead, do the following:
-
-1. Output the long data separately **outside and after** the \`callTools\` function as \`<literal>\` blocks inside a \`<literals>\` root container, for example:
-
-   \`\`\`xml
-   <literals>
-   <literal id="unique-id">
-   ... your very long content here, no escaping needed ...
-   </literal>
-   <literal id="another-id">
-   ... more content if needed ...
-   </literal>
-   </literals>
-   \`\`\`
-
-2. Inside your \`callTools\` function, assign the tool call parameter the value by calling \`LiteralLoader("unique-id")\`. For example:
-
-   \`\`\`javascript
-   calledToolsList.push({
-     toolName: "someTool",
-     longDataParam: LiteralLoader("unique-id")
-   });
-   \`\`\`
-
----
-
-## Scenarios
-
-### Scenario 1: Gathering Information or Performing Actions
-
-Use this format when intermediate steps are needed.
-
-\`\`\`javascript
-import { LiteralLoader } from './utils';
-
-function callTools() {
-  const calledToolsList = [];
-
-  // 1. Call any tool EXCEPT ${finalToolName}.
-  calledToolsList.push({
-    toolName: "some_action_tool",
-    // IMPORTANT: Use the EXACT parameter names from the tool's schema.
-    param1: "value for the first parameter",
-    param2: 123,
-    // For long data, use LiteralLoader instead of inline strings
-    longContent: LiteralLoader("data-id") // if needed
-  });
-
-  // 2. Always add a report on your progress.
-  calledToolsList.push({
-    toolName: "${reportToolName}",
-    goal: "The user's primary objective.",
-    report: "Action: What you just did. Expected: The intended outcome.",
-    nextTasks: "1. Next immediate step. 2. Subsequent step. 3. Use ${finalToolName} to deliver the final result."
-  });
-
-  return calledToolsList;
-}
-\`\`\`
-
-### Scenario 2: Providing the Final Answer
-
-Use this format only when ready to present the final answer.
-
-\`\`\`javascript
-import { LiteralLoader } from './utils';
-
-function callTools() {
-  const calledToolsList = [];
-
-  // 1. Call the final tool to deliver the complete answer.
-  calledToolsList.push({
-    toolName: "${finalToolName}",
-    // IMPORTANT: Use EXACT parameter names from schema
-    finalAnswerParameter: "short answer or use LiteralLoader if long"
-  });
-
-  // 2. Always add a final report.
-  calledToolsList.push({
-    toolName: "${reportToolName}",
-    goal: "The user's primary objective.",
-    report: "Task complete. Presenting the final answer.",
-    nextTasks: "Task is complete."
-  });
-
-  return calledToolsList;
-}
-\`\`\`
-
----
-
-## Core Rules
-
-* **Function Only:** Your entire response must be *only* the \`callTools\` function plus any necessary \`<literal>\` blocks after it.
-* **MANDATORY Import:** ALWAYS start your JavaScript code with \`import { LiteralLoader } from './utils';\` even if you don't use it.
-* **Valid JavaScript Syntax:** Ensure your code has proper JavaScript syntax - valid variable names, correct bracket matching, proper string escaping, and syntactically correct object literals.
-* **Use LiteralLoader for long data:** MANDATORY for any string longer than 100 characters, multiline content, or content with complex quotes. Place it in a \`<literal>\` block after the function and refer to it with \`LiteralLoader("id")\` inside the function.
-* **No text outside literal blocks:** Only the function and the \`<literal>\` blocks are allowed.
-* **Adhere to Schema:** You must use the **exact parameter names and data types** (string, number, array, etc.) specified in the tool schemas.
-* **No Placeholders:** Replace all descriptive text with real, specific values based on the user's request.
-* **Mandatory Reporting:** The \`${reportToolName}\` tool is required and must **always** accompany another tool call. It can never be called by itself.
-* **String Formatting:** Use template literals for multiline strings if needed, except for long data which should go in \`<literal>\` blocks.
-* **Literal block format:**
-  \`\`\`xml
-  <literals>
-  <literal id="unique-id">
-  ... long data here ...
-  </literal>
-  </literals>
-  \`\`\`
-* **Example of referencing a literal:**
-  \`\`\`javascript
-  someParam: LiteralLoader("unique-id")
-  \`\`\`
-
-## ❌ WRONG - DO NOT DO THIS:
-\`\`\`javascript
-// BAD: Long string with escaping issues
-content: \`\\\'\\\'\\\' This is a long multiline string with escaping problems \\\'\\\'\\\`
-\`\`\`
-
-## ✅ CORRECT - DO THIS INSTEAD:
+## Template
 \`\`\`javascript
 import { LiteralLoader } from './utils';
 
 function callTools() {
   const calledToolsList = [];
   
+  // STEP 1: Call action tool with EXACT schema parameters
   calledToolsList.push({
-    toolName: "create_file",
-    // GOOD: Clean reference to literal block  
-    content: LiteralLoader("my-content")
+    toolName: "action_tool_name", // EXACT tool name from schema
+    parameterName: "value", // EXACT parameter name from schema
+    requiredParam: "must_include_all_required", // Include ALL required params
+    optionalParam: "can_include_optional" // Optional params as needed
+  });
+  
+  // STEP 2: ALWAYS call report tool 
+  calledToolsList.push({
+    toolName: "${reportToolName}",
+    goal: "specific user objective",
+    report: "what action was taken and expected outcome",
+    nextTasks: "next concrete steps or 'Task is complete'"
   });
   
   return calledToolsList;
@@ -260,52 +117,11 @@ function callTools() {
 
 \`\`\`xml
 <literals>
-<literal id="my-content">
-This is the actual long content that would be 
-error-prone to embed directly in JavaScript.
-It can contain quotes, newlines, and any characters
-without needing escaping.
+<literal id="exampleid">
+Long content here without escaping
 </literal>
 </literals>
-\`\`\`
-
----
-
-Please follow these instructions exactly.
-      `;
-    }
-
-    // Default to Function Calling JSON
-    return `# RESPONSE FORMAT: JSON ONLY
-
-## VALID FORMATS
-
-### FORMAT 1: Data Gathering
-\`\`\`json
-{
-  "functionCalls": [
-    { "name": "[action_tool_name]", "arguments": "{\\"param1\\": \\"value1\\"}" },
-    { "name": "${reportToolName}", "arguments": "{\\"goal\\": \\"[user's primary intent or objective]\\", \\"report\\": \\"Action: [what u did]. Expected: [outcome].\\", \\"nextTasks\\": \\"1. [Next step]. 2. [Following step]. 3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].\\"}" }
-  ]
-}
-\`\`\`
-
-### FORMAT 2: Final Answer
-\`\`\`json
-{
-  "functionCalls": [
-    { "name": "${finalToolName}", "arguments": "[required_parameters_as_stringified_JSON]" },
-    { "name": "${reportToolName}", "arguments": "{\\"goal\\": \\"[user's primary intent or objective]\\", \\"report\\": \\"Task complete. Presenting final answer.\\", \\"nextTasks\\": \\"Task is complete.\\"}" }
-  ]
-}
-\`\`\`
-
-## REQUIREMENTS
-- Entire response must be a single valid JSON code block
-- No text before or after JSON block
-- Double-escape quotes in nested JSON strings
-- Arguments must be stringified JSON
-- NEVER call ${reportToolName} alone`;
+\`\`\``;
   }
 
   // Tools section: defines the agent's available capabilities
@@ -371,8 +187,10 @@ ${JSON.stringify(report.toolCalls.map(tc => ({
     return `# REPORTS AND RESULTS
 
 ## IMPORTANT
+- This section stores your PRIVATE INTERNAL MONOLOGUE
 - This is your SINGLE SOURCE OF TRUTH for all data
 - Use ONLY this data for your responses
+- This is NOT visible to the user - it's your private memory
 
 ## ACTION LOG
 ${reportEntries}`;
