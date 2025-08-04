@@ -109,6 +109,72 @@ nextTasks = "Task is complete."
 - NEVER respond with plain text outside TOML block`;
     }
 
+    if (this.responseFormat === FormatMode.JSOBJECT) {
+      return `# RESPONSE FORMAT: JAVASCRIPT FUNCTION ONLY
+
+## VALID FORMATS
+
+### FORMAT 1: Data Gathering
+\`\`\`javascript
+function callTools() {
+  const calledToolsList = [];
+  
+  // Add action tool (any tool except ${reportToolName})
+  calledToolsList.push({
+    toolName: "[action_tool_name]",
+    param1: "value1",
+    param2: 42
+  });
+  
+  // Always add ${reportToolName} to accompany action tool
+  calledToolsList.push({
+    toolName: "${reportToolName}",
+    goal: \`[user's primary intent or objective]\`,
+    report: \`Action: [what u did]. Expected: [outcome].\`,
+    nextTasks: \`1. [Next step]. 2. [Following step]. 3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].\`
+  });
+  
+  return calledToolsList;
+}
+\`\`\`
+
+### FORMAT 2: Final Answer
+\`\`\`javascript
+function callTools() {
+  const calledToolsList = [];
+  
+  // Add final tool with required parameters
+  calledToolsList.push({
+    toolName: "${finalToolName}",
+    // add required parameters here
+  });
+  
+  // Always add ${reportToolName} to accompany final tool
+  calledToolsList.push({
+    toolName: "${reportToolName}",
+    goal: \`[user's primary intent or objective]\`,
+    report: \`Task complete. Presenting final answer.\`,
+    nextTasks: \`Task is complete.\`
+  });
+  
+  return calledToolsList;
+}
+\`\`\`
+
+## REQUIREMENTS
+- Write ONLY a JavaScript function named \`callTools\`
+- Function must return an array named \`calledToolsList\`
+- Each object in array must have \`toolName\` property
+- Include all required properties for each tool
+- Respect all type constraints (string, integer, number, array, object)
+- Honor numeric constraints (minimum, exclusiveMinimum, etc.)
+- For arrays, respect minItems, uniqueItems, and item types
+- Use realistic, human-readable values (no placeholders)
+- No external libraries or imports allowed
+- Pure vanilla JavaScript only
+- NEVER call ${reportToolName} alone - must accompany another tool`;
+    }
+
     // Default to Function Calling JSON
     return `# RESPONSE FORMAT: JSON ONLY
 

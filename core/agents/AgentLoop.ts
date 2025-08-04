@@ -146,6 +146,11 @@ export abstract class AgentLoop {
     this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
     
+    // Update AIDataHandler when format mode changes
+    if (options.formatMode) {
+      this.aiDataHandler = new AIDataHandler(this.formatMode);
+    }
+    
     // Initialize ErrorHandler
     this.errorHandler = new ErrorHandler(this.toolExecutionRetryAttempts);
 
@@ -278,9 +283,15 @@ export abstract class AgentLoop {
    * Get default prompt manager configuration based on execution mode
    */
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
-    const responseFormat = formatMode === FormatMode.TOML
-      ? FormatMode.TOML
-      : FormatMode.FUNCTION_CALLING;
+    let responseFormat: FormatMode;
+    
+    if (formatMode === FormatMode.TOML) {
+      responseFormat = FormatMode.TOML;
+    } else if (formatMode === FormatMode.JSOBJECT) {
+      responseFormat = FormatMode.JSOBJECT;
+    } else {
+      responseFormat = FormatMode.FUNCTION_CALLING;
+    }
 
     return {
       responseFormat,

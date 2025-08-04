@@ -1,10 +1,11 @@
 import { FormatMode, FormatHandler } from "../types/types";
 import { FunctionCallingFormatHandler } from "./FunctionCallingFormatHandler";
 import { TomlFormatHandler } from "./TomlFormatHandler";
+import { JSObjectFormatHandler } from "./JSObjectFormatHandler";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 
 /**
- * Factory for creating response handlers - function calling and TOML modes are supported
+ * Factory for creating response handlers - function calling, TOML, and JSObject modes are supported
  */
 export class FormatHandlerFactory {
   private static handlers: Map<FormatMode, FormatHandler> = new Map();
@@ -20,6 +21,9 @@ export class FormatHandlerFactory {
           break;
         case FormatMode.TOML:
           this.handlers.set(mode, new TomlFormatHandler());
+          break;
+        case FormatMode.JSOBJECT:
+          this.handlers.set(mode, new JSObjectFormatHandler());
           break;
         default:
           throw new AgentError(
