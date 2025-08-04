@@ -1,114 +1,133 @@
 import { PromptOptions, ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
 import { AgentError } from '../utils/AgentError';
 
+/**
+ * DefaultPromptTemplate constructs a comprehensive prompt for an AI agent.
+ * It enforces a structured workflow, tool usage, and response format (LiteralJS).
+ */
 export class DefaultPromptTemplate {
   constructor() {
-    // Only supports LiteralJS format
+    // Only LiteralJS format is supported for tool calls.
   }
 
+  /**
+   * Returns the supported response format.
+   */
   getResponseFormat(): FormatMode {
     return FormatMode.LITERALJS;
   }
 
-  // Core directive section: defines the agent's mission and workflow
+  /**
+   * Builds the core directive section, outlining the agent's mission and workflow.
+   * @param finalToolName The name of the tool used for the final response.
+   * @param reportToolName The name of the tool used for reporting actions.
+   */
   private buildCoreDirectiveSection(finalToolName: string, reportToolName: string): string {
-    return `# CORE DIRECTIVE
+    return `---
+# CORE DIRECTIVE
 
 ## MISSION
-You are an agent designed to complete user requests through a structured process.
+You are an agent designed to fulfill user requests using a structured, multi-phase process.
 
-## PHASE 1: DATA GATHERING
-- Use appropriate tools to collect ALL necessary information
-- Track all data in the Reports and Results section
-- ALWAYS pair each tool call with the \`${reportToolName}\` tool
+## PHASES
 
-## PHASE 2: FINAL RESPONSE
+### PHASE 1: DATA GATHERING
+- **Objective**: Collect ALL necessary information using available tools.
+- **Reporting**: Record all data and progress in the 'Reports and Results' section.
+- **Rule**: ALWAYS pair every tool call with the \`${reportToolName}\` tool.
 
-* After collecting all necessary data, deliver the comprehensive answer using '${finalToolName}'.
-* **CRITICAL**: ${finalToolName} must contain the ACTUAL DATA/RESULTS for the user - not just "task complete"
-* Always include the '${reportToolName}' tool alongside '${finalToolName}' both must be called together.
-
+### PHASE 2: FINAL RESPONSE
+- **Objective**: Deliver a comprehensive answer using \`${finalToolName}\`.
+- **CRITICAL**: \`${finalToolName}\` MUST contain the ACTUAL DATA/RESULTS, not just a "task complete" message.
+- **Rule**: ALWAYS call \`${finalToolName}\` and \`${reportToolName}\` together.
 
 ## WORKFLOW
-1. Read and understand user request and conversation history
-2. IF 'nextTasks' section exists: Execute it immediately
-3. IF 'nextTasks' section does not section exist:
-   - Review collected data in Reports and Results
-   - IF data incomplete: Call best tool + ${reportToolName}
-   - IF data complete: Call ${finalToolName} (with actual results) + ${reportToolName}
+1.  **Understand**: Analyze the user request and conversation history.
+2. **Look Report and Result Section**: This helps you to understand what data is already collected and what is already done.
+3. If a 'nextTasks' exists, use your tools to execute it immediately.
+    **Task Complete**: Call \`${finalToolName}\` (with actual results) + \`${reportToolName}\` to finalize the task.
+
+4. If no 'nextTasks' or 'nextTasks' not defined: Call the best action tool + \`${reportToolName}\` to full fill user request.
+
+note: When you call action tool, you will find the data in the 'Reports and Results' section on the next iteration.
 
 ## STRICT RULES
-- ALWAYS pair every tool call with ${reportToolName}
-- For any input that isn't a direct command (e.g., greetings, questions, confirmations), respond using the '${finalToolName}' tool and pair it with '${reportToolName}' tool.
-- ONLY use tools listed in Available Tools section
-- ONLY use data from Reports and Results - no guessing
-- NEVER respond with plain text
-- NEVER use ${finalToolName} until ready with complete answer
-- NEVER end interaction without calling ${finalToolName}
-- **${finalToolName} MUST present actual data/results to user - not just "task complete"**
-- NEVER call ${reportToolName} alone - it must accompany another tool`;
+-   **Tool Pairing**: ALWAYS pair every tool call with \`${reportToolName}\`.
+-   **Non-Command Input**: For non-command inputs (greetings, questions), use \`${finalToolName}\` paired with \`${reportToolName}\`.
+-   **Tool Usage**: ONLY use tools listed in 'Available Tools'.
+-   **Data Source**: ONLY use data from 'Reports and Results'; do not guess.
+-   **Output Format**: NEVER respond with plain text; always use tool calls.
+-   **Final Tool Timing**: NEVER use \`${finalToolName}\` until the complete answer is ready.
+-   **Interaction End**: NEVER end an interaction without calling \`${finalToolName}\`.
+-   **Final Tool Content**: \`${finalToolName}\` MUST present actual data/results to the user.
+-   **Never Put Placeholder**: Present actual data/results, instead of placeholder
+-   **Report Tool Alone**: NEVER call \`${reportToolName}\` alone; it must accompany another tool.`;
   }
 
-  // Response format section: defines exactly how the agent must structure outputs  
+  /**
+   * Builds the response format section, detailing how the agent must structure its outputs using LiteralJS.
+   * @param reportToolName The name of the tool used for reporting actions.
+   * @param finalToolName The name of the tool used for the final response.
+   */
   private buildResponseFormatSection(reportToolName: string, finalToolName: string): string {
-    return `# RESPONSE FORMAT: LITERALJS
+    return `---
+# RESPONSE FORMAT: LITERALJS
 
-**ONLY OUTPUT THE CODE BLOCK - NO OTHER TEXT!**
+**OUTPUT ONLY THE CODE BLOCK, NO OTHER TEXT.**
 
-## Structure
-1. **Import**: \`import { LiteralLoader } from './utils';\`
-2. **Function**: \`function callTools() { return [...] }\`  
-3. **Literals**: \`<literals><literal id="...">...</literal></literals>\` (if needed)
+## STRUCTURE
+1.  **Import**: \`import { LiteralLoader } from './utils';\`
+2.  **Function**: \`function callTools() { return [...] }\`
+3.  **Literals**: \`<literals><literal id="...">...</literal></literals>\` (Use for long content or to avoid manual escape characters)
+note: If you use **Literals** you must return it together with javascript code block, as a separate XML block. 
 
-**DO NOT include any explanatory text outside the code block!**
+## ⚠️ SCHEMA VALIDATION WARNING
+Your tool calls are strictly validated against schemas. Common errors include:
+-   "Missing required parameter 'paramName'"
+-   "Invalid parameter name 'wrongName' (expected 'correctName')"
+-   "Wrong data type: expected string, got number"
 
-## ⚠️  SCHEMA VALIDATION WARNING
-Your tool calls will be validated against schemas. Failures cause errors like:
-- "Missing required parameter 'path'"
-- "Invalid parameter name 'filepath' (expected 'path')"
-- "Wrong data type: expected string, got number"
-
-**ALWAYS double-check tool schemas before responding!**
+**ALWAYS double-check tool schemas before responding.**
 
 ## CRITICAL RULES
 
-🚨 **NEVER CALL \`${reportToolName}\` ALONE**: Always pair with another tool!
+🚨 **NEVER CALL \`${reportToolName}\` ALONE**: It MUST be paired with another tool.
 
-- **PAIRING REQUIREMENT**: \`${reportToolName}\` MUST be called with another tool - never by itself
-- **EXACT SCHEMA MATCH**: Use EXACT parameter names from tool schemas - case-sensitive!
-- **ALL REQUIRED PARAMS**: Include ALL required parameters - check tool definitions carefully
-- **CORRECT DATA TYPES**: String parameters must be strings, numbers must be numbers, etc.
-- **Long content** (multiline): Use \`LiteralLoader("id")\` + \`<literal>\` blocks
+-   **PAIRING REQUIREMENT**: \`${reportToolName}\` MUST accompany another tool.
+-   **EXACT SCHEMA MATCH**: Use EXACT parameter names (case-sensitive) from tool schemas.
+-   **ALL REQUIRED PARAMS**: Include ALL required parameters as defined in tool definitions.
+-   **CORRECT DATA TYPES**: Ensure parameter values match their defined types (string, number, boolean).
+-   **Long Content**: Use \`LiteralLoader("id")\` with \`<literal>\` blocks for multiline content.
 
 ## VALID PAIRING PATTERNS
-✅ **Action + Report**: \`action_tool\` + \`${reportToolName}\`
-✅ **Multiple Actions + Report**: \`tool1\` + \`tool2\` + \`${reportToolName}\`
-✅ **Final + Report**: \`${finalToolName}\` + \`${reportToolName}\`
-❌ **NEVER**: \`${reportToolName}\` alone
+-   ✅ **Action + Report**: \`action_tool\` + \`${reportToolName}\`
+-   ✅ **Multiple Actions + Report**: \`tool1\` + \`tool2\` + \`${reportToolName}\`
+-   ✅ **Final + Report**: \`${finalToolName}\` + \`${reportToolName}\`
+-   ❌ **INVALID**: \`${reportToolName}\` alone
 
-**MINIMUM**: AT LEAST 2 tools (1+ action tools + \`${reportToolName}\`)
+**MINIMUM**: Your response must include AT LEAST two tool calls (one or more action tools + \`${reportToolName}\`).
 
-## Template
+## TEMPLATE
 \`\`\`javascript
 import { LiteralLoader } from './utils';
 
 function callTools() {
   const calledToolsList = [];
   
-  // STEP 1: Call action tool with EXACT schema parameters
+  // STEP 1: Call action tool(s) with EXACT schema parameters
   calledToolsList.push({
-    toolName: "action_tool_name", // EXACT tool name from schema
-    parameterName: "value", // EXACT parameter name from schema
-    requiredParam: "must_include_all_required", // Include ALL required params
-    optionalParam: "can_include_optional" // Optional params as needed
+    toolName: "action_tool_name", // EXACT tool name from Available Tools
+    longContentParam: LiteralLoader("long_content_id"), // Do not forget to include literals xml block
+    requiredParam: "must_include_all_required", // Include ALL required parameters
+    optionalParam: "can_include_optional"      // Include optional parameters as needed
   });
   
-  // STEP 2: ALWAYS call report tool 
+  // STEP 2: ALWAYS call the report tool
   calledToolsList.push({
     toolName: "${reportToolName}",
-    goal: "specific user objective",
-    report: "what action was taken and expected outcome",
-    nextTasks: "next concrete steps or 'Task is complete'"
+    goal: "brief description of user's objective",
+    report: "concise summary of action taken and expected outcome",
+    nextTasks: "concrete next steps for the agent or 'Task is complete'"
   });
   
   return calledToolsList;
@@ -117,27 +136,36 @@ function callTools() {
 
 \`\`\`xml
 <literals>
-<literal id="exampleid">
-Long content here without escaping
+<literal id="long_content_id">
+Your long, multiline content goes here without escaping.
+
 </literal>
 </literals>
 \`\`\``;
   }
 
-  // Tools section: defines the agent's available capabilities
+  /**
+   * Builds the available tools section, listing all tools the agent can use.
+   * @param toolDefinitions String representation of available tool schemas.
+   */
   private buildToolsSection(toolDefinitions: string): string {
-    return `# AVAILABLE TOOLS
+    return `---
+# AVAILABLE TOOLS
 
 ## USAGE RULES
-- Tool and parameter names are CASE-SENSITIVE
-- Provide ALL required parameters
-- Match exact data types (string, number, boolean, etc.)
-- ONLY use tools listed below
+-   Tool and parameter names are **CASE-SENSITIVE**.
+-   Provide ALL required parameters.
+-   Match exact data types (e.g., string, number, boolean).
+-   ONLY use tools listed below.
 
 ${toolDefinitions}`;
   }
 
-  // Conversation history section: provides context from previous interactions
+  /**
+   * Builds the conversation history section, providing context from previous interactions.
+   * @param conversationEntries An array of past conversation turns.
+   * @param limitNote A note regarding conversation history limits.
+   */
   private buildConversationHistorySection(conversationEntries: ConversationEntry[], limitNote: string): string {
     if (conversationEntries.length === 0) return '';
 
@@ -148,22 +176,27 @@ ${toolDefinitions}`;
       return content;
     }).join('\n\n');
 
-    return `# CONVERSATION HISTORY  
+    return `---
+# CONVERSATION HISTORY
 ${limitNote}
 ${formattedEntries}
 
- **
- Note: Use this section to maintain the flow and continuity of the conversation.
- **
-`;
+**Note**: Use this section to maintain conversational flow and continuity.`;
   }
 
-  // Reports and results section: the agent's "memory" of previous actions
-  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], reportToolName: string): string {
+  /**
+   * Builds the reports and results section, serving as the agent's internal memory.
+   * @param toolCallReports An array of reports from previous tool calls.
+   * @param reportToolName The name of the tool used for reporting actions.
+   * @param finalToolName The name of the tool used for the final response.
+   */
+  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], reportToolName: string, finalToolName: string): string {
     if (toolCallReports.length === 0) {
-      return `# REPORTS AND RESULTS
+      return `---
+# REPORTS AND RESULTS
 
-**Status**: No data collected yet. First step: gather data using action tool + ${reportToolName}.`;
+**Status**: No data collected yet.
+**First Step**: Gather data using an action tool paired with \`${reportToolName}\`.`;
     }
 
     const reportEntries = toolCallReports.map((report, idx) => {
@@ -179,83 +212,113 @@ ${toolSummary}
 ${JSON.stringify(report.toolCalls.map(tc => ({
         name: tc.context.toolName,
         success: tc.context.success,
-        context: tc.context
+        context: tc.context // Include full context for detailed debugging/analysis
       })), null, 2)}
 \`\`\``;
     }).join('\n\n');
 
-    return `# REPORTS AND RESULTS
+    return `---
+# REPORTS AND RESULTS
 
 ## IMPORTANT
-- This section stores your PRIVATE INTERNAL MONOLOGUE
-- This is your SINGLE SOURCE OF TRUTH for all data
-- Use ONLY this data for your responses
-- This is NOT visible to the user - it's your private memory
+-   This section is your **PRIVATE INTERNAL MONOLOGUE**.
+-   It is your **SINGLE SOURCE OF TRUTH** for all collected data.
+-   **ONLY** use data from this section for your responses.
+-   This section is **NOT visible to the user** - you must present data using tools.
+-   **CRITICAL**: Simply copy and paste the actual data from the JSON results below into your tools.
+-   **DO NOT** write JavaScript code to access this data - just read it and copy the content directly.
 
 ## ACTION LOG
 ${reportEntries}`;
   }
 
-  // Error recovery section: instructions for handling errors
+  /**
+   * Builds the error recovery section, providing instructions for handling errors.
+   * @param finalToolName The name of the tool used for the final response.
+   * @param reportToolName The name of the tool used for reporting actions.
+   * @param error The AgentError object if an error occurred, otherwise null.
+   */
   private buildErrorRecoverySection(finalToolName: string, reportToolName: string, error: AgentError | null): string {
     if (!error) return '';
 
-    return `# ERROR RECOVERY
+    return `---
+# ERROR RECOVERY
 
 ## ERROR DETAILS
-- **Type**: ${error.type || 'Unknown'}
-- **Message**: ${error.message}
+-   **Type**: ${error.type || 'Unknown'}
+-   **Message**: ${error.message}
 
 ## RECOVERY STEPS
-1. Analyze the error cause
-2. Create a new plan that avoids repeating the error
-3. Execute corrected action + ${reportToolName}
-4. Explain in your report:
-   - What you attempted
-   - Why it failed
-   - Your new approach
+1.  **Analyze**: Determine the root cause of the error.
+2.  **Plan**: Develop a new strategy to avoid repeating the error.
+3.  **Execute**: Perform the corrected action + \`${reportToolName}\`.
+4.  **Report**: Explain in your report:
+    -   What you attempted previously.
+    -   Why it failed.
+    -   Your new approach.
 
 ## COMMON FIXES
-- If you called ${reportToolName} alone: ALWAYS pair with an action tool
-- If you need to just report: Use ${finalToolName} + ${reportToolName}
-- If parameter error: Check exact parameter names and data types
-- If missing data: Gather required information first`;
+-   **\`${reportToolName}\` Alone**: ALWAYS pair \`${reportToolName}\` with an action tool.
+-   **Just Reporting**: Use \`${finalToolName}\` + \`${reportToolName}\` for direct reports.
+-   **Parameter Errors**: Double-check exact parameter names and data types against schemas.
+-   **Missing Data**: Gather all required information before proceeding.`;
   }
 
-  // Task section: defines the immediate action for the agent
+  /**
+   * Builds the immediate task section, directing the agent's next action.
+   * @param userPrompt The current user's prompt.
+   * @param finalToolName The name of the tool used for the final response.
+   * @param reportToolName The name of the tool used for reporting actions.
+   * @param nextTasks Optional string indicating pre-determined next steps.
+   */
   private buildTaskSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTasks?: string | null): string {
-    if (nextTasks) {
-      return `# IMMEDIATE TASK
 
-## COMMAND
+    const nextTaskContent = nextTasks ? "" : '## Next Tasks\n> No immediate tasks defined. Focus on the user request. ';
+
+    if (nextTasks) {
+      return `---
+# IMMEDIATE TASK
+
+## nextTasks
 > ${nextTasks}
 
 ## INSTRUCTIONS
-- Execute this command immediately without re-evaluation
-- This is your previously determined plan
-- REMEMBER: Always pair tools with ${reportToolName}`;
+-   Execute this command immediately without re-evaluation.
+-   This is your previously determined plan.
+-   **REMEMBER**: Always pair tools with \`${reportToolName}\`.`;
     }
 
-    return `# IMMEDIATE TASK
+    return `---
+# IMMEDIATE TASK
+${nextTaskContent}
 
 ## USER REQUEST
 > ${userPrompt}
 
-## Reminder
-1. Understand user request, refer Conversation History
-2. If data needed: Use [action_tool] + ${reportToolName}
-3. If data complete: Use ${finalToolName} + ${reportToolName}
-note:  NEVER use ${reportToolName} alone`;
+## REMINDER
+1.  **Understand**: Fully comprehend the user request and refer to 'Conversation History'.
+2.  **Gather Data**: If data is needed, use an \`[action_tool]\` + \`${reportToolName}\`.
+3.  **Finalize**: If data is complete, use \`${finalToolName}\` + \`${reportToolName}\`.
+    **Note**: NEVER use \`${reportToolName}\` alone.`;
   }
 
-  // Helper for building custom sections
+  /**
+   * Builds content for any custom sections provided in options.
+   * @param customSections A record of custom section names and their content.
+   */
   private buildCustomSectionsContent(customSections: Record<string, string>): string {
     return Object.entries(customSections).map(([name, content]) =>
-      `# ${name.toUpperCase()}\n${content}`
+      `---
+# ${name.toUpperCase()}
+${content}`
     ).join('\n\n');
   }
 
-  // Main method to build the complete prompt
+  /**
+   * Main method to build the complete prompt string.
+   * @param params Parameters required to build the prompt.
+   * @returns The complete, formatted prompt string.
+   */
   buildPrompt(params: BuildPromptParams): string {
     const {
       systemPrompt,
@@ -273,39 +336,38 @@ note:  NEVER use ${reportToolName} alone`;
 
     const sections: string[] = [];
 
-    // Add system prompt if provided
+    // Add optional system prompt
     if (systemPrompt) {
       sections.push(systemPrompt);
     }
 
-    // Add core sections in logical order
+    // Add core prompt sections in a logical flow
     sections.push(this.buildCoreDirectiveSection(finalToolName, reportToolName));
     sections.push(this.buildResponseFormatSection(reportToolName, finalToolName));
     sections.push(this.buildToolsSection(toolDefinitions));
 
-    // Add conversation history if enabled and available
+    // Include conversation history if enabled and available
     if (options.includePreviousTaskHistory && conversationEntries && conversationEntries.length > 0) {
       sections.push(this.buildConversationHistorySection(conversationEntries, conversationLimitNote || ''));
     }
-
-    // Add reports and results from current interaction
+    // Add reports and results (agent's memory)
     const toolCallReports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportsAndResultsSection(toolCallReports, reportToolName));
+    sections.push(this.buildReportsAndResultsSection(toolCallReports, reportToolName, finalToolName));
 
-    // Add error recovery if an error occurred
+    // Add error recovery instructions if an error occurred
     if (lastError) {
       sections.push(this.buildErrorRecoverySection(finalToolName, reportToolName, lastError));
     }
 
-    // Add custom sections if provided
+    // Add any custom prompt sections
     if (options.customSections) {
       sections.push(this.buildCustomSectionsContent(options.customSections));
     }
 
-    // Add immediate task section
+    // Add the immediate task for the agent
     sections.push(this.buildTaskSection(userPrompt, finalToolName, reportToolName, nextTasks));
 
-    // Join all sections with clear separation
-    return sections.join('\n\n---\n\n');
+    // Join all sections with a clear separator
+    return sections.join('\n\n');
   }
 }
