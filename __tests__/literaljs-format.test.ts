@@ -1,14 +1,14 @@
 import { describe, it, expect } from '@jest/globals';
 import z from 'zod';
-import { JSObjectFormatHandler } from '../core/handlers/JSObjectFormatHandler';
+import { LiteralJSFormatHandler } from '../core/handlers/LiteralJSFormatHandler';
 import { Tool } from '../core/types/types';
 
-describe('JSObjectFormatHandler', () => {
-  let handler: JSObjectFormatHandler;
+describe('LiteralJSFormatHandler', () => {
+  let handler: LiteralJSFormatHandler;
   let testTools: Tool[];
 
   beforeEach(() => {
-    handler = new JSObjectFormatHandler();
+    handler = new LiteralJSFormatHandler();
     testTools = [
       {
         name: 'read_file',

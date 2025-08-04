@@ -4,10 +4,11 @@ import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from "zod-to-json-schema";
 
 /**
- * Handles JSObject-based response format for tool calls
+ * Handles Literal+JavaScript response format for tool calls
  * Expects AI to return a JavaScript function called `callTools` that returns an array of tool call objects
+ * Supports literal blocks for large content via LiteralLoader references
  */
-export class JSObjectFormatHandler implements FormatHandler {
+export class LiteralJSFormatHandler implements FormatHandler {
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     const schemaMap = tools.map(t => {
