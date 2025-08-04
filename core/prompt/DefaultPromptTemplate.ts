@@ -110,69 +110,74 @@ nextTasks = "Task is complete."
     }
 
     if (this.responseFormat === FormatMode.JSOBJECT) {
-      return `# RESPONSE FORMAT: JAVASCRIPT FUNCTION ONLY
+      return `
+      # RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION
 
-## VALID FORMATS
+Your response must be a single JavaScript function, 'callTools()', that returns an array of tool calls. Choose one of the two scenarios below based on your progress.
 
-### FORMAT 1: Data Gathering
+### \#\# Scenario 1: Gathering Information or Performing Actions
+
+Use this format when you need to take intermediate steps to gather data or perform actions.
+
 \`\`\`javascript
 function callTools() {
   const calledToolsList = [];
-  
-  // Add action tool (any tool except ${reportToolName})
+
+  // 1. Call any tool EXCEPT ${finalToolName}.
   calledToolsList.push({
-    toolName: "[action_tool_name]",
-    param1: "value1",
-    param2: 42
+    toolName: "some_action_tool", // e.g., searchWeb, createFile
+    // IMPORTANT: Use the EXACT parameter names from the tool's schema.
+    param1: "value for the first parameter",
+    param2: 123
   });
-  
-  // Always add ${reportToolName} to accompany action tool
+
+  // 2. ALWAYS add a report on your progress.
   calledToolsList.push({
     toolName: "${reportToolName}",
-    goal: \`[user's primary intent or objective]\`,
-    report: \`Action: [what u did]. Expected: [outcome].\`,
-    nextTasks: \`1. [Next step]. 2. [Following step]. 3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].\`
+    goal: "The user's primary objective.",
+    report: "Action: What you just did. Expected: The intended outcome.",
+    nextTasks: "1. Next immediate step. 2. Subsequent step. 3. Use ${finalToolName} to deliver the final result."
   });
-  
+
   return calledToolsList;
 }
 \`\`\`
+### \#\# Scenario 2: Providing the Final Answer
 
-### FORMAT 2: Final Answer
+Use this format only when all necessary information has been gathered and you are ready to present the final answer to the user.
+
 \`\`\`javascript
 function callTools() {
   const calledToolsList = [];
-  
-  // Add final tool with required parameters
+
+  // 1. Call the final tool to deliver the complete answer.
   calledToolsList.push({
     toolName: "${finalToolName}",
-    // add required parameters here
+    // IMPORTANT: Populate with the actual data gathered in previous steps.
+    finalAnswerParameter: "The complete, final answer for the user."
   });
-  
-  // Always add ${reportToolName} to accompany final tool
+
+  // 2. ALWAYS add a final report.
   calledToolsList.push({
     toolName: "${reportToolName}",
-    goal: \`[user's primary intent or objective]\`,
-    report: \`Task complete. Presenting final answer.\`,
-    nextTasks: \`Task is complete.\`
+    goal: "The user's primary objective.",
+    report: "Task complete. Presenting the final answer.",
+    nextTasks: "Task is complete."
   });
-  
+
   return calledToolsList;
 }
 \`\`\`
 
-## REQUIREMENTS
-- Write ONLY a JavaScript function named \`callTools\`
-- Function must return an array named \`calledToolsList\`
-- Each object in array must have \`toolName\` property
-- Include all required properties for each tool
-- Respect all type constraints (string, integer, number, array, object)
-- Honor numeric constraints (minimum, exclusiveMinimum, etc.)
-- For arrays, respect minItems, uniqueItems, and item types
-- Use realistic, human-readable values (no placeholders)
-- No external libraries or imports allowed
-- Pure vanilla JavaScript only
-- NEVER call ${reportToolName} alone - must accompany another tool`;
+### \#\# Core Rules
+
+  * **Function Only:** Your entire response must be *only* the 'callTools' function. Do not include any other text or explanations.
+  * **Valid JavaScript Syntax:** Ensure your code has proper JavaScript syntax - valid variable names, correct bracket matching, proper string escaping, and syntactically correct object literals.
+  * **Adhere to Schema:** You must use the **exact parameter names and data types** (string, number, array, etc.) specified in the tool schemas.
+  * **No Placeholders:** Replace all descriptive text (e.g., "The user's primary objective.") with real, specific values based on the user's request.
+  * **Mandatory Reporting:** The '${reportToolName}' tool is required and must **always** accompany another tool call. It can never be called by itself.
+  * **String Formatting:** Use template literals for multiline strings.
+      `;
     }
 
     // Default to Function Calling JSON

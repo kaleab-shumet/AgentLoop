@@ -40,6 +40,8 @@ You will be given a JSON Schema as a reference. Your task is to write a JavaScri
 - Single function implementation
 - Do not embed or reference the specific schema within the function
 - Function must work generically with any provided schema
+- For multiline strings, use template literals with backticks: \`line1\\nline2\` or actual line breaks
+- CRITICAL: If string values contain backticks (\`), escape them as \\\` to prevent code block parsing errors
 
 Example format:
 \`\`\`javascript
