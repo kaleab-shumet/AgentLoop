@@ -76,10 +76,25 @@ note: When you call action tool, you will find the data in the 'Reports and Resu
 **OUTPUT ONLY THE CODE BLOCK, NO OTHER TEXT.**
 
 ## STRUCTURE
-1.  **Import**: \`import { LiteralLoader } from './utils';\`
+1.  **Import**: \`import { literalLoader } from './utils';\`
 2.  **Function**: \`function callTools() { return [...] }\`
 3.  **Literals**: \`<literals><literal id="...">...</literal></literals>\` (Use for long content or to avoid manual escape characters)
+
 note: If you use **Literals** you must return it together with javascript code block, as a separate XML block. 
+note: Use 'literalLoader' to load data from **Literals**. This is recommended and mandatory approach for long contents to avoid parsing and escaping issues which cause system crash. Look the provided template.
+
+**Make literalLoader primary choice**
+
+## AVAILABLE IN EXECUTION CONTEXT
+- \`literalLoader(id)\` - loads content from literal blocks
+- Standard JavaScript: Array, Object, String, Number, Boolean, Math, Date, JSON
+- **NOT AVAILABLE**: import/export, require, modules, external libraries, DOM, Node.js APIs, fetch, XMLHttpRequest
+
+## CRITICAL NOTES
+- **NO import/export statements** - literalLoader is automatically available
+- **NO external modules** - use only built-in JavaScript
+- Use \`literalLoader("id")\` for long content to avoid parsing/escaping issues
+
 
 ## ⚠️ SCHEMA VALIDATION WARNING
 Your tool calls are strictly validated against schemas. Common errors include:
@@ -97,7 +112,8 @@ Your tool calls are strictly validated against schemas. Common errors include:
 -   **EXACT SCHEMA MATCH**: Use EXACT parameter names (case-sensitive) from tool schemas.
 -   **ALL REQUIRED PARAMS**: Include ALL required parameters as defined in tool definitions.
 -   **CORRECT DATA TYPES**: Ensure parameter values match their defined types (string, number, boolean).
--   **Long Content**: Use \`LiteralLoader("id")\` with \`<literal>\` blocks for multiline content.
+-   **Long Content**: Use \`literalLoader("id")\` with \`<literal>\` blocks for multiline content.
+-   **Use Literals**: Not using Literals for long content will cause system crash. You must use Literals for long content.
 
 ## VALID PAIRING PATTERNS
 -   ✅ **Action + Report**: \`action_tool\` + \`${reportToolName}\`
@@ -109,7 +125,8 @@ Your tool calls are strictly validated against schemas. Common errors include:
 
 ## TEMPLATE
 \`\`\`javascript
-import { LiteralLoader } from './utils';
+import { literalLoader } from './utils';
+// literalLoader("unique-reference-id") a function used to load long content from Literals xml block using unique reference id
 
 function callTools() {
   const calledToolsList = [];
@@ -117,7 +134,7 @@ function callTools() {
   // STEP 1: Call action tool(s) with EXACT schema parameters
   calledToolsList.push({
     toolName: "action_tool_name", // EXACT tool name from Available Tools
-    longContentParam: LiteralLoader("long_content_id"), // Do not forget to include literals xml block
+    longContentParam: literalLoader("long_content_id"), // Do not forget to include literals xml block. Mandatory for long content.
     requiredParam: "must_include_all_required", // Include ALL required parameters
     optionalParam: "can_include_optional"      // Include optional parameters as needed
   });

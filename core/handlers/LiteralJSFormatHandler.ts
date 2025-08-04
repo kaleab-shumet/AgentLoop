@@ -6,7 +6,7 @@ import zodToJsonSchema from "zod-to-json-schema";
 /**
  * Handles Literal+JavaScript response format for tool calls
  * Expects AI to return a JavaScript function called `callTools` that returns an array of tool call objects
- * Supports literal blocks for large content via LiteralLoader references
+ * Supports literal blocks for large content via literalLoader references
  */
 export class LiteralJSFormatHandler implements FormatHandler {
 
@@ -229,8 +229,8 @@ function callTools() {
    */
   private executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map()): any[] {
     try {
-      // Create LiteralLoader function that can access the literal blocks
-      const LiteralLoader = (id: string): string => {
+      // Create literalLoader function that can access the literal blocks
+      const literalLoader = (id: string): string => {
         if (!literalBlocks.has(id)) {
           throw new AgentError(
             `Literal block with id "${id}" not found`,
@@ -252,12 +252,13 @@ function callTools() {
         Math: Math,
         Date: Date,
         JSON: JSON,
-        LiteralLoader: LiteralLoader, // Add LiteralLoader to the context
+        literalLoader: literalLoader, // Add literalLoader to the context
         console: { log: () => {} } // Stub console for safety
       };
 
-      // Strip any import statements since we provide LiteralLoader in context
-      const cleanedJsCode = jsCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
+      // Strip any import/export statements since we provide literalLoader in context
+      let cleanedJsCode = jsCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
+      cleanedJsCode = cleanedJsCode.replace(/export\s+.*?;?\s*/g, '');
 
       // Create a function that executes the code in our controlled context
       const executeCode = new Function('context', `
