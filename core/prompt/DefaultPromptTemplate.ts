@@ -78,9 +78,9 @@ note: When you call action tool, you will find the data in the 'Reports and Resu
 ## STRUCTURE
 1.  **Import**: \`import { literalLoader } from './utils';\`
 2.  **Function**: \`function callTools() { return [...] }\`
-3.  **Literals**: \`<literals><literal id="...">...</literal></literals>\` (Use for long content or to avoid manual escape characters)
+3.  **Literals**: \`<literals><literal id="...">...</literal></literals>\` (Use for long content)
 
-note: If you use **Literals** you must return it together with javascript code block, as a separate XML block. 
+**CRITICAL**: Literals must be in a **SEPARATE XML BLOCK** after the JavaScript code block, NOT inside it! 
 note: Use 'literalLoader' to load data from **Literals**. This is recommended and mandatory approach for long contents to avoid parsing and escaping issues which cause system crash. Look the provided template.
 
 **Make literalLoader primary choice**
@@ -94,7 +94,7 @@ note: Use 'literalLoader' to load data from **Literals**. This is recommended an
 - **NO import/export statements** - literalLoader is automatically available
 - **NO external modules** - use only built-in JavaScript
 - Use \`literalLoader("id")\` for long content to avoid parsing/escaping issues
-
+- **Never write any code outside callTools function**
 
 ## ⚠️ SCHEMA VALIDATION WARNING
 Your tool calls are strictly validated against schemas. Common errors include:
