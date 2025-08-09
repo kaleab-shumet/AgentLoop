@@ -45,6 +45,7 @@ Use XRJSON: a JSON object followed by a <literals> block.
 
 - Use "xrjson('id')" for any string > 50 characters or multi-line.
 - Every ID used must have a matching <literal>.
+- You can write free-form text inside <literal> tag. No escaping needed.
 
 ## STRUCTURE
 \`\`\`xrjson
@@ -58,7 +59,7 @@ Use XRJSON: a JSON object followed by a <literals> block.
       "toolName": "${reportTool}",
       "goal": "Summarize",
       "report": "xrjson('summary')",
-      "nextTasks": "None"
+      "nextTasks": "Task Completed"
     }
   ]
 }

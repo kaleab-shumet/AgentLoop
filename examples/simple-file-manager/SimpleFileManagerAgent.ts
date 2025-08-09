@@ -139,7 +139,7 @@ Always be helpful and respond to the user's communication style!`;
 
     this.defineTool((z) => ({
       name: 'final',
-      description: `Provide friendly final response when task is complete or cannot be completed.`,
+      description: `Provide friendly final response when task is complete or cannot be completed. Use this tool to explain result or end the conversation gracefully.`,
       argsSchema: z.object({
         value: z.string().describe("Warm, friendly summary of results or helpful explanation if unable to complete.")
       }),

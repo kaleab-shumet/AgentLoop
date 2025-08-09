@@ -1044,7 +1044,7 @@ export abstract class AgentLoop {
     if (!this.tools.some(t => t.name === this.FINAL_TOOL_NAME)) {
       this.defineTool((z) => ({
         name: this.FINAL_TOOL_NAME,
-        description: `Call this tool to provide your final answer when the task is complete. Use when: (1) You have completed the user's request and display data to the user, (2) All necessary operations are done, (3) You can provide a complete response, or (4) You need to explain why the task cannot be completed. This tool ends the conversation.`,
+        description: `Call this tool to provide your final answer when the task is complete. Use when: (1) You have completed the user's request and display data to the user, (2) All necessary operations are done, (3) You can provide a complete response, or (4) You need to explain why the task cannot be completed. This tool used for conversation.`,
         argsSchema: z.object({
           value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.")
         }),
@@ -1063,11 +1063,12 @@ export abstract class AgentLoop {
     if (!this.tools.some(t => t.name === this.REPORT_TOOL_NAME)) {
       const reportTool = {
         name: this.REPORT_TOOL_NAME,
-        description: `Report which tools you called in this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this report.`,
+        description: `Report which tools you called in this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this report. Never call this tool alone - it must be used with other tools to provide context.`,
         argsSchema: z.object({
           goal: z.string().describe("The user's primary goal or intent that this iteration is working towards achieving."),
           report: z.string().describe("State which specific tools you called in this iteration and the reason why. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
-          nextTasks: z.string().describe("Describe the complete plan from the next action all the way to the final tool call using numbered listing format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'.")
+          nextTasks: z.string().describe("Describe the complete plan from the next action all the way to the final tool call using numbered listing format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'."),
+          isAlone: z.boolean().describe(`Set to false if this report is part of a tool call iteration with other tools. Otherwise, system will throw an error if this tool is called alone.`)
         }),
         handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
           console.log(`[AgentLoop] args: ${args}`);
