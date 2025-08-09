@@ -1,6 +1,7 @@
 import { PromptOptions, Interaction, BuildPromptParams, FormatMode } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
+import { BasePromptTemplate } from './BasePromptTemplate';
 import { DefaultPromptTemplate } from './DefaultPromptTemplate';
 
 /**
@@ -8,7 +9,7 @@ import { DefaultPromptTemplate } from './DefaultPromptTemplate';
  */
 export interface PromptManagerConfig {
   responseFormat?: FormatMode;
-  customTemplate?: DefaultPromptTemplate;
+  customTemplate?: BasePromptTemplate;
   promptOptions?: PromptOptions;
   errorRecoveryInstructions?: string;
 }
@@ -25,12 +26,12 @@ export interface PromptManagerConfig {
  * const manager = new PromptManager(systemPrompt, { responseFormat: ResponseFormat.FUNCTION_CALLING });
  * 
  * // Use custom template
- * class MyTemplate extends DefaultPromptTemplate { ... }
+ * class MyTemplate implements BasePromptTemplate { ... }
  * const manager = new PromptManager(systemPrompt, { customTemplate: new MyTemplate() });
  */
 export class PromptManager {
   private systemPrompt: string;
-  private template: DefaultPromptTemplate;
+  private template: BasePromptTemplate;
   private isCustomTemplate: boolean;
   private promptOptions: PromptOptions;
   private errorRecoveryInstructions?: string;
@@ -64,13 +65,10 @@ export class PromptManager {
   }
 
   /**
-   * Get the current response format (only applies to default template)
+   * Get the current response format
    */
-  getResponseFormat(): FormatMode | null {
-    if (this.isCustomTemplate) {
-      return null; // Custom templates manage their own format
-    }
-    return (this.template as DefaultPromptTemplate).getResponseFormat();
+  getResponseFormat(): FormatMode {
+    return this.template.getResponseFormat();
   }
 
   /**
@@ -84,14 +82,14 @@ export class PromptManager {
         { currentTemplate: 'custom', attemptedFormat: format }
       );
     }
-    // Template only supports LiteralJS format - no format switching available
+    // Template only supports XRJSON format - no format switching available
     return this;
   }
 
   /**
    * Set a custom template
    */
-  setCustomTemplate(template: DefaultPromptTemplate): PromptManager {
+  setCustomTemplate(template: BasePromptTemplate): PromptManager {
     this.template = template;
     this.isCustomTemplate = true;
     return this;
@@ -100,7 +98,7 @@ export class PromptManager {
   /**
    * Switch back to default template with specified format
    */
-  setDefaultTemplate(format: FormatMode = FormatMode.LITERALJS): PromptManager {
+  setDefaultTemplate(): PromptManager {
     this.template = new DefaultPromptTemplate();
     this.isCustomTemplate = false;
     return this;

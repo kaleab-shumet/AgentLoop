@@ -1,9 +1,9 @@
 import { FormatMode, FormatHandler } from "../types/types";
-import { LiteralJSFormatHandler } from "./LiteralJSFormatHandler";
+import { XRJsonFormatHandler } from "./XRJsonFormatHandler";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 
 /**
- * Factory for creating response handlers - only LiteralJS mode is supported
+ * Factory for creating response handlers - only XRJSON mode is supported
  */
 export class FormatHandlerFactory {
   private static handlers: Map<FormatMode, FormatHandler> = new Map();
@@ -14,8 +14,8 @@ export class FormatHandlerFactory {
   static getHandler(mode: FormatMode): FormatHandler {
     if (!this.handlers.has(mode)) {
       switch (mode) {
-        case FormatMode.LITERALJS:
-          this.handlers.set(mode, new LiteralJSFormatHandler());
+        case FormatMode.XRJSON:
+          this.handlers.set(mode, new XRJsonFormatHandler());
           break;
         default:
           throw new AgentError(

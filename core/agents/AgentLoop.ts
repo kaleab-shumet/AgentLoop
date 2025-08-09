@@ -121,7 +121,7 @@ export abstract class AgentLoop {
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.LITERALJS);
+    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.XRJSON);
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
   }
@@ -141,7 +141,7 @@ export abstract class AgentLoop {
     this.failureHandlingMode = options.failureHandlingMode || (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
     this.failureTolerance = options.failureTolerance !== undefined ? options.failureTolerance : 0.0;
     this.hooks = options.hooks || {};
-    this.formatMode = options.formatMode || FormatMode.LITERALJS;
+    this.formatMode = options.formatMode || FormatMode.XRJSON;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
     this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
@@ -285,7 +285,7 @@ export abstract class AgentLoop {
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
     let responseFormat: FormatMode;
     
-    responseFormat = FormatMode.LITERALJS;
+    responseFormat = FormatMode.XRJSON;
 
     return {
       responseFormat,
@@ -308,12 +308,11 @@ export abstract class AgentLoop {
     // Check for reserved tool names in public API
     if (toolDefinition.name === this.REPORT_TOOL_NAME) {
       throw new AgentError(
-        `Tool name '${toolDefinition.name}' is reserved and cannot be overridden. Reserved tools: [${this.REPORT_TOOL_NAME}]`,
+        `Tool name '${toolDefinition.name}' is reserved`,
         AgentErrorType.RESERVED_TOOL_NAME,
         { 
           toolName: toolDefinition.name, 
-          reservedTools: [this.REPORT_TOOL_NAME],
-          attemptedOverride: true
+          reservedTools: [this.REPORT_TOOL_NAME]
         }
       );
     }
@@ -402,13 +401,12 @@ export abstract class AgentLoop {
           if (!hasReportTool) {
             const toolsList = parsedToolCalls.map(call => call.toolName).join(', ');
             throw new AgentError(
-              `Missing required '${this.REPORT_TOOL_NAME}' tool. Called: [${toolsList}]`,
+              `Missing '${this.REPORT_TOOL_NAME}' tool`,
               AgentErrorType.TOOL_NOT_FOUND,
               { 
                 requiredTool: this.REPORT_TOOL_NAME,
                 parsedTools: parsedToolCalls.map(call => call.toolName),
-                missingToolType: this.REPORT_TOOL_NAME,
-                instruction: `Add the '${this.REPORT_TOOL_NAME}' tool to your response`
+                instruction: `Add '${this.REPORT_TOOL_NAME}' tool`
               }
             );
           }
@@ -416,12 +414,11 @@ export abstract class AgentLoop {
           // Validation: Reject if only report tool is present
           if (hasReportTool && parsedToolCalls.length < 2) {
             throw new AgentError(
-              `Cannot call '${this.REPORT_TOOL_NAME}' tool alone. Use with other tools.`,
+              `Cannot call '${this.REPORT_TOOL_NAME}' alone`,
               AgentErrorType.TOOL_NOT_FOUND,
               { 
                 rejectedPattern: 'report_tool_only',
-                parsedTools: parsedToolCalls.map(call => call.toolName),
-                instruction: `Call other tools alongside '${this.REPORT_TOOL_NAME}'`
+                instruction: `Use other tools with '${this.REPORT_TOOL_NAME}'`
               }
             );
           }
@@ -817,15 +814,15 @@ export abstract class AgentLoop {
       try {
         await this.hooks.onAIRequestStart?.(prompt);
 
-        // For LiteralJS format, we don't pass function tools - the tools are described in the prompt
+        // For XRJSON format, we don't pass function tools - the tools are described in the prompt
         let functionTools: FunctionCallTool[] | undefined = undefined;
         
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
         if (!response || typeof response !== "object" || typeof response.text !== "string") {
           throw new AgentError(
-            "AI provider returned invalid response format.",
+            "Invalid AI response format",
             AgentErrorType.INVALID_RESPONSE,
-            { responseType: typeof response, expectedType: 'AICompletionResponse' }
+            { responseType: typeof response }
           );
         }
         
@@ -848,7 +845,7 @@ export abstract class AgentLoop {
       }
     }
     throw lastError ?? new AgentError(
-      "LLM call failed after all retry attempts.",
+      "LLM call failed after retries",
       AgentErrorType.UNKNOWN,
       { retryAttempts: this.connectionRetryAttempts }
     );
@@ -1007,21 +1004,21 @@ export abstract class AgentLoop {
   private _addTool<T extends ZodTypeAny>(tool: Tool<T>): void {
     if (this.tools.some(t => t.name === tool.name)) {
       throw new AgentError(
-        `A tool with the name '${tool.name}' is already defined.`,
+        `Tool '${tool.name}' already exists`,
         AgentErrorType.DUPLICATE_TOOL_NAME,
-        { toolName: tool.name, existingTools: this.tools.map(t => t.name) }
+        { toolName: tool.name }
       );
     }
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tool.name)) {
       throw new AgentError(
-        `Tool name '${tool.name}' must start with a letter or underscore and contain only letters, numbers, and underscores.`,
+        `Invalid tool name '${tool.name}'`,
         AgentErrorType.INVALID_TOOL_NAME,
         { toolName: tool.name, validPattern: '^[a-zA-Z_][a-zA-Z0-9_]*$' }
       );
     }
     if (!(tool.argsSchema instanceof ZodObject)) {
       throw new AgentError(
-        `The argsSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`,
+        `Tool '${tool.name}' requires Zod object schema`,
         AgentErrorType.CONFIGURATION_ERROR,
         { toolName: tool.name, receivedSchemaType: typeof tool.argsSchema }
       );
@@ -1073,6 +1070,7 @@ export abstract class AgentLoop {
           nextTasks: z.string().describe("Describe the complete plan from the next action all the way to the final tool call using numbered listing format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'.")
         }),
         handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
+          console.log(`[AgentLoop] args: ${args}`);
           return {
             toolName: name,
             success: true,

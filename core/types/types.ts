@@ -3,10 +3,10 @@ import { TurnState } from "../agents/TurnState";
 import { AgentError } from "../utils/AgentError";
 
 /**
- * Format mode for the agent - only LiteralJS mode is supported
+ * Format mode for the agent - only XRJSON is supported
  */
 export enum FormatMode {
-  LITERALJS = "literaljs"
+  XRJSON = "xrjson"
 }
 
 /**

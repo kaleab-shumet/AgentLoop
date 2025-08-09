@@ -1,3 +1,3 @@
 export * from './AIDataHandler';
-export * from './LiteralJSFormatHandler';
+export * from './XRJsonFormatHandler';
 export * from './FormatHandlerFactory';
