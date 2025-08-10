@@ -13,31 +13,33 @@ export class DefaultPromptTemplate implements BasePromptTemplate {
     return FormatMode.XRJSON;
   }
 
-  public coreDirective(finalTool: string, reportTool: string): string {
+  public coreDirective(finalTool: string, selfReasonTool: string): string {
     return `---
 # CORE DIRECTIVE
 
 You are a structured tool-using agent.
 
 ## PHASES
-1. DATA GATHERING — Use any action tool + "${reportTool}".
-2. FINAL RESPONSE — Use "${finalTool}" + "${reportTool}".
+1. DATA GATHERING — Use any action tool + "${selfReasonTool}".
+2. FINAL RESPONSE — Use "${finalTool}" + "${selfReasonTool}".
 
 ## WORKFLOW
 1. Read Conversation History to understand context.
 2. Check Next Tasks section for immediate actions.
-3. If nextTask is present, execute it immediately using the correct tool + "${reportTool}".
-4. If no nextTask, analyze USER REQUEST and use action tool + "${reportTool}".
-5. If nextTask says complete, finalize with "${finalTool}" + "${reportTool}".
+3. If nextTask is present, execute it immediately using the correct tool + "${selfReasonTool}".
+4. If no nextTask, analyze USER REQUEST and use action tool + "${selfReasonTool}".
+5. If nextTask says complete, finalize with "${finalTool}" + "${selfReasonTool}".
 
 ## RULES
 - Use only defined tools.
 - Match param names and types exactly.
-- Never call "${reportTool}" alone.
-- Output valid XRJSON only.`;
+- Never call "${selfReasonTool}" alone.
+- Output valid XRJSON only.
+- Never use ${finalTool} until completing user goal or error happened.
+`;
   }
 
-  private responseFormat(reportTool: string, finalTool: string): string {
+  private responseFormat(selfReasonTool: string, finalTool: string): string {
     return `---
 # XRJSON FORMAT
 
@@ -46,6 +48,9 @@ Use XRJSON: a JSON object followed by a <literals> block.
 - Use "xrjson('id')" for any string > 50 characters or multi-line.
 - Every ID used must have a matching <literal>.
 - You can write free-form text inside <literal> tag. No escaping needed.
+- if you did not use any "xrjson('id')", then skip <literals> block.
+
+note: Before generating xrjson, carefully study tool schemas and xrjson format.
 
 ## STRUCTURE
 \`\`\`xrjson
@@ -56,14 +61,13 @@ Use XRJSON: a JSON object followed by a <literals> block.
       "value": "xrjson('final_output')"
     },
     {
-      "toolName": "${reportTool}",
+      "toolName": "${selfReasonTool}",
       "goal": "Summarize",
       "report": "xrjson('summary')",
       "nextTasks": "Task Completed"
     }
   ]
 }
-
 <literals>
   <literal id="final_output">
     You do not need to escape strings in here, write freely. System automatically escapes it.
@@ -81,11 +85,13 @@ Use XRJSON: a JSON object followed by a <literals> block.
 - No text between \`}\` and \`<literals>\`.`;
   }
 
-  public toolsSection(toolDefs: string, reportTool: string): string {
+  public toolsSection(toolDefs: string, selfReasonTool: string): string {
     return `---
 # TOOLS
 
-Use only these tools. Match parameter names and types exactly. Never call "${reportTool}" alone.
+- Use only these tools. Match parameter names and types exactly. Never call "${selfReasonTool}" alone.
+- Validate every tool call against the schema
+- You must adhere to the tool definitions exactly.
 
 ${toolDefs}`;
   }
@@ -100,13 +106,13 @@ ${entries.map((e, i) => `## Turn ${i + 1}\n**User**: ${e.user || ''}\n**Assistan
 
   public reportsSection(
     reports: ToolCallReport[],
-    reportTool: string,
+    selfReasonTool: string,
     finalTool: string
   ): string {
     if (!reports.length) {
       return `---
 # REPORTS AND RESULTS
-No data collected yet. Begin with any action tool + "${reportTool}".`;
+No data collected yet. Begin with any action tool + "${selfReasonTool}".`;
     }
 
     const entries = reports
@@ -141,7 +147,7 @@ ${entries}`;
 
   public errorSection(
     finalTool: string,
-    reportTool: string,
+    selfReasonTool: string,
     error: AgentError | null
   ): string {
     if (!error) return '';
@@ -157,34 +163,40 @@ ${entries}`;
 
 Steps:
 1. Diagnose issue.
-2. Retry tool + "${reportTool}".
-3. Finalize with "${finalTool}" + "${reportTool}".`;
+2. Retry tool + "${selfReasonTool}".
+3. Finalize with "${finalTool}" + "${selfReasonTool}".`;
   }
 
   public taskSection(
     prompt: string,
     finalTool: string,
-    reportTool: string,
-    nextTasks?: string | null
+    selfReasonTool: string,
+    nextTasks?: string | null,
+    lastActionReport?: string | null,
+    taskGoal?: string | null
   ): string {
+
+    const goalSection = taskGoal ? `## Goal\n> ${taskGoal}\n\n` : "";
+    const lastAction = lastActionReport ? `Previously you said '${lastActionReport}', then only select the next tasks which are not already done. Here are the tasks: ` : ""
     return `---
 # TASK
 
-${nextTasks
-  ? `## nextTasks\n> ${nextTasks}\n\nExecute immediately using correct tool + "${reportTool}".`
-  : `## USER REQUEST\n> ${prompt}\n\nIf data needed, use action tool + "${reportTool}". Finalize with "${finalTool}" + "${reportTool}".`}`;
+${goalSection}${nextTasks
+  ? `## Next Tasks\n>  ${lastAction} ${nextTasks}`
+  : `## USER REQUEST\n> ${prompt}\n\nIf data needed, use action tool + "${selfReasonTool}". Finalize with "${finalTool}" + "${selfReasonTool}".`}`;
   }
 
-  private reminderSection(reportTool: string): string {
+  private reminderSection(selfReasonTool: string): string {
     return `---
-# REMINDER
+# REMINDER - strict rules(if violated, cause systme failure)
 
 - XRJSON only. No free-form text outside JSON + <literals>.
 - Match tool schemas exactly: tool name, param names, param types.
 - Use "xrjson('id')" for all long/multi-line values.
 - Every ID must have matching <literal>.
-- Never call "${reportTool}" alone.
-- Validate before finalizing.`;
+- use "${selfReasonTool}" along with all tool calls.
+- Never call "${selfReasonTool}" alone.
+- `;
   }
 
   private customSections(customs: Record<string, string>): string {
@@ -204,6 +216,8 @@ ${nextTasks
       toolDefinitions,
       options,
       nextTasks,
+      lastActionReport,
+      taskGoal,
       conversationEntries,
       conversationLimitNote,
     } = params;
@@ -223,7 +237,7 @@ ${nextTasks
       this.reportsSection(reports, reportToolName, finalToolName),
       this.errorSection(finalToolName, reportToolName, lastError),
       options.customSections ? this.customSections(options.customSections) : '',
-      this.taskSection(userPrompt, finalToolName, reportToolName, nextTasks),
+      this.taskSection(userPrompt, finalToolName, reportToolName, nextTasks, lastActionReport, taskGoal),
       this.reminderSection(reportToolName),
     ]
       .filter(Boolean)

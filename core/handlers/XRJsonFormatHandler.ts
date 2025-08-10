@@ -3,6 +3,7 @@ import { FormatHandler, PendingToolCall, Tool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { parseXrjson, XrjsonError } from 'xrjson';
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { jsonSchemaToZod } from "json-schema-to-zod";
 
 /**
  * Handler for XRJSON format - JSON with external XML literal references
@@ -15,23 +16,52 @@ export class XRJsonFormatHandler implements FormatHandler {
    */
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     return tools.map(t => {
-      const zodSchema = zodToJsonSchema(t.argsSchema, t.name);
+      try {
+        // Convert Zod schema to JSON Schema first
+        const jsonSchema = zodToJsonSchema(t.argsSchema, t.name);
+        
+        // Resolve $ref if present - extract the actual schema
+        let actualSchema = jsonSchema;
+        const schemaAsAny = jsonSchema as any;
+        if (schemaAsAny.$ref && schemaAsAny.definitions) {
+          const refPath = schemaAsAny.$ref.replace('#/', '').split('/');
+          actualSchema = schemaAsAny;
+          for (const part of refPath) {
+            actualSchema = (actualSchema as any)[part];
+          }
+        }
 
-      return `
+        // Convert back to Zod string representation for LLM readability
+        const zodString = jsonSchemaToZod(actualSchema as any);
+        
+
+        return `
+## Tool Name: ${t.name}
+## Tool Description: ${t.description}
+## Tool Parameters (Zod Schema):
+${zodString}
+`;
+      } catch (error) {
+        // Fallback to JSON schema if conversion fails
+        const zodSchema = zodToJsonSchema(t.argsSchema, t.name);
+        return `
 ## Tool Name: ${t.name}
 ## Tool Description: ${t.description}
 ## Tool Schema:
 ${JSON.stringify(zodSchema, null, 2)}
 `;
+      }
     }).join("\n");
   }
+
 
   /**
    * Parse XRJSON response and validate tool calls
    */
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
     try {
-      // xrjson library handles code block cleaning automatically
+
+      // Parse the extracted content
       const parsedData = parseXrjson(response);
 
       // Validate that we have tools array
@@ -86,7 +116,7 @@ ${JSON.stringify(zodSchema, null, 2)}
           const flatErrors = validationResult.error.flatten();
           const firstFieldError = Object.entries(flatErrors.fieldErrors)[0];
           const firstFormError = flatErrors.formErrors[0];
-          
+
           let errorMsg: string;
           if (firstFieldError) {
             const [field, errors] = firstFieldError;
@@ -97,12 +127,16 @@ ${JSON.stringify(zodSchema, null, 2)}
             errorMsg = 'invalid args';
           }
 
+          // Note: We can't call hooks here since this is in the format handler
+          // The hooks would need to be called from AgentLoop level
           throw new AgentError(
             `${toolName}: ${errorMsg}`,
             AgentErrorType.INVALID_RESPONSE,
             {
               toolName,
-              providedArgs: args
+              providedArgs: args,
+              validationErrors: validationResult.error.errors,
+              schemaExpected: toolDef.argsSchema
             }
           );
         }

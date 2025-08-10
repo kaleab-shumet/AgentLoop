@@ -214,6 +214,8 @@ export interface BuildPromptParams {
   toolDefinitions: string;
   options: PromptOptions;
   nextTasks?: string | null;
+  lastActionReport?: string | null;
+  taskGoal?: string | null;
   conversationEntries?: ConversationEntry[];
   conversationLimitNote?: string;
   errorRecoveryInstructions?: string;

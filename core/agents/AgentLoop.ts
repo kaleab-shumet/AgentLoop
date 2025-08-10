@@ -46,6 +46,34 @@ export interface AgentLifecycleHooks {
   onToolCallEnd?: (result: ToolCall) => Promise<void>; // Replaces onToolCallSuccess and onToolCallFail
   onAgentFinalResponse?: (result: AgentResponse) => Promise<void>;
   onError?: (error: AgentError) => Promise<void>;
+
+  // Iteration lifecycle
+  onIterationStart?: (iteration: number, maxIterations: number) => Promise<void>;
+  onIterationEnd?: (iteration: number, success: boolean) => Promise<void>;
+
+  // Stagnation detection
+  onStagnationDetected?: (similarity: number, count: number, isLastChance: boolean) => Promise<void>;
+  onStagnationRecovered?: (newApproach: string) => Promise<void>;
+
+  // Tool validation & schema
+  onToolValidationFailed?: (toolName: string, error: string, args: any) => Promise<void>;
+  onSchemaViolation?: (toolName: string, expected: any, received: any) => Promise<void>;
+
+  // Response parsing
+  onResponseParseFailed?: (response: string, error: Error) => Promise<void>;
+  onResponseParseSuccess?: (toolCalls: PendingToolCall[]) => Promise<void>;
+
+  // Token/cost tracking
+  onTokenUsage?: (usage: TokenUsage, runningTotal: TokenUsage) => Promise<void>;
+  onCostCalculated?: (cost: number, runningCost: number) => Promise<void>;
+
+  // Retry & recovery
+  onRetryAttempt?: (attempt: number, maxAttempts: number, error: AgentError) => Promise<void>;
+  onRetryExhausted?: (finalError: AgentError, totalAttempts: number) => Promise<void>;
+
+  // Context & state management
+  onContextSizeLimit?: (size: number, limit: number) => Promise<void>;
+  onStateSnapshot?: (turnState: TurnState, iteration: number) => Promise<void>;
 }
 
 export type OutcomeRecord = { args: PendingToolCall, toolCall: ToolCall };
@@ -73,6 +101,7 @@ export interface AgentLoopOptions {
   promptManagerConfig?: PromptManagerConfig;
   sleepBetweenIterationsMs?: number;
   batchMode?: boolean;                // Whether to process multiple requests in a single turn
+  enableStagnationDetection?: boolean; // Whether to enable stagnation detection (default: true)
   stagnationTerminationThreshold?: number; // Number of similar reasoning attempts before forced termination (default: 3)
 }
 
@@ -95,6 +124,7 @@ export abstract class AgentLoop {
   protected hooks!: AgentLifecycleHooks;
   protected sleepBetweenIterationsMs!: number;
   protected batchMode!: boolean;
+  protected enableStagnationDetection!: boolean;
   protected stagnationTerminationThreshold!: number;
 
   protected abstract systemPrompt: string;
@@ -108,9 +138,9 @@ export abstract class AgentLoop {
   protected max_tokens?: number;
 
   private readonly FINAL_TOOL_NAME = 'final';
-  public readonly REPORT_TOOL_NAME = 'report_action';
+  public readonly SELF_REASON_TOOL_NAME = 'self_reason';
   formatMode!: FormatMode;
-  
+
   // Token usage tracking for the current run
   private currentRunTokenUsage: TokenUsage = {
     promptTokens: 0,
@@ -144,13 +174,14 @@ export abstract class AgentLoop {
     this.formatMode = options.formatMode || FormatMode.XRJSON;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
     this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
+    this.enableStagnationDetection = options.enableStagnationDetection !== undefined ? options.enableStagnationDetection : true;
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
-    
+
     // Update AIDataHandler when format mode changes
     if (options.formatMode) {
       this.aiDataHandler = new AIDataHandler(this.formatMode);
     }
-    
+
     // Initialize ErrorHandler
     this.errorHandler = new ErrorHandler(this.toolExecutionRetryAttempts);
 
@@ -174,13 +205,13 @@ export abstract class AgentLoop {
   private processConversationHistory(prevInteractionHistory: Interaction[]): { entries: ConversationEntry[], limitNote: string } {
     const maxEntries = 50; // Could be configurable
     const entries = maxEntries ? prevInteractionHistory.slice(-maxEntries) : prevInteractionHistory;
-    
+
     const limitNote = maxEntries && prevInteractionHistory.length > maxEntries
       ? ` (showing last ${entries.length} of ${prevInteractionHistory.length} total)`
       : '';
 
     const conversationEntries: ConversationEntry[] = [];
-    
+
     for (const interaction of entries) {
       if ('type' in interaction) {
         if (interaction.type === 'user_prompt') {
@@ -188,8 +219,8 @@ export abstract class AgentLoop {
           conversationEntries.push({ user: userPrompt.context });
         } else if (interaction.type === 'agent_response') {
           const agentResponse = interaction as AgentResponse;
-          const aiContent = typeof agentResponse.context === 'string' 
-            ? agentResponse.context 
+          const aiContent = typeof agentResponse.context === 'string'
+            ? agentResponse.context
             : JSON.stringify(agentResponse.context);
           conversationEntries.push({ ai: aiContent });
         }
@@ -203,10 +234,10 @@ export abstract class AgentLoop {
    * Process tool results and extract nextTasks from report tool
    * Throws error if report tool is used but nextTasks is missing
    */
-  private processToolResults(toolResults: ToolCall[]): string | null {
+  private processToolResults(toolResults: ToolCall[]): { report: string, nextTasks: string, goal: string } | null {
     // Find report tool results
-    const reportResults = toolResults.filter(result => 
-      result.context.toolName === this.REPORT_TOOL_NAME && result.context.success
+    const reportResults = toolResults.filter(result =>
+      result.context.toolName === this.SELF_REASON_TOOL_NAME && result.context.success
     );
 
     if (reportResults.length > 0) {
@@ -219,9 +250,9 @@ export abstract class AgentLoop {
       console.log("report: ", report);
       console.log("nextTasks: ", nextTasks);
       console.log("---------------------------------------");
-      return nextTasks;
+      return { report, nextTasks, goal };
     }
-    
+
     return null;
   }
 
@@ -229,35 +260,38 @@ export abstract class AgentLoop {
    * Track stagnation in a stateless way by checking report similarity
    * Returns null if no stagnation, or AgentError if stagnation detected
    */
-  private trackStagnation(
-    reportText: string, 
+  private async trackStagnation(
+    reportText: string,
     reportHashes: Map<string, { text: string, count: number }>,
     otherToolResults: ToolCall[],
     terminationThreshold: number
-  ): AgentError | null {
+  ): Promise<AgentError | null> {
     const currentSimhash = simhashInstance.hash(reportText);
-    
+
     // Check for stagnation (similar reports)
-    for (const [existingHash, existingData] of reportHashes) {
+    for (const [existingHash, existingData] of Array.from(reportHashes.entries())) {
       const similarity = sjs.Comparator.similarity(currentSimhash, existingHash);
-      
+
       // If similarity is > 90%, consider it stagnation
       if (similarity > 0.9) {
         // Increment counter for existing hash
         existingData.count++;
-        
+
         // Extract tool information from other tool results
         const toolInfo = otherToolResults.length > 0 ? otherToolResults[0].context.toolName : 'Unknown';
         const toolArgs = otherToolResults.length > 0 ? JSON.stringify(otherToolResults[0].context) : '{}';
-        
+
         // Check if this is the last chance before termination
         const isLastChance = existingData.count === terminationThreshold;
-        
+
+        // Trigger stagnation detected hook
+        await this.hooks.onStagnationDetected?.(similarity, existingData.count, isLastChance);
+
         return new AgentError(
           `Stagnation detected: ${(similarity * 100).toFixed(1)}% similarity (#${existingData.count})${isLastChance ? ' - Final warning!' : ''}`,
           AgentErrorType.STAGNATION_ERROR,
-          { 
-            currentHash: currentSimhash, 
+          {
+            currentHash: currentSimhash,
             similarHash: existingHash,
             similarity: similarity,
             currentText: reportText,
@@ -272,10 +306,10 @@ export abstract class AgentLoop {
         );
       }
     }
-    
+
     // Track this report simhash with initial count of 1
     reportHashes.set(currentSimhash, { text: reportText, count: 1 });
-    
+
     return null; // No stagnation detected
   }
 
@@ -284,7 +318,7 @@ export abstract class AgentLoop {
    */
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
     let responseFormat: FormatMode;
-    
+
     responseFormat = FormatMode.XRJSON;
 
     return {
@@ -304,19 +338,19 @@ export abstract class AgentLoop {
    */
   protected defineTool(fn: (schema: typeof z) => any): void {
     const toolDefinition = fn(z);
-    
+
     // Check for reserved tool names in public API
-    if (toolDefinition.name === this.REPORT_TOOL_NAME) {
+    if (toolDefinition.name === this.SELF_REASON_TOOL_NAME) {
       throw new AgentError(
         `Tool name '${toolDefinition.name}' is reserved`,
         AgentErrorType.RESERVED_TOOL_NAME,
-        { 
-          toolName: toolDefinition.name, 
-          reservedTools: [this.REPORT_TOOL_NAME]
+        {
+          toolName: toolDefinition.name,
+          reservedTools: [this.SELF_REASON_TOOL_NAME]
         }
       );
     }
-    
+
     this._addTool(toolDefinition);
   }
 
@@ -354,23 +388,28 @@ export abstract class AgentLoop {
    */
   public async run(input: AgentRunInput): Promise<AgentRunOutput> {
     await this.hooks.onRunStart?.(input);
-    
+
     // Reset token usage for this run
     this.resetRunTokenUsage();
-    
+
     const { userPrompt, context = {} } = input;
     const currentInteractionHistory: Interaction[] = []
     const turnState = new TurnState();
     let lastError: AgentError | null = null;
     let keepRetry = true;
     let nextTasks: string | null = null; // Track next tasks from previous iteration
-    
-    // Stagnation tracking for this run only
-    const reportHashes = new Map<string, { text: string, count: number }>();
+    let lastActionReport: string | null = null; // Track last action report
+
+    let taskGoal: string | null = null;
+
+    // Stagnation tracking for this run only (if enabled)
+    const reportHashes = this.enableStagnationDetection ? new Map<string, { text: string, count: number }>() : null;
+
+    // Schema validation error tracking
+    const schemaErrorHashes = new Map<string, number>();
 
     let connectionRetryCount = 0;
     let toolExecutionRetryCount = 0;
-
 
     const taskId = nanoid();
     const userPromptInteraction: UserPrompt = {
@@ -385,54 +424,108 @@ export abstract class AgentLoop {
     try {
       this.initializePromptManager();
       this.initializeFinalTool();
-      this.initializeReportTool();
+      this.initializeSelfReasonTool();
       for (let i = 0; i < this.maxIterations; i++) {
+        await this.hooks.onIterationStart?.(i + 1, this.maxIterations);
+        await this.hooks.onStateSnapshot?.(turnState, i + 1);
 
         try {
 
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks);
+          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks, lastActionReport, taskGoal);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponseWithRetry(prompt);
-          const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
-          
+          let parsedToolCalls: PendingToolCall[];
+
+          try {
+            parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
+            await this.hooks.onResponseParseSuccess?.(parsedToolCalls);
+          } catch (parseError) {
+            await this.hooks.onResponseParseFailed?.(aiResponse.text, parseError as Error);
+
+            // Check if it's a tool validation error
+            const error = parseError as AgentError;
+            if (error.context?.toolName && error.context?.validationErrors) {
+              // Track repeated schema validation errors
+              const schemaErrorKey = `${error.context.toolName}:${error.message}`;
+              const errorCount = (schemaErrorHashes.get(schemaErrorKey) || 0) + 1;
+              schemaErrorHashes.set(schemaErrorKey, errorCount);
+
+              // If same schema error repeats 3 times, terminate
+              if (errorCount >= 3) {
+                throw new AgentError(
+                  `Repeated schema validation failure for tool '${error.context.toolName}': ${error.message}. Agent unable to correct schema after ${errorCount} attempts.`,
+                  AgentErrorType.STAGNATION_ERROR,
+                  {
+                    toolName: error.context.toolName,
+                    originalError: error.message,
+                    attemptCount: errorCount,
+                    schemaErrorKey: schemaErrorKey
+                  }
+                );
+              }
+
+              await this.hooks.onToolValidationFailed?.(
+                error.context.toolName,
+                error.message,
+                error.context.providedArgs
+              );
+
+              if (error.context.schemaExpected) {
+                await this.hooks.onSchemaViolation?.(
+                  error.context.toolName,
+                  error.context.schemaExpected,
+                  error.context.providedArgs
+                );
+              }
+            }
+
+            throw parseError;
+          }
+
           // Validation: If final tool is not included, report tool is required
-          const hasReportTool = parsedToolCalls.some(call => call.toolName === this.REPORT_TOOL_NAME);
-          
+          const hasReportTool = parsedToolCalls.some(call => call.toolName === this.SELF_REASON_TOOL_NAME);
+
           if (!hasReportTool) {
             const toolsList = parsedToolCalls.map(call => call.toolName).join(', ');
             throw new AgentError(
-              `Missing '${this.REPORT_TOOL_NAME}' tool`,
+              `Missing '${this.SELF_REASON_TOOL_NAME}' tool`,
               AgentErrorType.TOOL_NOT_FOUND,
-              { 
-                requiredTool: this.REPORT_TOOL_NAME,
+              {
+                requiredTool: this.SELF_REASON_TOOL_NAME,
                 parsedTools: parsedToolCalls.map(call => call.toolName),
-                instruction: `Add '${this.REPORT_TOOL_NAME}' tool`
+                instruction: `Add '${this.SELF_REASON_TOOL_NAME}' tool`
               }
             );
           }
-          
+
           // Validation: Reject if only report tool is present
           if (hasReportTool && parsedToolCalls.length < 2) {
             throw new AgentError(
-              `Cannot call '${this.REPORT_TOOL_NAME}' alone`,
+              `Cannot call '${this.SELF_REASON_TOOL_NAME}' alone`,
               AgentErrorType.TOOL_NOT_FOUND,
-              { 
-                rejectedPattern: 'report_tool_only',
-                instruction: `Use other tools with '${this.REPORT_TOOL_NAME}'`
+              {
+                rejectedPattern: 'self_reasoning_tool_only',
+                instruction: `Use other tools with '${this.SELF_REASON_TOOL_NAME}'`
               }
             );
           }
-          
+
           connectionRetryCount = 0; // Reset retries on successful LLM response
 
           // executeToolCalls now directly adds results to toolCallHistory
           const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
           // Process tool results and extract NEXT commands from reports
-          nextTasks = this.processToolResults(iterationResults);
+          const processResult = this.processToolResults(iterationResults);
+          nextTasks = processResult?.nextTasks || null;
+          lastActionReport = processResult?.report || null;
+
+          // Update taskGoal using nullish coalescing operator
+          if (!taskGoal && processResult?.goal)
+            taskGoal = processResult?.goal;
 
           // Handle report creation for both regular tools and final tool
-          const reportResult = iterationResults.find(r => r.context.toolName === this.REPORT_TOOL_NAME);
+          const reportResult = iterationResults.find(r => r.context.toolName === this.SELF_REASON_TOOL_NAME);
           const finalResult = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
 
           if (finalResult && finalResult.context.success) {
@@ -451,24 +544,26 @@ export abstract class AgentLoop {
           if (reportResult && reportResult.context.success) {
             // Regular tool execution with report tool
             const reportText = reportResult.context.report || "";
-            
+
             // Get other tool calls executed in this iteration (excluding report and final)
             const otherToolResults = iterationResults.filter(r =>
-              r.context.toolName !== this.REPORT_TOOL_NAME &&
+              r.context.toolName !== this.SELF_REASON_TOOL_NAME &&
               r.context.toolName !== this.FINAL_TOOL_NAME
             );
-            
-            // Check for stagnation using stateless method
-            const stagnationError = this.trackStagnation(
-              reportText, 
-              reportHashes, 
-              otherToolResults, 
-              this.stagnationTerminationThreshold
-            );
-            
-            if (stagnationError) {
-              // Throw stagnation error to be handled by catch block
-              throw stagnationError;
+
+            // Check for stagnation using stateless method (if enabled)
+            if (this.enableStagnationDetection && reportHashes) {
+              const stagnationError = await this.trackStagnation(
+                reportText,
+                reportHashes,
+                otherToolResults,
+                this.stagnationTerminationThreshold
+              );
+
+              if (stagnationError) {
+                // Throw stagnation error to be handled by catch block
+                throw stagnationError;
+              }
             }
 
 
@@ -487,9 +582,9 @@ export abstract class AgentLoop {
 
             currentInteractionHistory.push(toolCallReport);
           }
-          
-          
-          
+
+
+
 
 
           // Apply failure handling mode
@@ -521,8 +616,12 @@ export abstract class AgentLoop {
               await this.hooks.onAgentFinalResponse?.(agentResponse);
               //this.logger.info(`[AgentLoop] Run complete. Final answer: ${finalResult.output?.value?.substring(0, 120)}`);
               const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse };
+              await this.hooks.onIterationEnd?.(i + 1, true);
               await this.hooks.onRunEnd?.(output);
               return output;
+            } else {
+              // Iteration succeeded but no final tool - continuing to next iteration
+              await this.hooks.onIterationEnd?.(i + 1, true);
             }
 
           }
@@ -530,18 +629,18 @@ export abstract class AgentLoop {
 
         } catch (error) {
           const errorResult = this.errorHandler.handleError(error, toolExecutionRetryCount, this.toolExecutionRetryAttempts);
-          
+
           // Set appropriate lastError and nextTasks based on feedback type
           if (errorResult.feedbackToLLM) {
             lastError = errorResult.actualError;
-            
+
             // Set next task to focus on fixing this specific error
             nextTasks = `Fix this error: ${errorResult.actualError.getMessage()}, after that do ${nextTasks}`;
           } else {
             // For system errors (feedbackToLLM = false), clear nextTasks and don't set lastError
             nextTasks = null;
           }
-          
+
           // Handle stagnation termination specially
           if (errorResult.actualError.type === AgentErrorType.STAGNATION_ERROR && errorResult.shouldTerminate) {
             const agentResponse: AgentResponse = {
@@ -554,10 +653,11 @@ export abstract class AgentLoop {
 
             currentInteractionHistory.push(agentResponse);
             const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse };
+            await this.hooks.onIterationEnd?.(i + 1, false);
             await this.hooks.onRunEnd?.(output);
             return output;
           }
-          
+
           // Increment appropriate retry counter based on error type
           if (errorResult.actualError.type === AgentErrorType.TOOL_EXECUTION_ERROR) {
             i = i - 1; // Don't count this iteration
@@ -565,18 +665,26 @@ export abstract class AgentLoop {
           } else if (errorResult.actualError.type !== AgentErrorType.STAGNATION_ERROR) {
             connectionRetryCount++;
           }
-          
+
           // Terminate if handler says so
           if (errorResult.shouldTerminate) {
             throw errorResult.actualError;
           }
-          
+
           // Log error details for debugging (only if feedback to LLM is enabled)
           if (errorResult.feedbackToLLM) {
             this.logger.warn(`[AgentLoop] Error for LLM feedback: ${errorResult.actualError.getMessage()}`);
+
+            // Check if this is stagnation recovery (new approach after stagnation)
+            if (errorResult.actualError.type === AgentErrorType.STAGNATION_ERROR && !errorResult.shouldTerminate) {
+              await this.hooks.onStagnationRecovered?.(`Attempting recovery with modified approach: ${nextTasks || 'new strategy'}`);
+            }
           } else {
             this.logger.error(`[AgentLoop] System error: ${errorResult.errorString}`);
           }
+
+          // Mark iteration as continuing with error
+          await this.hooks.onIterationEnd?.(i + 1, false);
         }
 
         await this.sleep(this.sleepBetweenIterationsMs);
@@ -586,7 +694,7 @@ export abstract class AgentLoop {
     } catch (error) {
       const errorResult = this.errorHandler.handleError(error);
       const finalError = lastError || errorResult.actualError;
-      
+
       await this.hooks.onError?.(finalError);
 
       const agentResponse: AgentResponse = {
@@ -816,7 +924,7 @@ export abstract class AgentLoop {
 
         // For XRJSON format, we don't pass function tools - the tools are described in the prompt
         let functionTools: FunctionCallTool[] | undefined = undefined;
-        
+
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
         if (!response || typeof response !== "object" || typeof response.text !== "string") {
           throw new AgentError(
@@ -825,41 +933,50 @@ export abstract class AgentLoop {
             { responseType: typeof response }
           );
         }
-        
+
         // Display token usage if available and accumulate for run total
         if (response.usage) {
           this.logger.info(`[AgentLoop] Token Usage - Prompt: ${response.usage.promptTokens}, Completion: ${response.usage.completionTokens}, Total: ${response.usage.totalTokens}`);
-          
+
           // Accumulate tokens for the current run
           this.currentRunTokenUsage.promptTokens += response.usage.promptTokens;
           this.currentRunTokenUsage.completionTokens += response.usage.completionTokens;
           this.currentRunTokenUsage.totalTokens += response.usage.totalTokens;
+
+          // Trigger token usage hook
+          await this.hooks.onTokenUsage?.(response.usage, { ...this.currentRunTokenUsage });
         }
-        
+
         await this.hooks.onAIRequestEnd?.(response.text);
         return response;
       } catch (error) {
         lastError = error as Error;
+        const agentError = lastError instanceof AgentError ? lastError : new AgentError(lastError.message, AgentErrorType.UNKNOWN);
+
+        await this.hooks.onRetryAttempt?.(attempt + 1, this.connectionRetryAttempts, agentError);
         this.logger.warn(`[AgentLoop] AI retry ${attempt + 1}: ${lastError.message}`);
         if (attempt < this.connectionRetryAttempts - 1) await this.sleep(this.retryDelay * Math.pow(2, attempt));
       }
     }
-    throw lastError ?? new AgentError(
+    const finalError = lastError ?? new AgentError(
       "LLM call failed after retries",
       AgentErrorType.UNKNOWN,
       { retryAttempts: this.connectionRetryAttempts }
     );
+
+    await this.hooks.onRetryExhausted?.(finalError instanceof AgentError ? finalError : new AgentError(finalError.message, AgentErrorType.UNKNOWN), this.connectionRetryAttempts);
+    throw finalError;
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null): string {
+  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, lastActionReport: string | null = null, taskGoal: string | null = null): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
-    
+
     // Process conversation history into clean format
     const conversationData = this.processConversationHistory(previousTaskHistory);
-    
+
     // Build the prompt using the clean PromptManager API
     const promptParams: BuildPromptParams = {
       systemPrompt: this.systemPrompt,
@@ -870,10 +987,12 @@ export abstract class AgentLoop {
       lastError,
       keepRetry,
       finalToolName: this.FINAL_TOOL_NAME,
-      reportToolName: this.REPORT_TOOL_NAME,
+      reportToolName: this.SELF_REASON_TOOL_NAME,
       toolDefinitions: toolDef,
       options: {}, // Will be merged by PromptManager
       nextTasks: nextTasks,
+      lastActionReport: lastActionReport,
+      taskGoal: taskGoal,
       conversationEntries: conversationData.entries,
       conversationLimitNote: conversationData.limitNote,
     };
@@ -906,6 +1025,20 @@ export abstract class AgentLoop {
    */
   public getRunTokenUsage(): Readonly<TokenUsage> {
     return { ...this.currentRunTokenUsage };
+  }
+
+  /**
+   * Check if stagnation detection is enabled
+   */
+  public isStagnationDetectionEnabled(): boolean {
+    return this.enableStagnationDetection;
+  }
+
+  /**
+   * Enable or disable stagnation detection
+   */
+  public setStagnationDetection(enabled: boolean): void {
+    this.enableStagnationDetection = enabled;
   }
 
   private async _executeTool(taskId: string, tool: Tool<ZodTypeAny>, call: PendingToolCall, turnState: TurnState): Promise<ToolCall> {
@@ -965,8 +1098,8 @@ export abstract class AgentLoop {
     let circularDependencies: string[] = [];
 
     // Check for reserved tool names
-    if (tool.name === this.REPORT_TOOL_NAME) {
-      errors.push(`Tool name '${tool.name}' is reserved and cannot be overridden. Reserved tools: [${this.REPORT_TOOL_NAME}]`);
+    if (tool.name === this.SELF_REASON_TOOL_NAME) {
+      errors.push(`Tool name '${tool.name}' is reserved and cannot be overridden. Reserved tools: [${this.SELF_REASON_TOOL_NAME}]`);
     }
 
     // Check for duplicate tool names
@@ -1059,16 +1192,16 @@ export abstract class AgentLoop {
     }
   }
 
-  private initializeReportTool(): void {
-    if (!this.tools.some(t => t.name === this.REPORT_TOOL_NAME)) {
-      const reportTool = {
-        name: this.REPORT_TOOL_NAME,
-        description: `Report which tools you called in this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this report. Never call this tool alone - it must be used with other tools to provide context.`,
+  private initializeSelfReasonTool(): void {
+    if (!this.tools.some(t => t.name === this.SELF_REASON_TOOL_NAME)) {
+      const selfReasonTool = {
+        name: this.SELF_REASON_TOOL_NAME,
+        description: `An integral, complementary tool for reflecting on actions and planning next steps. Report the tools used this iteration and why. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this reasoning. Never call this tool alone, if you call alone, it will make system failure`,
         argsSchema: z.object({
-          goal: z.string().describe("The user's primary goal or intent that this iteration is working towards achieving."),
-          report: z.string().describe("State which specific tools you called in this iteration and the reason why. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
-          nextTasks: z.string().describe("Describe the complete plan from the next action all the way to the final tool call using numbered listing format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'."),
-          isAlone: z.boolean().describe(`Set to false if this report is part of a tool call iteration with other tools. Otherwise, system will throw an error if this tool is called alone.`)
+        
+          goal: z.string().describe("The user's overall goal that you are working towards accomplishing. This helps maintain focus on the objective."),
+          report: z.string().describe("Self-reflection on your actions: State which specific tools you called in this iteration and your reasoning. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
+          nextTasks: z.string().describe("Your planned next steps from current state to completion. Use numbered format (1., 2., 3., etc.). Include all intermediate steps and end with how you will use the final tool. Example: '1. Read file1.txt to get data, 2. Analyze the content for patterns, 3. Use final tool to present comprehensive analysis with all details including [specific data points]'."),
         }),
         handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
           console.log(`[AgentLoop] args: ${args}`);
@@ -1081,7 +1214,7 @@ export abstract class AgentLoop {
           };
         },
       };
-      this._addTool(reportTool);
+      this._addTool(selfReasonTool);
     }
   }
 

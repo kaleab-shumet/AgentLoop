@@ -49,6 +49,8 @@ CAPABILITIES:
 - edit_files: Edit files using line-based operations (replace/insert lines)
 - delete_files: Remove one or more files permanently (supports batch deletion)
 
+note: Always use your tools to get the updated information because file system can change at any time. When user asks try to get the latest data.
+
 Always be helpful and respond to the user's communication style!`;
 
   private toolHandlers: ToolHandlers;
