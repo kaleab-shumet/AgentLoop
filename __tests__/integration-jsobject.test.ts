@@ -85,7 +85,7 @@ function callTools() {
     const prompt = template.buildPrompt(buildParams);
     
     // Should contain JSObject format instructions
-    expect(prompt).toContain('# RESPONSE FORMAT: JAVASCRIPT FUNCTION ONLY');
+    expect(prompt).toContain('# RESPONSE FORMAT: JAVASCRIPT \'callTools\' FUNCTION');
     expect(prompt).toContain('function callTools()');
     expect(prompt).toContain('const calledToolsList = []');
     expect(prompt).toContain('return calledToolsList');

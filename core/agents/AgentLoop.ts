@@ -121,7 +121,7 @@ export abstract class AgentLoop {
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.FUNCTION_CALLING);
+    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.JSOBJECT);
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
   }
@@ -141,7 +141,7 @@ export abstract class AgentLoop {
     this.failureHandlingMode = options.failureHandlingMode || (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
     this.failureTolerance = options.failureTolerance !== undefined ? options.failureTolerance : 0.0;
     this.hooks = options.hooks || {};
-    this.formatMode = options.formatMode || FormatMode.FUNCTION_CALLING;
+    this.formatMode = options.formatMode || FormatMode.JSOBJECT;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
     this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
@@ -283,15 +283,8 @@ export abstract class AgentLoop {
    * Get default prompt manager configuration based on execution mode
    */
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
-    let responseFormat: FormatMode;
-    
-    if (formatMode === FormatMode.TOML) {
-      responseFormat = FormatMode.TOML;
-    } else if (formatMode === FormatMode.JSOBJECT) {
-      responseFormat = FormatMode.JSOBJECT;
-    } else {
-      responseFormat = FormatMode.FUNCTION_CALLING;
-    }
+    // Only JSOBJECT format is supported
+    const responseFormat = FormatMode.JSOBJECT;
 
     return {
       responseFormat,
@@ -823,10 +816,8 @@ export abstract class AgentLoop {
       try {
         await this.hooks.onAIRequestStart?.(prompt);
 
+        // Function calling is no longer supported, only JSOBJECT format
         let functionTools: FunctionCallTool[] | undefined = undefined;
-        if (this.formatMode === FormatMode.FUNCTION_CALLING) {
-          functionTools = this.aiDataHandler.formatToolDefinitions(this.tools) as FunctionCallTool[];
-        }
 
         const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
         if (!response || typeof response !== "object" || typeof response.text !== "string") {

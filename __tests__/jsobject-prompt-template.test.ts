@@ -30,7 +30,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       const prompt = template.buildPrompt(params);
 
       // Should contain JSObject format section
-      expect(prompt).toContain('# RESPONSE FORMAT: JAVASCRIPT FUNCTION ONLY');
+      expect(prompt).toContain('# RESPONSE FORMAT: JAVASCRIPT \'callTools\' FUNCTION');
       expect(prompt).toContain('function callTools()');
       expect(prompt).toContain('const calledToolsList = []');
       expect(prompt).toContain('toolName:');
@@ -114,7 +114,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
 
       // Should enforce tool pairing rules
       expect(prompt).toContain('NEVER call report_action alone');
-      expect(prompt).toContain('Always add report_action to accompany');
+      expect(prompt).toContain('Always add a report on your progress');
     });
 
     it('should work with custom tool names', () => {
@@ -139,7 +139,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       // Should use custom tool names in format examples
       expect(prompt).toContain('toolName: "custom_final"');
       expect(prompt).toContain('toolName: "custom_report"');
-      expect(prompt).toContain('Use custom_final to explain');
+      expect(prompt).toContain('Use custom_final to deliver the final result');
       expect(prompt).toContain('NEVER call custom_report alone');
     });
   });
@@ -150,15 +150,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       template.setResponseFormat(FormatMode.JSOBJECT);
       expect(template.getResponseFormat()).toBe(FormatMode.JSOBJECT);
 
-      // Switch to Function Calling
-      template.setResponseFormat(FormatMode.FUNCTION_CALLING);
-      expect(template.getResponseFormat()).toBe(FormatMode.FUNCTION_CALLING);
-
-      // Switch to TOML
-      template.setResponseFormat(FormatMode.TOML);
-      expect(template.getResponseFormat()).toBe(FormatMode.TOML);
-
-      // Switch back to JSObject
+      // Switch back to JSObject (only format supported)
       template.setResponseFormat(FormatMode.JSOBJECT);
       expect(template.getResponseFormat()).toBe(FormatMode.JSOBJECT);
     });
@@ -183,20 +175,14 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       // JSObject format
       template.setResponseFormat(FormatMode.JSOBJECT);
       const jsObjectPrompt = template.buildPrompt(params);
-      expect(jsObjectPrompt).toContain('JAVASCRIPT FUNCTION ONLY');
+      expect(jsObjectPrompt).toContain('JAVASCRIPT \'callTools\' FUNCTION');
       expect(jsObjectPrompt).toContain('function callTools()');
 
-      // Function Calling format
-      template.setResponseFormat(FormatMode.FUNCTION_CALLING);
-      const functionPrompt = template.buildPrompt(params);
-      expect(functionPrompt).toContain('JSON ONLY');
-      expect(functionPrompt).toContain('functionCalls');
-
-      // TOML format
-      template.setResponseFormat(FormatMode.TOML);
-      const tomlPrompt = template.buildPrompt(params);
-      expect(tomlPrompt).toContain('TOML ONLY');
-      expect(tomlPrompt).toContain('[[tool_calls]]');
+      // Only JSOBJECT format is supported now
+      template.setResponseFormat(FormatMode.JSOBJECT);
+      const jsObjectPrompt2 = template.buildPrompt(params);
+      expect(jsObjectPrompt2).toContain('callTools');
+      expect(jsObjectPrompt2).toContain('import { LiteralLoader }');
     });
   });
 });

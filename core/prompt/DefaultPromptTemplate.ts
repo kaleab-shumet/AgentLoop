@@ -1,10 +1,10 @@
 import { PromptOptions, ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
-import { AgentError } from '../utils/AgentError';
+import { AgentError, AgentErrorType } from '../utils/AgentError';
 
 export class DefaultPromptTemplate {
   private responseFormat: FormatMode;
 
-  constructor(responseFormat: FormatMode = FormatMode.FUNCTION_CALLING) {
+  constructor(responseFormat: FormatMode = FormatMode.JSOBJECT) {
     this.responseFormat = responseFormat;
   }
 
@@ -55,60 +55,6 @@ You are an agent designed to complete user requests through a structured process
 
   // Response format section: defines exactly how the agent must structure outputs
   private buildResponseFormatSection(reportToolName: string, finalToolName: string): string {
-    if (this.responseFormat === FormatMode.TOML) {
-      return `# RESPONSE FORMAT: TOML ONLY
-
-## VALID FORMATS
-
-### FORMAT 1: Data Gathering
-\`\`\`toml
-[[tool_calls]]
-name = "[action_tool_name]"  # Any tool except ${reportToolName}
-[tool_calls.args]
-param1 = "value1"
-
-[[tool_calls]]
-name = "${reportToolName}"   # Must accompany action tool
-[tool_calls.args]
-goal = "[user's primary intent or objective]"
-report = "Action: [what u did]. Expected: [outcome]."
-nextTasks = '''
-1. [Next step]
-2. [Following step]
-3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].
-'''
-\`\`\`
-
-### FORMAT 2: Final Answer
-\`\`\`toml
-[[tool_calls]]
-name = "${finalToolName}"
-[tool_calls.args]
-# required parameters here
-
-[[tool_calls]]
-name = "${reportToolName}"
-[tool_calls.args]
-goal = "[user's primary intent or objective]"
-report = "Task complete. Presenting final answer."
-nextTasks = "Task is complete."
-\`\`\`
-
-## REQUIREMENTS
-- Use ONLY valid TOML syntax
-- Use appropriate TOML string syntax (single quotes for simple strings, triple quotes for multiline)
-- RECOMMENDED: For multiline string content with quotes, use <literal> tags to prevent system failures:
-  content = '''<literal>
-  no need to escape quotes here because it's inside <literal> tags
-  '''
-  this is a content inside triple quotes
-  '''
-  </literal>'''
-- WARNING: Without <literal> tags, system parsing failures may occur
-- CRITICAL: For complex nested structures, use array of tables syntax instead of inline tables
-- NEVER respond with plain text outside TOML block`;
-    }
-
     if (this.responseFormat === FormatMode.JSOBJECT) {
       return `# RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION WITH LITERAL BLOCK SUPPORT
 
@@ -275,37 +221,8 @@ Please follow these instructions exactly.
       `;
     }
 
-    // Default to Function Calling JSON
-    return `# RESPONSE FORMAT: JSON ONLY
-
-## VALID FORMATS
-
-### FORMAT 1: Data Gathering
-\`\`\`json
-{
-  "functionCalls": [
-    { "name": "[action_tool_name]", "arguments": "{\\"param1\\": \\"value1\\"}" },
-    { "name": "${reportToolName}", "arguments": "{\\"goal\\": \\"[user's primary intent or objective]\\", \\"report\\": \\"Action: [what u did]. Expected: [outcome].\\", \\"nextTasks\\": \\"1. [Next step]. 2. [Following step]. 3. Use ${finalToolName} to explain the [user goal] and present achievement [deliverable].\\"}" }
-  ]
-}
-\`\`\`
-
-### FORMAT 2: Final Answer
-\`\`\`json
-{
-  "functionCalls": [
-    { "name": "${finalToolName}", "arguments": "[required_parameters_as_stringified_JSON]" },
-    { "name": "${reportToolName}", "arguments": "{\\"goal\\": \\"[user's primary intent or objective]\\", \\"report\\": \\"Task complete. Presenting final answer.\\", \\"nextTasks\\": \\"Task is complete.\\"}" }
-  ]
-}
-\`\`\`
-
-## REQUIREMENTS
-- Entire response must be a single valid JSON code block
-- No text before or after JSON block
-- Double-escape quotes in nested JSON strings
-- Arguments must be stringified JSON
-- NEVER call ${reportToolName} alone`;
+    // This should not happen since only JSOBJECT is supported
+    throw new AgentError(`Unsupported response format: ${this.responseFormat}`, AgentErrorType.CONFIGURATION_ERROR);
   }
 
   // Tools section: defines the agent's available capabilities
