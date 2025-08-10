@@ -36,7 +36,7 @@ describe('LiteralJSFormatHandler', () => {
     it('should format tool definitions with JavaScript function template', () => {
       const formatted = handler.formatToolDefinitions(testTools);
       
-      expect(formatted).toContain('Available tools and their schemas:');
+      expect(formatted).toContain('Available tools and their Zod schemas:');
       expect(formatted).toContain('## Tool Name: read_file');
       expect(formatted).toContain('## Tool Name: write_file');
       expect(formatted).toContain('function callTools()');

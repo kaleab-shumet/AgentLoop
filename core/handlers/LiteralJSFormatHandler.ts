@@ -2,6 +2,7 @@ import { ZodTypeAny } from "zod";
 import { Tool, PendingToolCall, FormatHandler, FunctionCallTool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from "zod-to-json-schema";
+import { jsonSchemaToZod } from "json-schema-to-zod";
 
 /**
  * Handles Literal+JavaScript response format for tool calls
@@ -12,27 +13,40 @@ export class LiteralJSFormatHandler implements FormatHandler {
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     const schemaMap = tools.map(t => {
-      const zodSchema = zodToJsonSchema(t.argsSchema, t.name);
+      // Convert Zod schema to JSON Schema first, then resolve $refs and convert back to Zod string
+      const jsonSchema = zodToJsonSchema(t.argsSchema, t.name);
+      
+      // Resolve $ref if present by extracting the actual schema from definitions
+      let resolvedSchema = jsonSchema;
+      const schemaWithRef = jsonSchema as any;
+      if (schemaWithRef.$ref && schemaWithRef.definitions) {
+        const refKey = schemaWithRef.$ref.replace('#/definitions/', '');
+        if (schemaWithRef.definitions[refKey]) {
+          resolvedSchema = schemaWithRef.definitions[refKey];
+        }
+      }
+      
+      const zodSchemaString = jsonSchemaToZod(resolvedSchema as any);
       
       return `
 ## Tool Name: ${t.name}
 ## Tool Description: ${t.description}
-## Tool Schema:
-${JSON.stringify(zodSchema, null, 2)}
+## Tool Schema (Zod):
+${zodSchemaString}
 `;
     }).join("\n");
 
-    return `Available tools and their schemas:\n${schemaMap}
+    return `Available tools and their Zod schemas:\n${schemaMap}
 
-You will be given a JSON Schema as a reference. Your task is to write a JavaScript function named \`callTools\` that **returns an array of one or two example objects strictly conforming to that schema**.
+You will be given Zod schema definitions as references. Your task is to write a JavaScript function named \`callTools\` that **returns an array of one or two example objects strictly conforming to those schemas**.
 
 **Requirements:**
 * Do **not** include the schema inside the function; assume it is provided externally as a reference.
 * The function \`callTools\` should create example objects that:
-  * Include all required properties,
-  * Respect all type constraints (\`string\`, \`integer\`, \`number\`, \`array\`, \`object\`),
-  * Honor numeric constraints (like \`minimum\`, \`exclusiveMinimum\`),
-  * For arrays, respect \`minItems\`, \`uniqueItems\`, and item types,
+  * Include all required properties as defined in the Zod schema,
+  * Respect all type constraints (\`z.string()\`, \`z.number()\`, \`z.array()\`, \`z.object()\`),
+  * Honor validation constraints (like \`.min()\`, \`.max()\`, \`.email()\`),
+  * For arrays, respect \`.min()\`, \`.max()\`, and item types,
   * Populate nested objects with required fields,
   * Use realistic, human-readable values (no placeholders).
 * The function should push these objects into an array named \`calledToolsList\` and return it.
