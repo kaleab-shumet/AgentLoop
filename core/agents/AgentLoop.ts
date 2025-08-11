@@ -200,10 +200,10 @@ export abstract class AgentLoop {
   }
 
   /**
-   * Process tool results and extract nextTasks from report tool
-   * Throws error if report tool is used but nextTasks is missing
+   * Process tool results and extract nextTasks, goal, and report from report tool
+   * Returns object with nextTasks, goal, and report or null if no report tool found
    */
-  private processToolResults(toolResults: ToolCall[]): string | null {
+  private processToolResults(toolResults: ToolCall[]): { nextTasks: string | null, goal: string | null, report: string | null } | null {
     // Find report tool results
     const reportResults = toolResults.filter(result => 
       result.context.toolName === this.REPORT_TOOL_NAME && result.context.success
@@ -219,7 +219,7 @@ export abstract class AgentLoop {
       console.log("report: ", report);
       console.log("nextTasks: ", nextTasks);
       console.log("---------------------------------------");
-      return nextTasks;
+      return { nextTasks, goal, report };
     }
     
     return null;
@@ -364,6 +364,8 @@ export abstract class AgentLoop {
     let lastError: AgentError | null = null;
     let keepRetry = true;
     let nextTasks: string | null = null; // Track next tasks from previous iteration
+    let goal: string | null = null; // Track goal from previous iteration
+    let report: string | null = null; // Track report from previous iteration
     
     // Stagnation tracking for this run only
     const reportHashes = new Map<string, { text: string, count: number }>();
@@ -390,7 +392,7 @@ export abstract class AgentLoop {
 
         try {
 
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks);
+          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks, goal, report);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponseWithRetry(prompt);
           const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
@@ -431,7 +433,16 @@ export abstract class AgentLoop {
           const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
           // Process tool results and extract NEXT commands from reports
-          nextTasks = this.processToolResults(iterationResults);
+          const toolResultData = this.processToolResults(iterationResults);
+          if (toolResultData) {
+            nextTasks = toolResultData.nextTasks;
+            goal = toolResultData.goal;
+            report = toolResultData.report;
+          } else {
+            nextTasks = null;
+            goal = null;
+            report = null;
+          }
 
           // Handle report creation for both regular tools and final tool
           const reportResult = iterationResults.find(r => r.context.toolName === this.REPORT_TOOL_NAME);
@@ -854,7 +865,7 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null): string {
+  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, goal: string | null = null, report: string | null = null): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
@@ -876,6 +887,8 @@ export abstract class AgentLoop {
       toolDefinitions: toolDef,
       options: {}, // Will be merged by PromptManager
       nextTasks: nextTasks,
+      goal: goal,
+      report: report,
       conversationEntries: conversationData.entries,
       conversationLimitNote: conversationData.limitNote,
     };

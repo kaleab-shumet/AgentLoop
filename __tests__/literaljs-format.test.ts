@@ -33,24 +33,27 @@ describe('LiteralJSFormatHandler', () => {
   });
 
   describe('formatToolDefinitions', () => {
-    it('should format tool definitions with JavaScript function template', () => {
+    it('should format tool definitions with Zod schemas only', () => {
       const formatted = handler.formatToolDefinitions(testTools);
       
-      expect(formatted).toContain('Available tools and their Zod schemas:');
       expect(formatted).toContain('## Tool Name: read_file');
       expect(formatted).toContain('## Tool Name: write_file');
-      expect(formatted).toContain('function callTools()');
-      expect(formatted).toContain('calledToolsList = []');
-      expect(formatted).toContain('toolName: "example_tool"');
+      expect(formatted).toContain('## Tool Description:');
+      expect(formatted).toContain('## Tool Schema (Zod):');
+      // Should not contain prompt instructions anymore
+      expect(formatted).not.toContain('function callTools()');
+      expect(formatted).not.toContain('Available tools and their');
     });
 
-    it('should include proper JavaScript function format instructions', () => {
+    it('should include only tool schema information', () => {
       const formatted = handler.formatToolDefinitions(testTools);
       
-      expect(formatted).toContain('No external libraries or imports allowed');
-      expect(formatted).toContain('Pure vanilla JavaScript only');
-      expect(formatted).toContain('Single function implementation');
-      expect(formatted).toContain('returns an array of one or two example objects');
+      // Should only contain schema information, no prompt instructions
+      expect(formatted).toContain('## Tool Schema (Zod):');
+      expect(formatted).not.toContain('No external libraries or imports allowed');
+      expect(formatted).not.toContain('Pure vanilla JavaScript only');
+      expect(formatted).not.toContain('Single function implementation');
+      expect(formatted).not.toContain('returns an array of one or two example objects');
     });
   });
 

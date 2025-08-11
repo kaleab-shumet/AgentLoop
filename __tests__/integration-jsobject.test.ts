@@ -21,12 +21,13 @@ describe('JSObject Integration Test', () => {
       }
     ];
 
-    // Test formatToolDefinitions returns JSObject instructions
+    // Test formatToolDefinitions returns tool schemas only
     const toolDefinitions = aiDataHandler.formatToolDefinitions(tools);
     expect(typeof toolDefinitions).toBe('string');
-    expect(toolDefinitions).toContain('function callTools()');
-    expect(toolDefinitions).toContain('calledToolsList = []');
-    expect(toolDefinitions).toContain('test_tool');
+    expect(toolDefinitions).toContain('## Tool Name: test_tool');
+    expect(toolDefinitions).toContain('## Tool Schema (Zod):');
+    expect(toolDefinitions).not.toContain('function callTools()');
+    expect(toolDefinitions).not.toContain('calledToolsList = []');
   });
 
   it('should parse JSObject response correctly', () => {

@@ -28,51 +28,13 @@ export class LiteralJSFormatHandler implements FormatHandler {
       
       const zodSchemaString = jsonSchemaToZod(resolvedSchema as any);
       
-      return `
-## Tool Name: ${t.name}
+      return `## Tool Name: ${t.name}
 ## Tool Description: ${t.description}
 ## Tool Schema (Zod):
-${zodSchemaString}
-`;
-    }).join("\n");
+${zodSchemaString}`;
+    }).join("\n\n");
 
-    return `Available tools and their Zod schemas:\n${schemaMap}
-
-You will be given Zod schema definitions as references. Your task is to write a JavaScript function named \`callTools\` that **returns an array of one or two example objects strictly conforming to those schemas**.
-
-**Requirements:**
-* Do **not** include the schema inside the function; assume it is provided externally as a reference.
-* The function \`callTools\` should create example objects that:
-  * Include all required properties as defined in the Zod schema,
-  * Respect all type constraints (\`z.string()\`, \`z.number()\`, \`z.array()\`, \`z.object()\`),
-  * Honor validation constraints (like \`.min()\`, \`.max()\`, \`.email()\`),
-  * For arrays, respect \`.min()\`, \`.max()\`, and item types,
-  * Populate nested objects with required fields,
-  * Use realistic, human-readable values (no placeholders).
-* The function should push these objects into an array named \`calledToolsList\` and return it.
-- No external libraries or imports allowed
-- Pure vanilla JavaScript only
-- Single function implementation
-- Do not embed or reference the specific schema within the function
-- Function must work generically with any provided schema
-- For multiline strings, use template literals with backticks: \`line1\\nline2\` or actual line breaks
-- CRITICAL: If string values contain backticks (\`), escape them as \\\` to prevent code block parsing errors
-
-Example format:
-\`\`\`javascript
-function callTools() {
-  const calledToolsList = [];
-  
-  // Example tool call object with toolName and required properties
-  calledToolsList.push({
-    toolName: "example_tool",
-    arg1: "example_value",
-    arg2: 42
-  });
-  
-  return calledToolsList;
-}
-\`\`\``;
+    return schemaMap;
   }
 
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
