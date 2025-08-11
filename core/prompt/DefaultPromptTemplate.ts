@@ -60,7 +60,7 @@ Respond ONLY with a JavaScript \`callTools()\` function returning an array of to
 
 ### Handling Long Data
 
-If any string parameter is longer than 100 chars, multiline, or complex, DO NOT embed inline.
+If any string parameter is longer, multiline, complex, or requires escaping , DO NOT embed inline.
 Instead:
 
 
@@ -68,7 +68,10 @@ Instead:
 
 \`\`\`javascript
 import { LiteralLoader } from './utils';
+// Make sure to import LiteralLoader
 
+// Never write any code outside callTools, every code must be inside callTools function
+// Make sure you write valid JavaScript code
 function callTools() {
   const calledToolsList = [];
   calledToolsList.push({
@@ -122,12 +125,13 @@ function callTools() {
 \`\`\`javascript
 import { LiteralLoader } from './utils';
 
+
 function callTools() {
   const calledToolsList = [];
 
   calledToolsList.push({
     toolName: "${finalToolName}",
-    finalAnswerParameter: "short answer or " + LiteralLoader("long-answer-id")
+    param: "short answer or " + LiteralLoader("long-answer-id")
   });
 
   calledToolsList.push({
@@ -249,7 +253,7 @@ ${reports}`;
   private buildTaskSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTasks?: string | null, goal?: string | null, report?: string | null): string {
 
     const goalSection = goal ? `\n\n## GOAL\n> ${goal}` : '';
-    const reportSection = report ? `In previously turn you said \`${report}\`, now execute task which is not done previously from the following tasks: ` : '';
+    const reportSection = report ? `In previously turn you said \`${report}\`, filter out task which is already done, now execute task which is not done previously from the following tasks: ` : '';
    
     if (nextTasks) {
       let taskSection = `

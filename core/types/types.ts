@@ -183,7 +183,7 @@ export interface TypedPaths {
  * Interface for handling different response formats (XML vs Function Calling)
  */
 export interface FormatHandler {
-  parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[];
+  parseResponse(response: string, tools: Tool<ZodTypeAny>[]): Promise<PendingToolCall[]>;
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string | FunctionCallTool[];
 }
 

@@ -58,7 +58,7 @@ describe('LiteralJSFormatHandler', () => {
   });
 
   describe('parseResponse', () => {
-    it('should parse JavaScript function with single tool call', () => {
+    it('should parse JavaScript function with single tool call', async () => {
       const response = `
 \`\`\`javascript
 function callTools() {
@@ -74,7 +74,7 @@ function callTools() {
 }
 \`\`\``;
 
-      const result = handler.parseResponse(response, testTools);
+      const result = await handler.parseResponse(response, testTools);
       
       expect(result).toHaveLength(1);
       expect(result[0].toolName).toBe('read_file');
@@ -82,7 +82,7 @@ function callTools() {
       expect(result[0].encoding).toBe('utf8');
     });
 
-    it('should parse JavaScript function with multiple tool calls', () => {
+    it('should parse JavaScript function with multiple tool calls', async () => {
       const response = `
 \`\`\`javascript
 function callTools() {
@@ -104,7 +104,7 @@ function callTools() {
 }
 \`\`\``;
 
-      const result = handler.parseResponse(response, testTools);
+      const result = await handler.parseResponse(response, testTools);
       
       expect(result).toHaveLength(2);
       expect(result[0].toolName).toBe('read_file');
@@ -115,7 +115,7 @@ function callTools() {
       expect(result[1].mode).toBe('overwrite');
     });
 
-    it('should parse function without code blocks', () => {
+    it('should parse function without code blocks', async () => {
       const response = `
 Here's the function:
 
@@ -132,14 +132,14 @@ function callTools() {
 
 That should work!`;
 
-      const result = handler.parseResponse(response, testTools);
+      const result = await handler.parseResponse(response, testTools);
       
       expect(result).toHaveLength(1);
       expect(result[0].toolName).toBe('read_file');
       expect(result[0].filename).toBe('test.txt');
     });
 
-    it('should validate tool arguments against schema', () => {
+    it('should validate tool arguments against schema', async () => {
       const response = `
 \`\`\`javascript
 function callTools() {
@@ -154,12 +154,12 @@ function callTools() {
 }
 \`\`\``;
 
-      expect(() => {
-        handler.parseResponse(response, testTools);
-      }).toThrow('Invalid arguments for tool "read_file"');
+      await expect(async () => {
+        await handler.parseResponse(response, testTools);
+      }).rejects.toThrow('Invalid arguments for tool "read_file"');
     });
 
-    it('should throw error when tool not found', () => {
+    it('should throw error when tool not found', async () => {
       const response = `
 \`\`\`javascript
 function callTools() {
@@ -174,12 +174,12 @@ function callTools() {
 }
 \`\`\``;
 
-      expect(() => {
-        handler.parseResponse(response, testTools);
-      }).toThrow('No tool found for name: nonexistent_tool');
+      await expect(async () => {
+        await handler.parseResponse(response, testTools);
+      }).rejects.toThrow('No tool found for name: nonexistent_tool');
     });
 
-    it('should throw error when toolName is missing', () => {
+    it('should throw error when toolName is missing', async () => {
       const response = `
 \`\`\`javascript
 function callTools() {
@@ -194,12 +194,12 @@ function callTools() {
 }
 \`\`\``;
 
-      expect(() => {
-        handler.parseResponse(response, testTools);
-      }).toThrow("Tool call missing required 'toolName' field");
+      await expect(async () => {
+        await handler.parseResponse(response, testTools);
+      }).rejects.toThrow("Tool call missing required 'toolName' field");
     });
 
-    it('should throw error when function does not return array', () => {
+    it('should throw error when function does not return array', async () => {
       const response = `
 \`\`\`javascript
 function callTools() {
@@ -207,22 +207,22 @@ function callTools() {
 }
 \`\`\``;
 
-      expect(() => {
-        handler.parseResponse(response, testTools);
-      }).toThrow('callTools function must return an array');
+      await expect(async () => {
+        await handler.parseResponse(response, testTools);
+      }).rejects.toThrow('callTools function must return an array');
     });
 
-    it('should throw error when no callTools function found', () => {
+    it('should throw error when no callTools function found', async () => {
       const response = `
 This is just some text without a callTools function.
 `;
 
-      expect(() => {
-        handler.parseResponse(response, testTools);
-      }).toThrow('No JavaScript callTools function found in response');
+      await expect(async () => {
+        await handler.parseResponse(response, testTools);
+      }).rejects.toThrow('No JavaScript callTools function found in response');
     });
 
-    it('should throw error when JavaScript function has syntax errors', () => {
+    it('should throw error when JavaScript function has syntax errors', async () => {
       const response = `
 \`\`\`javascript
 function callTools() {
@@ -237,12 +237,12 @@ function callTools() {
   // Missing semicolon and closing brace
 \`\`\``;
 
-      expect(() => {
-        handler.parseResponse(response, testTools);
-      }).toThrow('Error executing callTools function');
+      await expect(async () => {
+        await handler.parseResponse(response, testTools);
+      }).rejects.toThrow('Error executing callTools function');
     });
 
-    it('should handle functions with complex logic', () => {
+    it('should handle functions with complex logic', async () => {
       const response = `
 \`\`\`javascript
 function callTools() {
@@ -265,7 +265,7 @@ function callTools() {
 }
 \`\`\``;
 
-      const result = handler.parseResponse(response, testTools);
+      const result = await handler.parseResponse(response, testTools);
       
       expect(result).toHaveLength(1);
       expect(result[0].toolName).toBe('read_file');

@@ -138,7 +138,7 @@ Always be helpful and respond to the user's communication style!`;
     }));
 
     this.defineTool((z) => ({
-      name: 'final',
+      name: 'final_tool',
       description: `Provide friendly final response when task is complete or cannot be completed.`,
       argsSchema: z.object({
         value: z.string().describe("Warm, friendly summary of results or helpful explanation if unable to complete.")

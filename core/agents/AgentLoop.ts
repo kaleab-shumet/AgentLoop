@@ -107,7 +107,7 @@ export abstract class AgentLoop {
   protected temperature?: number;
   protected max_tokens?: number;
 
-  private readonly FINAL_TOOL_NAME = 'final';
+  private readonly FINAL_TOOL_NAME = 'final_tool';
   public readonly REPORT_TOOL_NAME = 'report_action';
   formatMode!: FormatMode;
   
@@ -395,7 +395,7 @@ export abstract class AgentLoop {
           let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks, goal, report);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponseWithRetry(prompt);
-          const parsedToolCalls = this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
+          const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
           
           // Validation: If final tool is not included, report tool is required
           const hasReportTool = parsedToolCalls.some(call => call.toolName === this.REPORT_TOOL_NAME);

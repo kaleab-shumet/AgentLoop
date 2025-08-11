@@ -30,7 +30,7 @@ describe('JSObject Integration Test', () => {
     expect(toolDefinitions).not.toContain('calledToolsList = []');
   });
 
-  it('should parse JSObject response correctly', () => {
+  it('should parse JSObject response correctly', async () => {
     const aiDataHandler = new AIDataHandler(FormatMode.JSOBJECT);
     
     const tools = [
@@ -58,7 +58,7 @@ function callTools() {
 }
 \`\`\``;
 
-    const result = aiDataHandler.parseAndValidate(jsObjectResponse, tools);
+    const result = await aiDataHandler.parseAndValidate(jsObjectResponse, tools);
     expect(result).toHaveLength(1);
     expect(result[0].toolName).toBe('test_tool');
     expect(result[0].message).toBe('Hello World');

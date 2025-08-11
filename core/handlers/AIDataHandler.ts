@@ -12,8 +12,8 @@ export class AIDataHandler {
     this.formatHandler = FormatHandlerFactory.getHandler(formatMode);
   }
 
-  parseAndValidate(aiResponse: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
-    return this.formatHandler.parseResponse(aiResponse, tools);
+  async parseAndValidate(aiResponse: string, tools: Tool<ZodTypeAny>[]): Promise<PendingToolCall[]> {
+    return await this.formatHandler.parseResponse(aiResponse, tools);
   }
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]){

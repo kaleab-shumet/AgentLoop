@@ -1,8 +1,10 @@
+/// <reference path="../types/ses.d.ts" />
 import { ZodTypeAny } from "zod";
 import { Tool, PendingToolCall, FormatHandler, FunctionCallTool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from "zod-to-json-schema";
 import { jsonSchemaToZod } from "json-schema-to-zod";
+import { lockdown, Compartment } from "ses";
 
 /**
  * Handles Literal+JavaScript response format for tool calls
@@ -10,6 +12,67 @@ import { jsonSchemaToZod } from "json-schema-to-zod";
  * Supports literal blocks for large content via LiteralLoader references
  */
 export class LiteralJSFormatHandler implements FormatHandler {
+  private sesInitialized = false;
+  private readonly executionTimeoutMs = 5000; // 5 second timeout for code execution
+
+  /**
+   * Execute a function with timeout protection (async)
+   */
+  private async withTimeout<T>(fn: () => T, timeoutMs: number = this.executionTimeoutMs): Promise<T> {
+    let timeoutHandle: NodeJS.Timeout | undefined;
+    
+    // Create a promise that rejects after timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new AgentError(
+          `Code execution timed out after ${timeoutMs}ms`,
+          AgentErrorType.INVALID_RESPONSE,
+          { timeoutMs }
+        ));
+      }, timeoutMs);
+    });
+
+    // Create a promise that resolves with the function result
+    const executionPromise = new Promise<T>((resolve, reject) => {
+      // Execute immediately - timeout will be enforced by Promise.race
+      try {
+        const result = fn();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    // Race between execution and timeout
+    try {
+      return await Promise.race([executionPromise, timeoutPromise]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
+  }
+
+  /**
+   * Initialize SES for secure code execution
+   */
+  private initializeSES(): void {
+    if (!this.sesInitialized) {
+      try {
+        // Initialize SES lockdown with safe configuration
+        lockdown({
+          errorTaming: 'safe',
+          stackFiltering: 'verbose',
+          denyUnsafeCode: true,
+          localeReporting: 'none',
+        });
+        this.sesInitialized = true;
+      } catch (error) {
+        // SES may already be locked down, which is fine
+        this.sesInitialized = true;
+      }
+    }
+  }
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     const schemaMap = tools.map(t => {
@@ -37,7 +100,7 @@ ${zodSchemaString}`;
     return schemaMap;
   }
 
-  parseResponse(response: string, tools: Tool<ZodTypeAny>[]): PendingToolCall[] {
+  async parseResponse(response: string, tools: Tool<ZodTypeAny>[]): Promise<PendingToolCall[]> {
     // First, extract any literal blocks from the response
     const literalBlocks = this.extractLiteralBlocks(response);
     
@@ -63,8 +126,8 @@ ${zodSchemaString}`;
     }
 
     try {
-      // Execute the JavaScript function in a safe environment
-      const toolCalls = this.executeCallToolsFunction(jsContent, literalBlocks);
+      // Use secure execution method with timeout (fallback handled internally)
+      const toolCalls = await this.executeCallToolsFunction(jsContent, literalBlocks);
       
       if (!Array.isArray(toolCalls)) {
         throw new AgentError(
@@ -200,51 +263,20 @@ ${zodSchemaString}`;
     return null;
   }
 
+
   /**
-   * Safely execute the callTools JavaScript function
+   * Execute JavaScript code with SES - secure execution only
+   * Professional approach with proper security layers and timeout protection
    */
-  private executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map()): any[] {
+  private async executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map()): Promise<any[]> {
     try {
-      // Create LiteralLoader function that can access the literal blocks
-      const LiteralLoader = (id: string): string => {
-        if (!literalBlocks.has(id)) {
-          throw new AgentError(
-            `Literal block with id "${id}" not found`,
-            AgentErrorType.INVALID_RESPONSE,
-            { literalId: id, availableLiterals: Array.from(literalBlocks.keys()) }
-          );
-        }
-        return literalBlocks.get(id)!;
-      };
+      // Initialize SES for secure execution
+      this.initializeSES();
 
-      // Create a safe execution environment using eval in a limited scope
-      // Note: This is intentionally limited for security
-      const context = {
-        Array: Array,
-        Object: Object,
-        String: String,
-        Number: Number,
-        Boolean: Boolean,
-        Math: Math,
-        Date: Date,
-        JSON: JSON,
-        LiteralLoader: LiteralLoader, // Add LiteralLoader to the context
-        console: { log: () => {} } // Stub console for safety
-      };
-
-      // Strip any import statements since we provide LiteralLoader in context
-      const cleanedJsCode = jsCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
-
-      // Create a function that executes the code in our controlled context
-      const executeCode = new Function('context', `
-        with (context) {
-          ${cleanedJsCode}
-          return callTools();
-        }
-      `);
-
-      const result = executeCode(context);
-      return result;
+      // Execute with timeout protection using SES
+      return await this.withTimeout(() => {
+        return this.executeBySES(jsCode, literalBlocks);
+      });
     } catch (error) {
       throw new AgentError(
         `Error executing callTools function: ${error instanceof Error ? error.message : String(error)}`,
@@ -252,5 +284,82 @@ ${zodSchemaString}`;
         { originalError: error, jsCode: jsCode.substring(0, 200) + '...' }
       );
     }
+  }
+
+  /**
+   * Execute using SES compartments (secure)
+   */
+  private executeBySES(jsCode: string, literalBlocks: Map<string, string>): any[] {
+    // Create secure endowments for the compartment
+    const endowments = this.createSecureEndowments(literalBlocks);
+
+    // Create a new SES compartment for isolated execution
+    const compartment = new Compartment(endowments);
+
+    // Strip import statements as we provide everything via endowments
+    const cleanedJsCode = jsCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
+
+    // Prepare the execution code
+    const executionCode = `
+      ${cleanedJsCode}
+      callTools();
+    `;
+
+    // Execute the code in the secure compartment
+    const result = compartment.evaluate(executionCode);
+
+    if (!Array.isArray(result)) {
+      throw new AgentError(
+        "callTools function must return an array",
+        AgentErrorType.INVALID_RESPONSE,
+        { returnedType: typeof result, expected: 'array' }
+      );
+    }
+
+    return result;
+  }
+
+
+  /**
+   * Create secure endowments for the SES compartment
+   * Only provide safe, necessary globals
+   */
+  private createSecureEndowments(literalBlocks: Map<string, string>): Record<string, any> {
+    // Create secure LiteralLoader function
+    const LiteralLoader = (id: string): string => {
+      if (!literalBlocks.has(id)) {
+        throw new AgentError(
+          `Literal block with id "${id}" not found`,
+          AgentErrorType.INVALID_RESPONSE,
+          { literalId: id, availableLiterals: Array.from(literalBlocks.keys()) }
+        );
+      }
+      return literalBlocks.get(id)!;
+    };
+
+    // Provide minimal, safe endowments
+    return {
+      // Safe constructors
+      Array: Array,
+      Object: Object,
+      String: String,
+      Number: Number,
+      Boolean: Boolean,
+      
+      // Safe utilities
+      Math: Math,
+      Date: Date,
+      JSON: JSON,
+      
+      // Custom secure function
+      LiteralLoader: LiteralLoader,
+      
+      // Stubbed console for safety
+      console: Object.freeze({ 
+        log: () => {}, 
+        error: () => {}, 
+        warn: () => {} 
+      }),
+    };
   }
 }

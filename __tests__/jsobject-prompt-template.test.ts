@@ -56,9 +56,9 @@ describe('DefaultPromptTemplate JSObject Format', () => {
 
       const prompt = template.buildPrompt(params);
 
-      // Should contain both format examples
-      expect(prompt).toContain('### FORMAT 1: Data Gathering');
-      expect(prompt).toContain('### FORMAT 2: Final Answer');
+      // Should contain scenario examples
+      expect(prompt).toContain('### Scenario 1: Intermediate Steps');
+      expect(prompt).toContain('### Scenario 2: Final Answer');
       
       // Should reference the correct tool names
       expect(prompt).toContain('toolName: "final"');
@@ -85,12 +85,11 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       const prompt = template.buildPrompt(params);
 
       // Should contain JSObject-specific requirements
-      expect(prompt).toContain('Write ONLY a JavaScript function named `callTools`');
-      expect(prompt).toContain('Function must return an array named `calledToolsList`');
-      expect(prompt).toContain('Each object in array must have `toolName` property');
-      expect(prompt).toContain('No external libraries or imports allowed');
-      expect(prompt).toContain('Pure vanilla JavaScript only');
-      expect(prompt).toContain('Use realistic, human-readable values');
+      expect(prompt).toContain('JavaScript `callTools()` function returning an array');
+      expect(prompt).toContain('MANDATORY:** Start code with `import { LiteralLoader }');
+      expect(prompt).toContain('Use valid JS syntax');
+      expect(prompt).toContain('Use exact tool parameter names/types');
+      expect(prompt).toContain('No placeholders; use real values');
     });
 
     it('should maintain consistent tool pairing rules across formats', () => {
@@ -114,7 +113,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
 
       // Should enforce tool pairing rules
       expect(prompt).toContain('NEVER call report_action alone');
-      expect(prompt).toContain('Always add a report on your progress');
+      expect(prompt).toContain('ALWAYS pair tool calls with report_action');
     });
 
     it('should work with custom tool names', () => {
@@ -139,7 +138,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       // Should use custom tool names in format examples
       expect(prompt).toContain('toolName: "custom_final"');
       expect(prompt).toContain('toolName: "custom_report"');
-      expect(prompt).toContain('Use custom_final to deliver the final result');
+      expect(prompt).toContain('Deliver final answer with \'custom_final\'');
       expect(prompt).toContain('NEVER call custom_report alone');
     });
   });
