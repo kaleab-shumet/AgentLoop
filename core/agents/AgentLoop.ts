@@ -389,7 +389,7 @@ export abstract class AgentLoop {
     try {
       this.initializePromptManager();
       this.initializeFinalTool();
-      this.initializeReportTool();
+      this.initializeSelfReasoningTool();
       for (let i = 0; i < this.maxIterations; i++) {
 
         try {
@@ -1076,7 +1076,7 @@ export abstract class AgentLoop {
     }
   }
 
-  private initializeReportTool(): void {
+  private initializeSelfReasoningTool(): void {
     if (!this.tools.some(t => t.name === this.SELF_REASONING_TOOL)) {
       const reportTool = {
         name: this.SELF_REASONING_TOOL,
@@ -1085,7 +1085,7 @@ export abstract class AgentLoop {
           goal: z.string().describe("The user's primary goal or intent that this iteration is working towards achieving."),
           report: z.string().describe("Self-analyze which specific tools you called in this iteration and the reasoning behind it. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
           nextTasks: z.string().describe(
-            "List the complete plan from the next action to the final tool call in numbered steps (1., 2., 3., etc.), including reasons for each step. End with how the final tool will be used. Example: '1. Perform initial action to collect necessary input because..., 2. Process the input to prepare for final output because..., 3. Use final tool to deliver the complete result with all required details'.")
+            "List the complete plan from the next action to the final tool call in numbered steps (1., 2., 3., etc.)(Avoid listing what is already done, move forward), including reasons for each step. End with how the final tool will be used. Example: '1. Perform initial action to collect necessary input because..., 2. Process the input to prepare for final output because..., 3. Use final tool to deliver the complete result with all required details'.")
 
         }),
         handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
