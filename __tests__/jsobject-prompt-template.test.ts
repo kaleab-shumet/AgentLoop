@@ -20,7 +20,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
         lastError: null,
         keepRetry: false,
         finalToolName: 'final',
-        reportToolName: 'report_action',
+        reportToolName: 'self_reasoning_tool',
         toolDefinitions: 'Test tool definitions',
         options: {},
         conversationEntries: [],
@@ -47,7 +47,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
         lastError: null,
         keepRetry: false,
         finalToolName: 'final',
-        reportToolName: 'report_action',
+        reportToolName: 'self_reasoning_tool',
         toolDefinitions: 'Test tool definitions',
         options: {},
         conversationEntries: [],
@@ -62,7 +62,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       
       // Should reference the correct tool names
       expect(prompt).toContain('toolName: "final"');
-      expect(prompt).toContain('toolName: "report_action"');
+      expect(prompt).toContain('toolName: "self_reasoning_tool"');
     });
 
     it('should include JSObject-specific requirements', () => {
@@ -75,7 +75,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
         lastError: null,
         keepRetry: false,
         finalToolName: 'final',
-        reportToolName: 'report_action',
+        reportToolName: 'self_reasoning_tool',
         toolDefinitions: 'Test tool definitions',
         options: {},
         conversationEntries: [],
@@ -102,7 +102,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
         lastError: null,
         keepRetry: false,
         finalToolName: 'final',
-        reportToolName: 'report_action',
+        reportToolName: 'self_reasoning_tool',
         toolDefinitions: 'Test tool definitions',
         options: {},
         conversationEntries: [],
@@ -112,8 +112,8 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       const prompt = template.buildPrompt(params);
 
       // Should enforce tool pairing rules
-      expect(prompt).toContain('NEVER call report_action alone');
-      expect(prompt).toContain('ALWAYS pair tool calls with report_action');
+      expect(prompt).toContain('NEVER call self_reasoning_tool alone');
+      expect(prompt).toContain('ALWAYS pair tool calls with self_reasoning_tool');
     });
 
     it('should work with custom tool names', () => {
@@ -126,7 +126,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
         lastError: null,
         keepRetry: false,
         finalToolName: 'custom_final',
-        reportToolName: 'custom_report',
+        reportToolName: 'custom_self_reasoning',
         toolDefinitions: 'Test tool definitions',
         options: {},
         conversationEntries: [],
@@ -137,9 +137,9 @@ describe('DefaultPromptTemplate JSObject Format', () => {
 
       // Should use custom tool names in format examples
       expect(prompt).toContain('toolName: "custom_final"');
-      expect(prompt).toContain('toolName: "custom_report"');
+      expect(prompt).toContain('toolName: "custom_self_reasoning"');
       expect(prompt).toContain('Deliver final answer with \'custom_final\'');
-      expect(prompt).toContain('NEVER call custom_report alone');
+      expect(prompt).toContain('NEVER call custom_self_reasoning alone');
     });
   });
 
@@ -164,7 +164,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
         lastError: null,
         keepRetry: false,
         finalToolName: 'final',
-        reportToolName: 'report_action',
+        reportToolName: 'self_reasoning_tool',
         toolDefinitions: 'Test tool definitions',
         options: {},
         conversationEntries: [],

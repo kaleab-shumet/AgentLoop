@@ -16,7 +16,7 @@ export class DefaultPromptTemplate {
     return this.responseFormat;
   }
 
-  private buildCoreDirectiveSection(finalToolName: string, reportToolName: string): string {
+  private buildCoreDirectiveSection(finalToolName: string, selfReasoningTool: string): string {
     return `# CORE DIRECTIVE
 
 ## MISSION
@@ -25,30 +25,30 @@ Complete user requests via a structured 2-phase process.
 ## PHASE 1: DATA GATHERING
 - Use tools to collect ALL needed info.
 - Track all data in Reports and Results.
-- ALWAYS pair each tool call with \`${reportToolName}\`.
+- ALWAYS pair each tool call with \`${selfReasoningTool}\`.
 
 ## PHASE 2: FINAL RESPONSE
 - Deliver final answer with '${finalToolName}'.
-- Always call '${finalToolName}' and '${reportToolName}' together.
+- Always call '${finalToolName}' and '${selfReasoningTool}' together.
 
 ## WORKFLOW
 1. Understand user request and history.
 2. If 'nextTasks' exists: execute immediately.
 3. Else:
-   - If data incomplete: call best tool + ${reportToolName}.
-   - If data complete: call ${finalToolName} + ${reportToolName}.
+   - If data incomplete: call best tool + ${selfReasoningTool}.
+   - If data complete: call ${finalToolName} + ${selfReasoningTool}.
 
 ## STRICT RULES
-- ALWAYS pair tool calls with ${reportToolName}.
-- For non-command inputs, respond using '${finalToolName}' + '${reportToolName}'.
+- ALWAYS pair tool calls with ${selfReasoningTool}.
+- For non-command inputs, respond using '${finalToolName}' + '${selfReasoningTool}'.
 - Use ONLY listed tools and data from Reports and Results.
 - NEVER respond with plain text.
 - NEVER call ${finalToolName} until ready with complete answer.
 - NEVER end interaction without calling ${finalToolName}.
-- NEVER call ${reportToolName} alone.`;
+- NEVER call ${selfReasoningTool} alone.`;
   }
 
-  private buildResponseFormatSection(reportToolName: string, finalToolName: string): string {
+  private buildResponseFormatSection(selfReasoningTool: string, finalToolName: string): string {
     if (this.responseFormat === FormatMode.JSOBJECT) {
       return `# RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION WITH LITERAL BLOCKS
 
@@ -72,6 +72,7 @@ import { LiteralLoader } from './utils';
 
 // Never write any code outside callTools, every code must be inside callTools function
 // Make sure you write valid JavaScript code
+// you must use named function declaration in JavaScript with the exact name callTools with empty parameters
 function callTools() {
   const calledToolsList = [];
   calledToolsList.push({
@@ -110,7 +111,7 @@ function callTools() {
   });
 
   calledToolsList.push({
-    toolName: "${reportToolName}",
+    toolName: "${selfReasoningTool}",
     goal: "User's objective",
     report: "Action performed. Expected outcome.",
     nextTasks: "Next steps..."
@@ -135,7 +136,7 @@ function callTools() {
   });
 
   calledToolsList.push({
-    toolName: "${reportToolName}",
+    toolName: "${selfReasoningTool}",
     goal: "User's objective",
     report: "Task complete. Final answer.",
     nextTasks: "Task complete."
@@ -156,8 +157,8 @@ function callTools() {
 - No plain text outside \`<literals>\`.
 - Use exact tool parameter names/types.
 - No placeholders; use real values.
-- \`${reportToolName}\` must always accompany another tool.
-- NEVER call \`${reportToolName}\` alone.
+- \`${selfReasoningTool}\` must always accompany another tool.
+- NEVER call \`${selfReasoningTool}\` alone.
 - Use template literals for multiline strings except long data in literals.
 
 `;
@@ -194,11 +195,11 @@ ${entries}
 `;
   }
 
-  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], reportToolName: string): string {
+  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
     if (!toolCallReports.length) {
       return `# REPORTS AND RESULTS
 
-**Status**: No data collected yet. Begin by gathering data with action tool + ${reportToolName}.`;
+**Status**: No data collected yet. Begin by gathering data with action tool + ${selfReasoningTool}.`;
     }
 
     const reports = toolCallReports.map((report, i) => {
@@ -228,7 +229,7 @@ ${JSON.stringify(report.toolCalls.map(tc => ({
 ${reports}`;
   }
 
-  private buildErrorRecoverySection(finalToolName: string, reportToolName: string, error: AgentError | null): string {
+  private buildErrorRecoverySection(finalToolName: string, selfReasoningTool: string, error: AgentError | null): string {
     if (!error) return '';
 
     return `# ERROR RECOVERY
@@ -240,36 +241,36 @@ ${reports}`;
 ## RECOVERY STEPS
 1. Analyze cause
 2. Create new plan avoiding error
-3. Execute corrected action + ${reportToolName}
+3. Execute corrected action + ${selfReasoningTool}
 4. Report what was attempted, why it failed, new approach
 
 ## COMMON FIXES
-- Never call ${reportToolName} alone.
-- Use ${finalToolName} + ${reportToolName} to just report.
+- Never call ${selfReasoningTool} alone.
+- Use ${finalToolName} + ${selfReasoningTool} to just report.
 - Check exact parameter names/types if parameter error.
 - Gather missing data first.`;
   }
 
-  private buildTaskSection(userPrompt: string, finalToolName: string, reportToolName: string, nextTasks?: string | null, goal?: string | null, report?: string | null): string {
+  private buildTaskSection(userPrompt: string, finalToolName: string, selfReasoningTool: string, nextTasks?: string | null, goal?: string | null, report?: string | null): string {
 
     const goalSection = goal ? `\n\n## GOAL\n> ${goal}` : '';
     const reportSection = report ? `In previously turn you said \`${report}\`, filter out task which is already done, now execute task which is not done previously from the following tasks: ` : '';
-   
+
     if (nextTasks) {
       let taskSection = `
 ${goalSection}   
       
 # IMMEDIATE TASK
 > ${reportSection}${nextTasks}`;
-      
-     
-      
+
+
+
       taskSection += `
 
 ## INSTRUCTIONS
 - Execute immediately without re-evaluation.
-- REMEMBER: Always pair tools with ${reportToolName}.`;
-      
+- REMEMBER: Always pair tools with ${selfReasoningTool}.`;
+
       return taskSection;
     }
 
@@ -280,9 +281,9 @@ ${goalSection}
 
 ## REMINDER
 1. Understand request and conversation history.
-2. If data needed: Use [action_tool] + ${reportToolName}.
-3. If data complete: Use ${finalToolName} + ${reportToolName}.
-Note: NEVER call ${reportToolName} alone.`;
+2. If data needed: Use [action_tool] + ${selfReasoningTool}.
+3. If data complete: Use ${finalToolName} + ${selfReasoningTool}.
+Note: NEVER call ${selfReasoningTool} alone.`;
   }
 
   private buildCustomSectionsContent(customSections: Record<string, string>): string {
@@ -298,7 +299,7 @@ Note: NEVER call ${reportToolName} alone.`;
       currentInteractionHistory,
       lastError,
       finalToolName,
-      reportToolName,
+      reportToolName: selfReasoningTool,
       toolDefinitions,
       options,
       nextTasks,
@@ -312,8 +313,8 @@ Note: NEVER call ${reportToolName} alone.`;
 
     if (systemPrompt) sections.push(systemPrompt);
 
-    sections.push(this.buildCoreDirectiveSection(finalToolName, reportToolName));
-    sections.push(this.buildResponseFormatSection(reportToolName, finalToolName));
+    sections.push(this.buildCoreDirectiveSection(finalToolName, selfReasoningTool));
+    sections.push(this.buildResponseFormatSection(selfReasoningTool, finalToolName));
     sections.push(this.buildToolsSection(toolDefinitions));
 
     if (options.includePreviousTaskHistory && conversationEntries?.length) {
@@ -321,17 +322,17 @@ Note: NEVER call ${reportToolName} alone.`;
     }
 
     const reports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportsAndResultsSection(reports, reportToolName));
+    sections.push(this.buildReportsAndResultsSection(reports, selfReasoningTool));
 
     if (lastError) {
-      sections.push(this.buildErrorRecoverySection(finalToolName, reportToolName, lastError));
+      sections.push(this.buildErrorRecoverySection(finalToolName, selfReasoningTool, lastError));
     }
 
     if (options.customSections) {
       sections.push(this.buildCustomSectionsContent(options.customSections));
     }
 
-    sections.push(this.buildTaskSection(userPrompt, finalToolName, reportToolName, nextTasks, goal, report));
+    sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, nextTasks, goal, report));
 
     return sections.join('\n\n---\n\n');
   }

@@ -25,9 +25,8 @@ export class LiteralJSFormatHandler implements FormatHandler {
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
         reject(new AgentError(
-          `Code execution timed out after ${timeoutMs}ms`,
-          AgentErrorType.INVALID_RESPONSE,
-          { timeoutMs }
+          `Execution timeout`,
+          AgentErrorType.INVALID_RESPONSE
         ));
       }, timeoutMs);
     });
@@ -118,9 +117,8 @@ ${zodSchemaString}`;
         jsContent = functionMatch;
       } else {
         throw new AgentError(
-          "No JavaScript callTools function found in response", 
-          AgentErrorType.INVALID_RESPONSE,
-          { response: response.substring(0, 500) + (response.length > 500 ? '...' : '') }
+          "No callTools function found", 
+          AgentErrorType.INVALID_RESPONSE
         );
       }
     }
@@ -131,18 +129,16 @@ ${zodSchemaString}`;
       
       if (!Array.isArray(toolCalls)) {
         throw new AgentError(
-          "callTools function must return an array", 
-          AgentErrorType.INVALID_RESPONSE,
-          { returnedType: typeof toolCalls, expected: 'array' }
+          "callTools must return array", 
+          AgentErrorType.INVALID_RESPONSE
         );
       }
 
       const pendingToolCalls: PendingToolCall[] = toolCalls.map((toolCall: any) => {
         if (!toolCall.toolName || typeof toolCall.toolName !== 'string') {
           throw new AgentError(
-            "Tool call missing required 'toolName' field", 
-            AgentErrorType.INVALID_RESPONSE,
-            { toolCall, expectedFormat: 'object with string toolName field' }
+            "Missing toolName field", 
+            AgentErrorType.INVALID_RESPONSE
           );
         }
 
@@ -150,9 +146,8 @@ ${zodSchemaString}`;
         const correspondingTool = tools.find(t => t.name === toolName);
         if (!correspondingTool) {
           throw new AgentError(
-            `No tool found for name: ${toolName}`, 
-            AgentErrorType.TOOL_NOT_FOUND,
-            { toolName, availableTools: tools.map(t => t.name) }
+            `Tool not found: ${toolName}`, 
+            AgentErrorType.TOOL_NOT_FOUND
           );
         }
 
@@ -163,14 +158,8 @@ ${zodSchemaString}`;
         const result = correspondingTool.argsSchema.safeParse(args);
         if (!result.success) {
           throw new AgentError(
-            `Invalid arguments for tool "${toolName}": ${result.error.message}`,
-            AgentErrorType.INVALID_INPUT,
-            { 
-              toolName, 
-              validationErrors: result.error.issues,
-              receivedArgs: args,
-              expectedSchema: correspondingTool.argsSchema
-            }
+            `Invalid args for ${toolName}`,
+            AgentErrorType.INVALID_INPUT
           );
         }
 
@@ -187,12 +176,8 @@ ${zodSchemaString}`;
         throw error;
       }
       throw new AgentError(
-        `Failed to execute JavaScript callTools function: ${error instanceof Error ? error.message : String(error)}`,
-        AgentErrorType.INVALID_RESPONSE,
-        { 
-          originalError: error instanceof Error ? error.message : String(error),
-          jsContent: jsContent.substring(0, 500) + (jsContent.length > 500 ? '...' : '')
-        }
+        `Execution failed: ${error instanceof Error ? error.message : String(error)}`,
+        AgentErrorType.INVALID_RESPONSE
       );
     }
   }
@@ -279,9 +264,8 @@ ${zodSchemaString}`;
       });
     } catch (error) {
       throw new AgentError(
-        `Error executing callTools function: ${error instanceof Error ? error.message : String(error)}`,
-        AgentErrorType.INVALID_RESPONSE,
-        { originalError: error, jsCode: jsCode.substring(0, 200) + '...' }
+        `Execution error: ${error instanceof Error ? error.message : String(error)}`,
+        AgentErrorType.INVALID_RESPONSE
       );
     }
   }
@@ -310,9 +294,8 @@ ${zodSchemaString}`;
 
     if (!Array.isArray(result)) {
       throw new AgentError(
-        "callTools function must return an array",
-        AgentErrorType.INVALID_RESPONSE,
-        { returnedType: typeof result, expected: 'array' }
+        "callTools must return array",
+        AgentErrorType.INVALID_RESPONSE
       );
     }
 
@@ -329,9 +312,8 @@ ${zodSchemaString}`;
     const LiteralLoader = (id: string): string => {
       if (!literalBlocks.has(id)) {
         throw new AgentError(
-          `Literal block with id "${id}" not found`,
-          AgentErrorType.INVALID_RESPONSE,
-          { literalId: id, availableLiterals: Array.from(literalBlocks.keys()) }
+          `Literal block "${id}" not found`,
+          AgentErrorType.INVALID_RESPONSE
         );
       }
       return literalBlocks.get(id)!;

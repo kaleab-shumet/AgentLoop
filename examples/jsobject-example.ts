@@ -89,9 +89,9 @@ function callTools() {
     encoding: "utf8"
   });
   
-  // Always pair with report_action tool
+  // Always pair with self_reasoning_tool tool
   calledToolsList.push({
-    toolName: "report_action",
+    toolName: "self_reasoning_tool",
     goal: "Read config file and create backup",
     report: "Action: Reading config.json file. Expected: Get file contents for backup creation.",
     nextTasks: "1. Create backup copy with write_file tool 2. Use final tool to confirm both files exist"
@@ -116,7 +116,7 @@ function callTools() {
   });
   
   calledToolsList.push({
-    toolName: "report_action",
+    toolName: "self_reasoning_tool",
     goal: "Read config file and create backup",
     report: "Action: Reading config.json file. Expected: Get file contents for backup.",
     nextTasks: "1. Write backup file with retrieved content 2. Use final tool to confirm completion"
@@ -144,7 +144,7 @@ function callTools() {
   });
   
   calledToolsList.push({
-    toolName: "report_action",
+    toolName: "self_reasoning_tool",
     goal: "Read config file and create backup", 
     report: "Task complete. Both config.json read and backup created successfully.",
     nextTasks: "Task is complete."

@@ -156,7 +156,7 @@ function callTools() {
 
       await expect(async () => {
         await handler.parseResponse(response, testTools);
-      }).rejects.toThrow('Invalid arguments for tool "read_file"');
+      }).rejects.toThrow('Invalid args for read_file');
     });
 
     it('should throw error when tool not found', async () => {
@@ -176,7 +176,7 @@ function callTools() {
 
       await expect(async () => {
         await handler.parseResponse(response, testTools);
-      }).rejects.toThrow('No tool found for name: nonexistent_tool');
+      }).rejects.toThrow('Tool not found: nonexistent_tool');
     });
 
     it('should throw error when toolName is missing', async () => {
@@ -196,7 +196,7 @@ function callTools() {
 
       await expect(async () => {
         await handler.parseResponse(response, testTools);
-      }).rejects.toThrow("Tool call missing required 'toolName' field");
+      }).rejects.toThrow('Missing toolName field');
     });
 
     it('should throw error when function does not return array', async () => {
@@ -209,7 +209,7 @@ function callTools() {
 
       await expect(async () => {
         await handler.parseResponse(response, testTools);
-      }).rejects.toThrow('callTools function must return an array');
+      }).rejects.toThrow('callTools must return array');
     });
 
     it('should throw error when no callTools function found', async () => {
@@ -219,7 +219,7 @@ This is just some text without a callTools function.
 
       await expect(async () => {
         await handler.parseResponse(response, testTools);
-      }).rejects.toThrow('No JavaScript callTools function found in response');
+      }).rejects.toThrow('No callTools function found');
     });
 
     it('should throw error when JavaScript function has syntax errors', async () => {
@@ -239,7 +239,7 @@ function callTools() {
 
       await expect(async () => {
         await handler.parseResponse(response, testTools);
-      }).rejects.toThrow('Error executing callTools function');
+      }).rejects.toThrow('Execution error');
     });
 
     it('should handle functions with complex logic', async () => {
