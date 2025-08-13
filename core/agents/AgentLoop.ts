@@ -1082,10 +1082,14 @@ export abstract class AgentLoop {
         name: this.SELF_REASONING_TOOL,
         description: `Self-reasoning tool to analyze and reflect on your progress. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this reasoning.`,
         argsSchema: z.object({
-          goal: z.string().describe("The user's primary goal or intent that this iteration is working towards achieving."),
+          goal: z.string().describe("Summary of user's primary goal or intent that this iteration is working towards achieving."),
           report: z.string().describe("Self-analyze which specific tools you called in this iteration and the reasoning behind it. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
           nextTasks: z.string().describe(
-            "List the complete plan from the next action to the final tool call in numbered steps (1., 2., 3., etc.)(Avoid listing what is already done, move forward), including reasons for each step. End with how the final tool will be used. Example: '1. Perform initial action to collect necessary input because..., 2. Process the input to prepare for final output because..., 3. Use final tool to deliver the complete result with all required details'.")
+            `
+          1. I will process the retrieved content to prepare the data.  
+2. Then I will call the [tool_name] to deliver the full result to the user.
+
+          `)
 
         }),
         handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {

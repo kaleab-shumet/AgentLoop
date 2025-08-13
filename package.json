@@ -24,6 +24,7 @@
   "devDependencies": {
     "@jest/globals": "^30.0.4",
     "@types/jest": "^30.0.0",
+    "@types/js-beautify": "^1.14.3",
     "@types/node": "^24.1.0",
     "jest": "^30.0.4",
     "rimraf": "^5.0.5",
@@ -48,6 +49,7 @@
     "@iarna/toml": "^2.2.5",
     "ai": "^4.3.19",
     "dotenv": "^17.2.0",
+    "js-beautify": "^1.15.4",
     "json-schema-to-zod": "^2.6.1",
     "nanoid": "^3.3.11",
     "replace-in-file": "^8.3.0",

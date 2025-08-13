@@ -4,12 +4,15 @@ import z from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 import { replaceInFile } from 'replace-in-file';
+import * as beautify from 'js-beautify';
 
 /**
  * Code Editor Agent - Full File Management Capabilities
  * Create, Edit, Delete, and manage files and directories
  */
 class CodeEditorAgent extends AgentLoop {
+  private basePath: string;
+
   protected systemPrompt = `You are a professional code editor AI assistant with full file management capabilities.
 
 **Your Core Functions:**
@@ -37,18 +40,30 @@ class CodeEditorAgent extends AgentLoop {
 
 You are a powerful file manager - use these capabilities responsibly to help users manage their codebase effectively.`;
 
-  constructor() {
-    super(new DefaultAIProvider({
+  constructor(basePath: string = path.join(process.cwd(), 'testfolder')) {
+    super(new DefaultAIProvider(
+      
+      {
       service: 'azure',
       apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
       baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
       model: 'gpt-4.1-mini'
-    }), {
+    }
+
+  //  {
+  //     service: 'google',
+  //     apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+  //     model: 'gemini-2.5-flash'
+  //   }
+  
+  
+  ), {
       formatMode: FormatMode.JSOBJECT,
       maxIterations: 8,
       stagnationTerminationThreshold: 3
     });
 
+    this.basePath = basePath;
     this.setupFileOperations();
   }
 
@@ -65,8 +80,8 @@ You are a powerful file manager - use these capabilities responsibly to help use
       }),
       handler: async ({ args }: any) => {
         try {
-          const fullPath = path.resolve(args.filepath);
-          
+          const fullPath = path.resolve(this.basePath, args.filepath);
+
           // Check if file exists
           if (fs.existsSync(fullPath) && !args.overwrite) {
             return {
@@ -77,17 +92,17 @@ You are a powerful file manager - use these capabilities responsibly to help use
               exists: true
             };
           }
-          
+
           // Create parent directories if needed
           if (args.createDirs) {
             const dir = path.dirname(fullPath);
             await fs.promises.mkdir(dir, { recursive: true });
           }
-          
+
           // Write the file
           await fs.promises.writeFile(fullPath, args.content, 'utf8');
           const stats = await fs.promises.stat(fullPath);
-          
+
           return {
             toolName: 'create_file',
             success: true,
@@ -96,6 +111,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
             lines: args.content.split('\n').length,
             created: true
           };
+
         } catch (error) {
           return {
             toolName: 'create_file',
@@ -110,32 +126,33 @@ You are a powerful file manager - use these capabilities responsibly to help use
     // READ FILE
     this.defineTool(z => ({
       name: 'read_file',
-      description: 'Read and display file contents',
+      description: 'Read and display contents of a file. To read full content: omit lines parameter. To read specific lines: provide lines.start and/or lines.end (1-based indexing). Examples: lines:{start:10,end:20} reads lines 10-20, lines:{start:5} reads from line 5 to end, lines:{end:10} reads first 10 lines.',
       argsSchema: z.object({
         filepath: z.string().describe('Path to the file to read'),
-        encoding: z.string().optional().default('utf8').describe('File encoding'),
+        encoding: z.string().optional().default('utf8').describe('File encoding (utf8, ascii, etc.)'),
         lines: z.object({
-          start: z.number().optional().describe('Start line number (1-based)'),
-          end: z.number().optional().describe('End line number (1-based)')
-        }).optional().describe('Read specific line range')
+          start: z.number().optional().describe('Start line number (1-based). If omitted, starts from beginning of file'),
+          end: z.number().optional().describe('End line number (1-based). If omitted, reads to end of file')
+        }).optional().describe('Optional: Read specific line range. Omit this parameter to read the entire file content. Use 1-based line numbering (first line is 1, not 0)')
       }),
       handler: async ({ args }: any) => {
         try {
-          const fullPath = path.resolve(args.filepath);
+          const fullPath = path.resolve(this.basePath, args.filepath);
           const content = await fs.promises.readFile(fullPath, args.encoding as BufferEncoding);
           const stats = await fs.promises.stat(fullPath);
-          
-          let displayContent = content;
-          let totalLines = content.split('\n').length;
-          
+          const contentString = content.toString();
+
+          let displayContent = contentString;
+          let totalLines = contentString.split('\n').length;
+
           // Handle line range if specified
           if (args.lines) {
-            const lines = content.split('\n');
+            const lines = contentString.split('\n');
             const start = (args.lines.start || 1) - 1; // Convert to 0-based
             const end = args.lines.end ? args.lines.end - 1 : lines.length - 1;
             displayContent = lines.slice(start, end + 1).join('\n');
           }
-          
+
           return {
             toolName: 'read_file',
             success: true,
@@ -147,6 +164,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
             lastModified: stats.mtime.toISOString(),
             extension: path.extname(args.filepath)
           };
+
         } catch (error) {
           return {
             toolName: 'read_file',
@@ -161,25 +179,22 @@ You are a powerful file manager - use these capabilities responsibly to help use
     // EDIT FILE
     this.defineTool(z => ({
       name: 'edit_file',
-      description: 'Edit files using powerful find-and-replace operations with regex support',
+      description: 'Edit files using: replace_regex (range-based replacement with start/end boundaries), append (to end), prepend (to start). For replace_regex, provide start and end boundary text - they will be escaped and used to create pattern "start[\\s\\S]*?end" to match everything between boundaries inclusively. Keep boundary selections precise to target complete sections.',
       argsSchema: z.object({
         filepath: z.string().describe('Path to the file to edit'),
-        operation: z.enum(['replace_all', 'find_replace', 'replace_regex', 'append', 'prepend']).describe('Type of edit operation'),
-        content: z.string().describe('New content or replacement text'),
-        options: z.object({
-          from: z.string().optional().describe('Text/pattern to find (required for find_replace and replace_regex)'),
-          to: z.string().optional().describe('Replacement text (defaults to content)'),
-          isRegex: z.boolean().optional().default(false).describe('Whether to treat "from" as a regex pattern'),
-          flags: z.string().optional().default('g').describe('Regex flags (g=global, i=ignoreCase, m=multiline)'),
-          backup: z.boolean().optional().default(false).describe('Create backup before editing'),
-          encoding: z.string().optional().default('utf8').describe('File encoding')
-        }).optional()
+        operation: z.enum(['replace_regex', 'append', 'prepend']).describe('Type of edit operation: replace_regex=regex find/replace, append=add to end, prepend=add to start'),
+        start: z.string().min(3, "Include the first 3 characters").optional().describe('The first characters of the string to be replaced'),
+        end: z.string().min(3, "Include the last 3 characters").optional().describe('The last characters of the string to be replaced'),
+        flags: z.string().optional().default('g').describe('Regex flags for replace_regex: g=global, i=ignoreCase, m=multiline, s=dotAll'),
+        content: z.string().describe('New content or replacement text (what to replace with or add)'),
+        numExpectedMatches: z.number().optional().describe('Expected number of matches for replace_regex operation (mandatory for replace_regex only). If actual matches differ from this number, the operation will fail and report back for you to choose more specific start/end boundaries. Example: if you expect to replace exactly 1 occurrence, set this to 1.'),
+        backup: z.boolean().optional().default(false).describe('Create .backup file before editing for safety'),
+        encoding: z.string().optional().default('utf8').describe('File encoding (utf8, ascii, etc.)')
       }),
       handler: async ({ args }: any) => {
         try {
-          const fullPath = path.resolve(args.filepath);
-          const options = args.options || {};
-          
+          const fullPath = path.resolve(this.basePath, args.filepath);
+
           // Check if file exists
           if (!fs.existsSync(fullPath)) {
             return {
@@ -189,87 +204,89 @@ You are a powerful file manager - use these capabilities responsibly to help use
               error: 'File does not exist'
             };
           }
-          
+
           const originalStats = await fs.promises.stat(fullPath);
-          const originalContent = await fs.promises.readFile(fullPath, options.encoding as BufferEncoding);
+          const originalContent = await fs.promises.readFile(fullPath, args.encoding as BufferEncoding);
           const contentString = originalContent.toString();
-          
+
           // Create backup if requested
           let backupPath: string | null = null;
-          if (options.backup) {
+          if (args.backup) {
             backupPath = `${fullPath}.backup.${Date.now()}`;
             await fs.promises.writeFile(backupPath, originalContent);
           }
-          
+
           let result: any;
-          
+
           switch (args.operation) {
-            case 'replace_all':
-              // Replace entire file content
-              await fs.promises.writeFile(fullPath, args.content, options.encoding);
-              result = {
-                operation: 'replace_all',
-                changes: [{ file: fullPath, hasChanged: true }]
-              };
-              break;
-              
-            case 'find_replace':
-              // Simple string replacement
-              if (!options.from) {
-                throw new Error('options.from is required for find_replace operation');
-              }
-              result = await replaceInFile({
-                files: fullPath,
-                from: options.from,
-                to: options.to || args.content,
-                encoding: options.encoding
-              });
-              break;
-              
             case 'replace_regex':
-              // Regex replacement
-              if (!options.from) {
-                throw new Error('options.from is required for replace_regex operation');
+              // Regex replacement with mandatory match count validation
+              if (args.numExpectedMatches === undefined) {
+                throw new Error('numExpectedMatches is required for replace_regex operation');
               }
-              const regex = new RegExp(options.from, options.flags);
+              
+              if (!args.start || !args.end) {
+                throw new Error('Both start and end are required for replace_regex operation');
+              }
+              
+              // Create range-based regex pattern: match from start to end (inclusive)
+              const escapedStart = args.start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const escapedEnd = args.end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const rangePattern = `${escapedStart}[\\s\\S]*?${escapedEnd}`;
+              const regex = new RegExp(rangePattern, args.flags);
+              
+              // Validate expected matches before replacement
+              const matches = contentString.match(regex);
+              const actualMatches = matches ? matches.length : 0;
+              
+              if (actualMatches !== args.numExpectedMatches) {
+                return {
+                  toolName: 'edit_file',
+                  success: false,
+                  filepath: args.filepath,
+                  operation: args.operation,
+                  error: `Boundary match count mismatch. Please choose more specific start/end boundaries to target exactly the intended content.`
+                };
+              }
+              
               result = await replaceInFile({
                 files: fullPath,
                 from: regex,
-                to: options.to || args.content,
-                encoding: options.encoding
+                to: args.content,
+                encoding: args.encoding
               });
               break;
-              
+
             case 'append':
               // Append to end of file
               const appendContent = contentString + (contentString.endsWith('\n') ? '' : '\n') + args.content;
-              await fs.promises.writeFile(fullPath, appendContent, options.encoding);
+              await fs.promises.writeFile(fullPath, appendContent, args.encoding);
               result = {
                 operation: 'append',
                 changes: [{ file: fullPath, hasChanged: true }]
               };
               break;
-              
+
             case 'prepend':
               // Add to beginning of file
               const prependContent = args.content + (args.content.endsWith('\n') ? '' : '\n') + contentString;
-              await fs.promises.writeFile(fullPath, prependContent, options.encoding);
+              await fs.promises.writeFile(fullPath, prependContent, args.encoding);
               result = {
                 operation: 'prepend',
                 changes: [{ file: fullPath, hasChanged: true }]
               };
               break;
-              
+
             default:
               throw new Error(`Unknown operation: ${args.operation}`);
           }
-          
+
           // Get updated file stats
           const newStats = await fs.promises.stat(fullPath);
-          const newContent = await fs.promises.readFile(fullPath, options.encoding);
-          
+          const newContent = await fs.promises.readFile(fullPath, args.encoding);
+
           const hasChanged = result.changes && result.changes.length > 0 && result.changes[0].hasChanged;
-          
+
           return {
             toolName: 'edit_file',
             success: true,
@@ -284,7 +301,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
             backup: backupPath,
             modified: hasChanged
           };
-          
+
         } catch (error) {
           return {
             toolName: 'edit_file',
@@ -300,7 +317,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
     // DELETE FILE
     this.defineTool(z => ({
       name: 'delete_file',
-      description: 'Delete a file or directory',
+      description: 'Delete a file or directory. Use recursive=true to delete non-empty directories. Use backup=true to create a backup before deletion. Use force=true to skip confirmations (be careful!).',
       argsSchema: z.object({
         filepath: z.string().describe('Path to the file or directory to delete'),
         force: z.boolean().optional().default(false).describe('Force delete (skip confirmations)'),
@@ -309,8 +326,8 @@ You are a powerful file manager - use these capabilities responsibly to help use
       }),
       handler: async ({ args }: any) => {
         try {
-          const fullPath = path.resolve(args.filepath);
-          
+          const fullPath = path.resolve(this.basePath, args.filepath);
+
           if (!fs.existsSync(fullPath)) {
             return {
               toolName: 'delete_file',
@@ -320,16 +337,17 @@ You are a powerful file manager - use these capabilities responsibly to help use
               exists: false
             };
           }
-          
+
           const stats = await fs.promises.stat(fullPath);
           const isDirectory = stats.isDirectory();
-          
+
           // Create backup if requested
+          let backupPath: string | null = null;
           if (args.backup && !isDirectory) {
-            const backupPath = `${fullPath}.deleted.${Date.now()}`;
+            backupPath = `${fullPath}.deleted.${Date.now()}`;
             await fs.promises.copyFile(fullPath, backupPath);
           }
-          
+
           // Delete the file or directory
           if (isDirectory) {
             if (args.recursive) {
@@ -340,16 +358,17 @@ You are a powerful file manager - use these capabilities responsibly to help use
           } else {
             await fs.promises.unlink(fullPath);
           }
-          
+
           return {
             toolName: 'delete_file',
             success: true,
             filepath: args.filepath,
             type: isDirectory ? 'directory' : 'file',
             size: isDirectory ? null : stats.size,
-            backup: args.backup && !isDirectory ? `${fullPath}.deleted.${Date.now()}` : null,
+            backup: backupPath,
             deleted: true
           };
+
         } catch (error) {
           return {
             toolName: 'delete_file',
@@ -364,7 +383,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
     // LIST FILES
     this.defineTool(z => ({
       name: 'list_files',
-      description: 'List files and directories',
+      description: 'List files and directories in a specific directory. Use recursive=true to search subdirectories. Use pattern="*.js" to filter by file extension. Use details=true to get file sizes and dates.',
       argsSchema: z.object({
         directory: z.string().describe('Directory path to list'),
         pattern: z.string().optional().describe('File pattern to match (e.g., "*.js", "*.tsx")'),
@@ -374,16 +393,16 @@ You are a powerful file manager - use these capabilities responsibly to help use
       }),
       handler: async ({ args }: any) => {
         try {
-          const fullPath = path.resolve(args.directory);
+          const fullPath = path.resolve(this.basePath, args.directory);
           const files = await this.listFilesRecursive(
-            fullPath, 
-            args.recursive, 
-            args.pattern, 
+            fullPath,
+            args.recursive,
+            args.pattern,
             args.includeHidden
           );
-          
+
           let results: any = files;
-          
+
           if (args.details) {
             results = await Promise.all(
               files.map(async (file) => {
@@ -409,7 +428,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
           } else {
             results = files.map(file => ({ path: file, name: path.basename(file) }));
           }
-          
+
           return {
             toolName: 'list_files',
             success: true,
@@ -440,8 +459,8 @@ You are a powerful file manager - use these capabilities responsibly to help use
       }),
       handler: async ({ args }: any) => {
         try {
-          const fullPath = path.resolve(args.dirpath);
-          
+          const fullPath = path.resolve(this.basePath, args.dirpath);
+
           if (fs.existsSync(fullPath)) {
             return {
               toolName: 'create_directory',
@@ -451,9 +470,9 @@ You are a powerful file manager - use these capabilities responsibly to help use
               exists: true
             };
           }
-          
+
           await fs.promises.mkdir(fullPath, { recursive: args.recursive });
-          
+
           return {
             toolName: 'create_directory',
             success: true,
@@ -474,7 +493,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
     // SEARCH FILES
     this.defineTool(z => ({
       name: 'search_files',
-      description: 'Search for files by name or content',
+      description: 'Search for files by filename, content, or both. Use searchType="filename" to search only filenames, searchType="content" to search file contents, searchType="both" for both. Use caseSensitive=true for exact case matching. Useful for finding TODO comments, function definitions, etc.',
       argsSchema: z.object({
         searchTerm: z.string().describe('Text to search for'),
         directory: z.string().describe('Directory to search in'),
@@ -485,46 +504,46 @@ You are a powerful file manager - use these capabilities responsibly to help use
       }),
       handler: async ({ args }: any) => {
         try {
-          const fullPath = path.resolve(args.directory);
+          const fullPath = path.resolve(this.basePath, args.directory);
           const results: any[] = [];
-          
+
           const files = await this.listFilesRecursive(fullPath, true, args.filePattern, false);
-          
+
           for (const file of files) {
             if (results.length >= args.maxResults) break;
-            
+
             try {
               const stats = await fs.promises.stat(file);
               if (stats.isDirectory()) continue;
-              
+
               const fileName = path.basename(file);
               let matches: any = {
                 file,
                 name: fileName,
                 matches: []
               };
-              
+
               // Search filename
               if (args.searchType === 'filename' || args.searchType === 'both') {
                 const searchIn = args.caseSensitive ? fileName : fileName.toLowerCase();
                 const searchFor = args.caseSensitive ? args.searchTerm : args.searchTerm.toLowerCase();
-                
+
                 if (searchIn.includes(searchFor)) {
                   matches.matches.push({ type: 'filename', match: fileName });
                 }
               }
-              
+
               // Search content
               if (args.searchType === 'content' || args.searchType === 'both') {
                 try {
                   const content = await fs.promises.readFile(file, 'utf8');
                   const lines = content.split('\n');
-                  
+
                   for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const searchIn = args.caseSensitive ? line : line.toLowerCase();
                     const searchFor = args.caseSensitive ? args.searchTerm : args.searchTerm.toLowerCase();
-                    
+
                     if (searchIn.includes(searchFor)) {
                       matches.matches.push({
                         type: 'content',
@@ -538,7 +557,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
                   // Skip files that can't be read as text
                 }
               }
-              
+
               if (matches.matches.length > 0) {
                 results.push(matches);
               }
@@ -546,7 +565,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
               // Skip files with errors
             }
           }
-          
+
           return {
             toolName: 'search_files',
             success: true,
@@ -570,22 +589,22 @@ You are a powerful file manager - use these capabilities responsibly to help use
 
   // Helper Methods
   private async listFilesRecursive(
-    dir: string, 
-    recursive: boolean = false, 
-    pattern?: string, 
+    dir: string,
+    recursive: boolean = false,
+    pattern?: string,
     includeHidden: boolean = false
   ): Promise<string[]> {
     const files: string[] = [];
-    
+
     try {
       const items = await fs.promises.readdir(dir);
-      
+
       for (const item of items) {
         if (!includeHidden && item.startsWith('.')) continue;
-        
+
         const fullPath = path.join(dir, item);
         const stats = await fs.promises.stat(fullPath);
-        
+
         if (stats.isDirectory() && recursive) {
           const subFiles = await this.listFilesRecursive(fullPath, recursive, pattern, includeHidden);
           files.push(...subFiles);
@@ -600,7 +619,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
     } catch (error) {
       // Skip directories that can't be read
     }
-    
+
     return files;
   }
 

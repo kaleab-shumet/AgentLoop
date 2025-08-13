@@ -5,6 +5,7 @@ import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from "zod-to-json-schema";
 import { jsonSchemaToZod } from "json-schema-to-zod";
 import { lockdown, Compartment } from "ses";
+import * as beautify from 'js-beautify';
 
 /**
  * Handles Literal+JavaScript response format for tool calls
@@ -90,10 +91,18 @@ export class LiteralJSFormatHandler implements FormatHandler {
       
       const zodSchemaString = jsonSchemaToZod(resolvedSchema as any);
       
+      const beautifiedSchema = beautify.js(zodSchemaString, {
+        indent_size: 2,
+        space_in_empty_paren: true,
+        preserve_newlines: true,
+        max_preserve_newlines: 2,
+        wrap_line_length: 100
+      });
+      
       return `## Tool Name: ${t.name}
 ## Tool Description: ${t.description}
 ## Tool Schema (Zod):
-${zodSchemaString}`;
+${beautifiedSchema}`;
     }).join("\n\n");
 
     return schemaMap;
@@ -103,16 +112,19 @@ ${zodSchemaString}`;
     // First, extract any literal blocks from the response
     const literalBlocks = this.extractLiteralBlocks(response);
     
-    // Look for JavaScript function blocks in the response
-    let jsMatch = response.match(/```javascript\s*\n([\s\S]+?)\n?```/);
+    // Remove literal blocks from response to get clean text for JS extraction
+    let cleanResponse = this.removeLiteralBlocks(response);
+    
+    // Look for JavaScript function blocks in the clean response
+    let jsMatch = cleanResponse.match(/```javascript\s*\n([\s\S]+?)\n?```/);
     let jsContent: string;
     
     if (jsMatch) {
+      // Extract only the JavaScript content, not the literals
       jsContent = jsMatch[1].trim();
     } else {
       // Try to find function without code block markers
-      // Use a more sophisticated regex to capture the complete function including nested braces
-      const functionMatch = this.extractFunctionFromText(response);
+      const functionMatch = this.extractFunctionFromText(cleanResponse);
       if (functionMatch) {
         jsContent = functionMatch;
       } else {
@@ -157,8 +169,11 @@ ${zodSchemaString}`;
         // Validate arguments against tool schema
         const result = correspondingTool.argsSchema.safeParse(args);
         if (!result.success) {
+          const errorDetails = result.error.errors.map(err => 
+            `${err.path.join('.')}: ${err.message}`
+          ).join('; ');
           throw new AgentError(
-            `Invalid args for ${toolName}`,
+            `Invalid args for ${toolName}: ${errorDetails}`,
             AgentErrorType.INVALID_INPUT
           );
         }
@@ -180,6 +195,19 @@ ${zodSchemaString}`;
         AgentErrorType.INVALID_RESPONSE
       );
     }
+  }
+
+  /**
+   * Remove literal blocks from response to get clean text for JavaScript extraction
+   */
+  private removeLiteralBlocks(response: string): string {
+    // Remove the entire <literals>...</literals> section
+    let cleanResponse = response.replace(/<literals\s*>[\s\S]*?<\/literals>/g, '');
+    
+    // Also remove any standalone literal blocks (fallback)
+    cleanResponse = cleanResponse.replace(/<literal\s+id="[^"]+"\s*>[\s\S]*?<\/literal>/g, '');
+    
+    return cleanResponse;
   }
 
   /**

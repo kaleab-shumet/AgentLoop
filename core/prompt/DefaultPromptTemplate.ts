@@ -75,9 +75,12 @@ import { LiteralLoader } from './utils';
 // you must use named function declaration in JavaScript with the exact name callTools with empty parameters
 function callTools() {
   const calledToolsList = [];
+
+  // Always check the given schema to write the correct tool name, parameters.
+  // The value must be in validation constraints, check tool schema
   calledToolsList.push({
     toolName: "someTool",
-    content: LiteralLoader("unique-id")
+    content: LiteralLoader("unique-id") // Always use LiteralLoader reference for all multiline strings(mandatory), do not afraid to use it, its easy
   });
   return calledToolsList;
 }
@@ -114,7 +117,7 @@ function callTools() {
     toolName: "${selfReasoningTool}",
     goal: "User's objective",
     report: "Action performed. Expected outcome.",
-    nextTasks: "Next steps..."
+    nextTasks: "Next tool call..."
   });
 
   return calledToolsList;
@@ -130,6 +133,7 @@ import { LiteralLoader } from './utils';
 function callTools() {
   const calledToolsList = [];
 
+  
   calledToolsList.push({
     toolName: "${finalToolName}",
     param: "short answer or " + LiteralLoader("long-answer-id")
@@ -155,11 +159,11 @@ function callTools() {
 - Use valid JS syntax.
 - Use \`LiteralLoader\` for long strings.
 - No plain text outside \`<literals>\`.
-- Use exact tool parameter names/types.
+- Use exact tool parameter names/types and validation constraints.
 - No placeholders; use real values.
 - \`${selfReasoningTool}\` must always accompany another tool.
 - NEVER call \`${selfReasoningTool}\` alone.
-- Use template literals for multiline strings except long data in literals.
+- For multiline strings, you must use \`LiteralLoader\` with unique IDs.
 
 `;
     }
@@ -169,10 +173,16 @@ function callTools() {
   private buildToolsSection(toolDefinitions: string): string {
     return `# AVAILABLE TOOLS
 
-- Tool and parameter names CASE-SENSITIVE.
-- Provide ALL required parameters.
-- Match exact data types.
+**CRITICAL VALIDATION RULES:**
+- Tool and parameter names are CASE-SENSITIVE.
+- Provide ALL required parameters - missing required params cause TOOL FAILURE.
+- Match exact data types and validation constraints shown in schema.
+- Read parameter descriptions carefully for validation rules and requirements.
+- Pay attention to minimum/maximum values, string lengths, and format requirements.
+- Check if parameters are optional or mandatory based on schema definitions.
 - ONLY use listed tools.
+
+**IMPORTANT:** Tool execution will fail if validation constraints are not met. Always check the schema carefully before calling tools.
 
 ${toolDefinitions}`;
   }
@@ -254,11 +264,14 @@ ${reports}`;
   private buildTaskSection(userPrompt: string, finalToolName: string, selfReasoningTool: string, nextTasks?: string | null, goal?: string | null, report?: string | null): string {
 
     const goalSection = goal ? `\n\n## GOAL\n> ${goal}` : '';
+    const userRequestSection = `## USER REQUEST> ${userPrompt}\n\n`
     const reportSection = report ? `In previously turn you said \`${report}\`, filter out task which is already done, now execute task which is not done previously from the following tasks: ` : '';
 
     if (nextTasks) {
       let taskSection = `
-${goalSection}   
+${goalSection}
+
+${userRequestSection}
       
 # IMMEDIATE TASK
 > ${reportSection}${nextTasks}`;
@@ -276,8 +289,7 @@ ${goalSection}
 
     return `# IMMEDIATE TASK
 
-## USER REQUEST
-> ${userPrompt}
+${userRequestSection}
 
 ## REMINDER
 1. Understand request and conversation history.
