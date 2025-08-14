@@ -3,8 +3,8 @@ import { DefaultAIProvider } from '../core/providers/DefaultAIProvider';
 import z from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
-import { replaceInFile } from 'replace-in-file';
 import * as beautify from 'js-beautify';
+import { replaceInFile } from 'replace-in-file';
 
 /**
  * Code Editor Agent - Full File Management Capabilities
@@ -60,7 +60,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
   ), {
       formatMode: FormatMode.JSOBJECT,
       maxIterations: 8,
-      stagnationTerminationThreshold: 3
+      stagnationTerminationThreshold: 5
     });
 
     this.basePath = basePath;
@@ -176,138 +176,97 @@ You are a powerful file manager - use these capabilities responsibly to help use
       }
     }));
 
-    // EDIT FILE
+    // EDIT FILE - Exact string replacement
     this.defineTool(z => ({
       name: 'edit_file',
-      description: 'Edit files using: replace_regex (range-based replacement with start/end boundaries), append (to end), prepend (to start). For replace_regex, provide start and end boundary text - they will be escaped and used to create pattern "start[\\s\\S]*?end" to match everything between boundaries inclusively. Keep boundary selections precise to target complete sections.',
+      description: 'Edit files by targeting COMPLETE LINES of code/text for replacement. NOT for single word edits - use for entire lines, multiple consecutive lines, or line-based structures. Uses LITERAL STRING MATCHING ONLY - NO REGEX. BE EXTREMELY PRECISE: Must match text exactly including ALL spaces, tabs, indentation, braces, commas, line breaks, and special characters. Even a single character difference will cause failure. Read the file first and copy exact text character-by-character.',
       argsSchema: z.object({
-        filepath: z.string().describe('Path to the file to edit'),
-        operation: z.enum(['replace_regex', 'append', 'prepend']).describe('Type of edit operation: replace_regex=regex find/replace, append=add to end, prepend=add to start'),
-        start: z.string().min(3, "Include the first 3 characters").optional().describe('The first characters of the string to be replaced'),
-        end: z.string().min(3, "Include the last 3 characters").optional().describe('The last characters of the string to be replaced'),
-        flags: z.string().optional().default('g').describe('Regex flags for replace_regex: g=global, i=ignoreCase, m=multiline, s=dotAll'),
-        content: z.string().describe('New content or replacement text (what to replace with or add)'),
-        numExpectedMatches: z.number().optional().describe('Expected number of matches for replace_regex operation (mandatory for replace_regex only). If actual matches differ from this number, the operation will fail and report back for you to choose more specific start/end boundaries. Example: if you expect to replace exactly 1 occurrence, set this to 1.'),
-        backup: z.boolean().optional().default(false).describe('Create .backup file before editing for safety'),
-        encoding: z.string().optional().default('utf8').describe('File encoding (utf8, ascii, etc.)')
+        file_path: z.string().describe('Path to the file to edit'),
+        old_string: z.string().min(1).describe('COMPLETE LINES of text to find - target entire lines or multiple consecutive lines. LITERAL STRING ONLY, NO REGEX PATTERNS'),
+        new_string: z.string().describe('Text to replace with'),
+        expected_match: z.number().min(1).describe('Expected number of matches to find')
       }),
       handler: async ({ args }: any) => {
         try {
-          const fullPath = path.resolve(this.basePath, args.filepath);
+          const fullPath = path.resolve(this.basePath, args.file_path);
 
           // Check if file exists
           if (!fs.existsSync(fullPath)) {
             return {
               toolName: 'edit_file',
               success: false,
-              filepath: args.filepath,
+              file_path: args.file_path,
               error: 'File does not exist'
             };
           }
 
-          const originalStats = await fs.promises.stat(fullPath);
-          const originalContent = await fs.promises.readFile(fullPath, args.encoding as BufferEncoding);
-          const contentString = originalContent.toString();
+          // First, count matches using replace-in-file dry run with global regex
+          // Convert string to escaped regex with global flag to count ALL occurrences
+          const escapedString = args.old_string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const globalRegex = new RegExp(escapedString, 'g');
+          
+          const countResult = await replaceInFile({
+            files: fullPath,
+            from: globalRegex,
+            to: args.new_string,
+            dry: true, // Don't actually replace, just count
+            countMatches: true, // Enable counting
+            encoding: 'utf8'
+          });
 
-          // Create backup if requested
-          let backupPath: string | null = null;
-          if (args.backup) {
-            backupPath = `${fullPath}.backup.${Date.now()}`;
-            await fs.promises.writeFile(backupPath, originalContent);
+          const actualMatches = countResult[0]?.numMatches || 0;
+
+          // Check if no matches found
+          if (actualMatches === 0) {
+            return {
+              toolName: 'edit_file',
+              success: false,
+              file_path: args.file_path,
+              error: `No matches found for the provided old_string. BE EXTREMELY PRECISE: copy the EXACT text from the file including ALL spaces, tabs, indentation, braces, commas, and line breaks. Even a single character difference will cause failure. Read the file first and copy the exact string character-by-character.`,
+              expectedMatch: args.expected_match,
+              actualMatches: 0
+            };
           }
 
-          let result: any;
+          // Check if match count equals expected
+          if (actualMatches === args.expected_match) {
+            // Execute actual replacement using same global regex
+            const replaceResult = await replaceInFile({
+              files: fullPath,
+              from: globalRegex,
+              to: args.new_string,
+              encoding: 'utf8'
+            });
+            
+            const newStats = await fs.promises.stat(fullPath);
+            const hasChanged = replaceResult[0]?.hasChanged || false;
 
-          switch (args.operation) {
-            case 'replace_regex':
-              // Regex replacement with mandatory match count validation
-              if (args.numExpectedMatches === undefined) {
-                throw new Error('numExpectedMatches is required for replace_regex operation');
-              }
-              
-              if (!args.start || !args.end) {
-                throw new Error('Both start and end are required for replace_regex operation');
-              }
-              
-              // Create range-based regex pattern: match from start to end (inclusive)
-              const escapedStart = args.start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              const escapedEnd = args.end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              const rangePattern = `${escapedStart}[\\s\\S]*?${escapedEnd}`;
-              const regex = new RegExp(rangePattern, args.flags);
-              
-              // Validate expected matches before replacement
-              const matches = contentString.match(regex);
-              const actualMatches = matches ? matches.length : 0;
-              
-              if (actualMatches !== args.numExpectedMatches) {
-                return {
-                  toolName: 'edit_file',
-                  success: false,
-                  filepath: args.filepath,
-                  operation: args.operation,
-                  error: `Boundary match count mismatch. Please choose more specific start/end boundaries to target exactly the intended content.`
-                };
-              }
-              
-              result = await replaceInFile({
-                files: fullPath,
-                from: regex,
-                to: args.content,
-                encoding: args.encoding
-              });
-              break;
-
-            case 'append':
-              // Append to end of file
-              const appendContent = contentString + (contentString.endsWith('\n') ? '' : '\n') + args.content;
-              await fs.promises.writeFile(fullPath, appendContent, args.encoding);
-              result = {
-                operation: 'append',
-                changes: [{ file: fullPath, hasChanged: true }]
-              };
-              break;
-
-            case 'prepend':
-              // Add to beginning of file
-              const prependContent = args.content + (args.content.endsWith('\n') ? '' : '\n') + contentString;
-              await fs.promises.writeFile(fullPath, prependContent, args.encoding);
-              result = {
-                operation: 'prepend',
-                changes: [{ file: fullPath, hasChanged: true }]
-              };
-              break;
-
-            default:
-              throw new Error(`Unknown operation: ${args.operation}`);
+            return {
+              toolName: 'edit_file',
+              success: true,
+              file_path: args.file_path,
+              hasChanged,
+              actualMatches,
+              expectedMatch: args.expected_match,
+              newSize: newStats.size,
+              replacements: actualMatches
+            };
+          } else {
+            // Mismatch - guide LLM to include more context without revealing actual count
+            return {
+              toolName: 'edit_file',
+              success: false,
+              file_path: args.file_path,
+              error: `The number of matches found in the string is different from the your expected match count. Please add more surrounding string to match exactly or include the whole text block.`,
+              expectedMatch: args.expected_match
+            };
           }
-
-          // Get updated file stats
-          const newStats = await fs.promises.stat(fullPath);
-          const newContent = await fs.promises.readFile(fullPath, args.encoding);
-
-          const hasChanged = result.changes && result.changes.length > 0 && result.changes[0].hasChanged;
-
-          return {
-            toolName: 'edit_file',
-            success: true,
-            filepath: args.filepath,
-            operation: args.operation,
-            hasChanged,
-            changes: result.changes ? result.changes.length : 0,
-            originalSize: originalStats.size,
-            newSize: newStats.size,
-            originalLines: contentString.split('\n').length,
-            newLines: newContent.toString().split('\n').length,
-            backup: backupPath,
-            modified: hasChanged
-          };
 
         } catch (error) {
           return {
             toolName: 'edit_file',
             success: false,
-            filepath: args.filepath,
-            operation: args.operation,
+            file_path: args.file_path,
             error: error instanceof Error ? error.message : String(error)
           };
         }
