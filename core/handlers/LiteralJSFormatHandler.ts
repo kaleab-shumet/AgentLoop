@@ -302,7 +302,7 @@ ${beautifiedSchema}`;
   }
 
   /**
-   * Generate toolSchemas code from available tools
+   * Generate toolSchemas code from available tools with toolName defaults
    */
   private generateToolSchemasCode(tools: Tool<ZodTypeAny>[]): string {
     const schemaEntries = tools.map(tool => {
@@ -320,7 +320,9 @@ ${beautifiedSchema}`;
       }
       
       const zodSchemaString = jsonSchemaToZod(resolvedSchema as any);
-      return `  ${tool.name}: ${zodSchemaString}`;
+      
+      // Extend the schema with toolName default
+      return `  ${tool.name}: ${zodSchemaString}.extend({ toolName: z.string().default("${tool.name}") })`;
     }).join(',\n');
 
     return `const toolSchemas = {\n${schemaEntries}\n};`;

@@ -54,7 +54,7 @@ Complete user requests via a structured 2-phase process.
 
 Respond ONLY with a JavaScript \`callTools()\` function returning an array of tool calls.
 
-**MANDATORY:** Start code with imports: \`import { z } from "zod";\`, \`import { LiteralLoader } from './utils';\`, and \`import { toolSchemas } from './toolSchemas';\`
+**MANDATORY:** Start code with imports: \`import { LiteralLoader } from './utils';\` and \`import { toolSchemas } from './toolSchemas';\`
 
 ---
 
@@ -63,24 +63,21 @@ Respond ONLY with a JavaScript \`callTools()\` function returning an array of to
 Import and use tool schemas directly:
 
 \`\`\`javascript
-import { z } from "zod";
 import { LiteralLoader } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
   const calledToolsZodList = [];
 
-  // Use imported tool schema and parse with actual values
-  const exampleToolArgs = toolSchemas.exampleTool.parse({
+  // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
+  // Parse tool schema directly - toolName included automatically
+  calledToolsZodList.push(
+    toolSchemas.exampleTool.parse({
       parameter1: "valid value", // Must satisfy schema constraints
       parameter2: 42,
       longContent: LiteralLoader("unique-id")
-  });
-
-  calledToolsZodList.push({ 
-    toolName: "exampleTool", 
-    ...exampleToolArgs 
-  });
+    })
+  );
 
   return calledToolsZodList;
 }
@@ -102,26 +99,28 @@ with multiple lines and special characters.
 ### Scenario 1: Intermediate Steps
 
 \`\`\`javascript
-import { z } from "zod";
 import { LiteralLoader } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
   const calledToolsZodList = [];
 
-  const actionToolArgs = toolSchemas.some_action_tool.parse({
+  // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
+  // Parse tool schemas directly - toolName included automatically
+  calledToolsZodList.push(
+    toolSchemas.some_action_tool.parse({
       param1: "value",
       longContent: LiteralLoader("data-id")
-  });
+    })
+  );
 
-  const reasoningArgs = toolSchemas.${selfReasoningTool}.parse({
+  calledToolsZodList.push(
+    toolSchemas.${selfReasoningTool}.parse({
       goal: "User's objective",
       report: "Action performed. Expected outcome.",
       nextTasks: "Next tool call..."
-  });
-
-  calledToolsZodList.push({ toolName: "some_action_tool", ...actionToolArgs });
-  calledToolsZodList.push({ toolName: "${selfReasoningTool}", ...reasoningArgs });
+    })
+  );
 
   return calledToolsZodList;
 }
@@ -130,25 +129,27 @@ function callTools() {
 ### Scenario 2: Final Answer
 
 \`\`\`javascript
-import { z } from "zod";
 import { LiteralLoader } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
   const calledToolsZodList = [];
 
-  const finalToolArgs = toolSchemas.${finalToolName}.parse({
+  // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
+  // Parse tool schemas directly - toolName included automatically
+  calledToolsZodList.push(
+    toolSchemas.${finalToolName}.parse({
       param: LiteralLoader("long-answer-id")
-  });
+    })
+  );
 
-  const reasoningArgs = toolSchemas.${selfReasoningTool}.parse({
+  calledToolsZodList.push(
+    toolSchemas.${selfReasoningTool}.parse({
       goal: "User's objective",
       report: "Task complete. Final answer.",
       nextTasks: "Task complete."
-  });
-
-  calledToolsZodList.push({ toolName: "${finalToolName}", ...finalToolArgs });
-  calledToolsZodList.push({ toolName: "${selfReasoningTool}", ...reasoningArgs });
+    })
+  );
 
   return calledToolsZodList;
 }
@@ -159,8 +160,10 @@ function callTools() {
 ### Core Rules
 
 - Response = ONLY \`callTools\` function + optional \`<literals>\` block.
-- ALWAYS import \`z\` from "zod", \`LiteralLoader\` from './utils', and \`toolSchemas\` from './toolSchemas'.
-- Use tool schema import format: \`toolSchemas.toolName.parse({...})\`
+- ALWAYS import \`LiteralLoader\` from './utils' and \`toolSchemas\` from './toolSchemas'.
+- Use tool schema format: \`calledToolsList.push(toolSchemas.toolName.parse({...}))\`
+- Parse and push directly - toolName automatically included from schema defaults.
+- **CRITICAL**: Check validation constraints in tool schema before using parse - otherwise it leads to SYSTEM FAILURE.
 - NEVER use \`.default()\` - always use \`.parse()\` with actual values.
 - Use \`LiteralLoader\` for long/multiline strings in parse values.
 - No plain text outside \`<literals>\`.
