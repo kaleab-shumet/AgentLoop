@@ -53,7 +53,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
   //  {
   //     service: 'google',
   //     apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-  //     model: 'gemini-2.5-flash'
+  //     model: 'gemini-2.0-flash'
   //   }
   
   

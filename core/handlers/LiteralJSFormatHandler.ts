@@ -137,7 +137,7 @@ ${beautifiedSchema}`;
 
     try {
       // Use secure execution method with timeout (fallback handled internally)
-      const toolCalls = await this.executeCallToolsFunction(jsContent, literalBlocks);
+      const toolCalls = await this.executeCallToolsFunction(jsContent, literalBlocks, tools);
       
       if (!Array.isArray(toolCalls)) {
         throw new AgentError(
@@ -147,6 +147,7 @@ ${beautifiedSchema}`;
       }
 
       const pendingToolCalls: PendingToolCall[] = toolCalls.map((toolCall: any) => {
+        // Handle new format: { toolName, ...args } directly from Zod parsing
         if (!toolCall.toolName || typeof toolCall.toolName !== 'string') {
           throw new AgentError(
             "Missing toolName field", 
@@ -276,19 +277,70 @@ ${beautifiedSchema}`;
     return null;
   }
 
+  /**
+   * Process the extracted function: populate LiteralLoader references and add imports
+   */
+  private processCodeForExecution(jsCode: string, literalBlocks: Map<string, string>, tools: Tool<ZodTypeAny>[]): string {
+    let processedCode = jsCode;
+
+    // Replace all LiteralLoader("id") calls with actual string literals
+    for (const [id, content] of literalBlocks) {
+      // Escape the content for safe insertion into JavaScript string literal
+      const escapedContent = JSON.stringify(content);
+      // Replace LiteralLoader("id") with the actual content
+      const loaderPattern = new RegExp(`LiteralLoader\\s*\\(\\s*["'\`]${id}["'\`]\\s*\\)`, 'g');
+      processedCode = processedCode.replace(loaderPattern, escapedContent);
+    }
+
+    // Generate toolSchemas object from available tools
+    const toolSchemasCode = this.generateToolSchemasCode(tools);
+
+    // Add imports and toolSchemas at the beginning
+    processedCode = `import { z } from 'zod';\n${toolSchemasCode}\n${processedCode}`;
+
+    return processedCode;
+  }
+
+  /**
+   * Generate toolSchemas code from available tools
+   */
+  private generateToolSchemasCode(tools: Tool<ZodTypeAny>[]): string {
+    const schemaEntries = tools.map(tool => {
+      // Convert Zod schema to JSON Schema first, then resolve $refs and convert back to Zod string
+      const jsonSchema = zodToJsonSchema(tool.argsSchema, tool.name);
+      
+      // Resolve $ref if present by extracting the actual schema from definitions
+      let resolvedSchema = jsonSchema;
+      const schemaWithRef = jsonSchema as any;
+      if (schemaWithRef.$ref && schemaWithRef.definitions) {
+        const refKey = schemaWithRef.$ref.replace('#/definitions/', '');
+        if (schemaWithRef.definitions[refKey]) {
+          resolvedSchema = schemaWithRef.definitions[refKey];
+        }
+      }
+      
+      const zodSchemaString = jsonSchemaToZod(resolvedSchema as any);
+      return `  ${tool.name}: ${zodSchemaString}`;
+    }).join(',\n');
+
+    return `const toolSchemas = {\n${schemaEntries}\n};`;
+  }
 
   /**
    * Execute JavaScript code with SES - secure execution only
    * Professional approach with proper security layers and timeout protection
    */
-  private async executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map()): Promise<any[]> {
+  private async executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map(), tools: Tool<ZodTypeAny>[]): Promise<any[]> {
     try {
       // Initialize SES for secure execution
       this.initializeSES();
 
+      // Process the code: populate LiteralLoader references and add Zod import
+      const processedCode = this.processCodeForExecution(jsCode, literalBlocks, tools);
+
       // Execute with timeout protection using SES
       return await this.withTimeout(() => {
-        return this.executeBySES(jsCode, literalBlocks);
+        return this.executeBySES(processedCode, new Map()); // Empty map since we've already populated
       });
     } catch (error) {
       throw new AgentError(
@@ -336,16 +388,8 @@ ${beautifiedSchema}`;
    * Only provide safe, necessary globals
    */
   private createSecureEndowments(literalBlocks: Map<string, string>): Record<string, any> {
-    // Create secure LiteralLoader function
-    const LiteralLoader = (id: string): string => {
-      if (!literalBlocks.has(id)) {
-        throw new AgentError(
-          `Literal block "${id}" not found`,
-          AgentErrorType.INVALID_RESPONSE
-        );
-      }
-      return literalBlocks.get(id)!;
-    };
+    // Import real Zod for schema creation and execution
+    const { z } = require('zod');
 
     // Provide minimal, safe endowments
     return {
@@ -361,8 +405,8 @@ ${beautifiedSchema}`;
       Date: Date,
       JSON: JSON,
       
-      // Custom secure function
-      LiteralLoader: LiteralLoader,
+      // Real Zod library for schema validation
+      z: z,
       
       // Stubbed console for safety
       console: Object.freeze({ 

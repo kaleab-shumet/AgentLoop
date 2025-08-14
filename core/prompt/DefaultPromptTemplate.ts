@@ -50,44 +50,43 @@ Complete user requests via a structured 2-phase process.
 
   private buildResponseFormatSection(selfReasoningTool: string, finalToolName: string): string {
     if (this.responseFormat === FormatMode.JSOBJECT) {
-      return `# RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION WITH LITERAL BLOCKS
+      return `# RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION WITH TOOL SCHEMAS
 
 Respond ONLY with a JavaScript \`callTools()\` function returning an array of tool calls.
 
-**MANDATORY:** Start code with \`import { LiteralLoader } from './utils';\`
+**MANDATORY:** Start code with imports: \`import { z } from "zod";\`, \`import { LiteralLoader } from './utils';\`, and \`import { toolSchemas } from './toolSchemas';\`
 
 ---
 
-### Handling Long Data
+### Tool Schema Import Format
 
-If any string parameter is longer, multiline, complex, or requires escaping , DO NOT embed inline.
-Instead:
-
-
-1. Reference inside \`callTools()\` using \`LiteralLoader("unique-id")\`:
+Import and use tool schemas directly:
 
 \`\`\`javascript
+import { z } from "zod";
 import { LiteralLoader } from './utils';
-// Make sure to import LiteralLoader
+import { toolSchemas } from './toolSchemas';
 
-// Never write any code outside callTools, every code must be inside callTools function
-// Make sure you write valid JavaScript code
-// you must use named function declaration in JavaScript with the exact name callTools with empty parameters
 function callTools() {
-  const calledToolsList = [];
+  const calledToolsZodList = [];
 
-  // Always check the given schema to write the correct tool name, parameters.
-  // The value must be in validation constraints, check tool schema
-  calledToolsList.push({
-    toolName: "someTool",
-    content: LiteralLoader("unique-id") // Always use LiteralLoader reference for all multiline strings(mandatory), do not afraid to use it, its easy
+  // Use imported tool schema and parse with actual values
+  const exampleToolArgs = toolSchemas.exampleTool.parse({
+      parameter1: "valid value", // Must satisfy schema constraints
+      parameter2: 42,
+      longContent: LiteralLoader("unique-id")
   });
-  return calledToolsList;
+
+  calledToolsZodList.push({ 
+    toolName: "exampleTool", 
+    ...exampleToolArgs 
+  });
+
+  return calledToolsZodList;
 }
 \`\`\`
 
-
-2. Place the long content AFTER the function in a \`<literals>\` XML block, e.g.:
+Place long content AFTER the function in a \`<literals>\` XML block:
 
 \`\`\`xml
 <literals>
@@ -97,56 +96,61 @@ with multiple lines and special characters.
   </literal>
 </literals>
 \`\`\`
+
 ---
 
 ### Scenario 1: Intermediate Steps
 
 \`\`\`javascript
+import { z } from "zod";
 import { LiteralLoader } from './utils';
+import { toolSchemas } from './toolSchemas';
 
 function callTools() {
-  const calledToolsList = [];
+  const calledToolsZodList = [];
 
-  calledToolsList.push({
-    toolName: "some_action_tool",
-    param1: "value",
-    longContent: LiteralLoader("data-id")
+  const actionToolArgs = toolSchemas.some_action_tool.parse({
+      param1: "value",
+      longContent: LiteralLoader("data-id")
   });
 
-  calledToolsList.push({
-    toolName: "${selfReasoningTool}",
-    goal: "User's objective",
-    report: "Action performed. Expected outcome.",
-    nextTasks: "Next tool call..."
+  const reasoningArgs = toolSchemas.${selfReasoningTool}.parse({
+      goal: "User's objective",
+      report: "Action performed. Expected outcome.",
+      nextTasks: "Next tool call..."
   });
 
-  return calledToolsList;
+  calledToolsZodList.push({ toolName: "some_action_tool", ...actionToolArgs });
+  calledToolsZodList.push({ toolName: "${selfReasoningTool}", ...reasoningArgs });
+
+  return calledToolsZodList;
 }
 \`\`\`
 
 ### Scenario 2: Final Answer
 
 \`\`\`javascript
+import { z } from "zod";
 import { LiteralLoader } from './utils';
-
+import { toolSchemas } from './toolSchemas';
 
 function callTools() {
-  const calledToolsList = [];
+  const calledToolsZodList = [];
 
-  
-  calledToolsList.push({
-    toolName: "${finalToolName}",
-    param: "short answer or " + LiteralLoader("long-answer-id")
+  const finalToolArgs = toolSchemas.${finalToolName}.parse({
+      param: LiteralLoader("long-answer-id")
   });
 
-  calledToolsList.push({
-    toolName: "${selfReasoningTool}",
-    goal: "User's objective",
-    report: "Task complete. Final answer.",
-    nextTasks: "Task complete."
+  const reasoningArgs = toolSchemas.${selfReasoningTool}.parse({
+      goal: "User's objective",
+      report: "Task complete. Final answer.",
+      nextTasks: "Task complete."
   });
 
-  return calledToolsList;
+  calledToolsZodList.push({ toolName: "${finalToolName}", ...finalToolArgs });
+  calledToolsZodList.push({ toolName: "${selfReasoningTool}", ...reasoningArgs });
+
+  return calledToolsZodList;
 }
 \`\`\`
 
@@ -155,15 +159,15 @@ function callTools() {
 ### Core Rules
 
 - Response = ONLY \`callTools\` function + optional \`<literals>\` block.
-- ALWAYS import \`LiteralLoader\`.
-- Use valid JS syntax.
-- Use \`LiteralLoader\` for long strings.
+- ALWAYS import \`z\` from "zod", \`LiteralLoader\` from './utils', and \`toolSchemas\` from './toolSchemas'.
+- Use tool schema import format: \`toolSchemas.toolName.parse({...})\`
+- NEVER use \`.default()\` - always use \`.parse()\` with actual values.
+- Use \`LiteralLoader\` for long/multiline strings in parse values.
 - No plain text outside \`<literals>\`.
-- Use exact tool parameter names/types and validation constraints.
-- No placeholders; use real values.
+- Provide real values that satisfy the imported schema constraints.
 - \`${selfReasoningTool}\` must always accompany another tool.
 - NEVER call \`${selfReasoningTool}\` alone.
-- For multiline strings, you must use \`LiteralLoader\` with unique IDs.
+- For multiline strings, use \`LiteralLoader\` with unique IDs in parse values.
 
 `;
     }
