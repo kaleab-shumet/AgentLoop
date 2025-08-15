@@ -4,8 +4,8 @@ import { Tool, PendingToolCall, FormatHandler, FunctionCallTool } from "../types
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from "zod-to-json-schema";
 import { jsonSchemaToZod } from "json-schema-to-zod";
-import { lockdown, Compartment } from "ses";
 import * as beautify from 'js-beautify';
+import { JSExecutionEngine, ExecutionMode } from './JSExecutionEngine';
 
 /**
  * Handles Literal+JavaScript response format for tool calls
@@ -13,66 +13,13 @@ import * as beautify from 'js-beautify';
  * Supports literal blocks for large content via LiteralLoader references
  */
 export class LiteralJSFormatHandler implements FormatHandler {
-  private sesInitialized = false;
   private readonly executionTimeoutMs = 5000; // 5 second timeout for code execution
+  private readonly executionEngine = new JSExecutionEngine();
+  
+  // Configurable execution mode - can be switched between 'eval' and 'ses'
+  public executionMode: ExecutionMode = 'eval';
 
-  /**
-   * Execute a function with timeout protection (async)
-   */
-  private async withTimeout<T>(fn: () => T, timeoutMs: number = this.executionTimeoutMs): Promise<T> {
-    let timeoutHandle: NodeJS.Timeout | undefined;
-    
-    // Create a promise that rejects after timeout
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(() => {
-        reject(new AgentError(
-          `Execution timeout`,
-          AgentErrorType.INVALID_RESPONSE
-        ));
-      }, timeoutMs);
-    });
-
-    // Create a promise that resolves with the function result
-    const executionPromise = new Promise<T>((resolve, reject) => {
-      // Execute immediately - timeout will be enforced by Promise.race
-      try {
-        const result = fn();
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      }
-    });
-
-    // Race between execution and timeout
-    try {
-      return await Promise.race([executionPromise, timeoutPromise]);
-    } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-    }
-  }
-
-  /**
-   * Initialize SES for secure code execution
-   */
-  private initializeSES(): void {
-    if (!this.sesInitialized) {
-      try {
-        // Initialize SES lockdown with safe configuration
-        lockdown({
-          errorTaming: 'safe',
-          stackFiltering: 'verbose',
-          denyUnsafeCode: true,
-          localeReporting: 'none',
-        });
-        this.sesInitialized = true;
-      } catch (error) {
-        // SES may already be locked down, which is fine
-        this.sesInitialized = true;
-      }
-    }
-  }
+  // Timeout and execution methods moved to JSExecutionEngine
 
   formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
     const schemaMap = tools.map(t => {
@@ -292,11 +239,9 @@ ${beautifiedSchema}`;
       processedCode = processedCode.replace(loaderPattern, escapedContent);
     }
 
-    // Generate toolSchemas object from available tools
-    const toolSchemasCode = this.generateToolSchemasCode(tools);
-
-    // Add imports and toolSchemas at the beginning
-    processedCode = `import { z } from 'zod';\n${toolSchemasCode}\n${processedCode}`;
+    // Note: toolSchemas is now provided directly through SES endowments
+    // Only add the import statement (will be stripped in executeBySES)
+    processedCode = `import { z } from 'zod';\n${processedCode}`;
 
     return processedCode;
   }
@@ -329,20 +274,43 @@ ${beautifiedSchema}`;
   }
 
   /**
-   * Execute JavaScript code with SES - secure execution only
-   * Professional approach with proper security layers and timeout protection
+   * Generate toolSchemas object directly (for SES endowments)
+   */
+  private generateToolSchemasObject(tools: Tool<ZodTypeAny>[], z: any): Record<string, any> {
+    const toolSchemas: Record<string, any> = {};
+    
+    for (const tool of tools) {
+      // Extend the original schema with toolName default
+      // Cast to ZodObject to access extend method
+      const schema = tool.argsSchema as any;
+      if (schema.extend) {
+        toolSchemas[tool.name] = schema.extend({ 
+          toolName: z.string().default(tool.name) 
+        });
+      } else {
+        // Fallback for schemas that don't support extend
+        toolSchemas[tool.name] = z.object({
+          ...schema._def?.shape || {},
+          toolName: z.string().default(tool.name)
+        });
+      }
+    }
+    
+    return toolSchemas;
+  }
+
+  /**
+   * Execute JavaScript code using the pluggable execution engine
    */
   private async executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map(), tools: Tool<ZodTypeAny>[]): Promise<any[]> {
     try {
-      // Initialize SES for secure execution
-      this.initializeSES();
-
-      // Process the code: populate LiteralLoader references and add Zod import
+      // Process the code: populate LiteralLoader references
       const processedCode = this.processCodeForExecution(jsCode, literalBlocks, tools);
 
-      // Execute with timeout protection using SES
-      return await this.withTimeout(() => {
-        return this.executeBySES(processedCode, new Map()); // Empty map since we've already populated
+      // Execute using the configurable execution engine
+      return await this.executionEngine.execute(processedCode, tools, {
+        mode: this.executionMode,
+        timeoutMs: this.executionTimeoutMs
       });
     } catch (error) {
       throw new AgentError(
@@ -352,70 +320,5 @@ ${beautifiedSchema}`;
     }
   }
 
-  /**
-   * Execute using SES compartments (secure)
-   */
-  private executeBySES(jsCode: string, literalBlocks: Map<string, string>): any[] {
-    // Create secure endowments for the compartment
-    const endowments = this.createSecureEndowments(literalBlocks);
-
-    // Create a new SES compartment for isolated execution
-    const compartment = new Compartment(endowments);
-
-    // Strip import statements as we provide everything via endowments
-    const cleanedJsCode = jsCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
-
-    // Prepare the execution code
-    const executionCode = `
-      ${cleanedJsCode}
-      callTools();
-    `;
-
-    // Execute the code in the secure compartment
-    const result = compartment.evaluate(executionCode);
-
-    if (!Array.isArray(result)) {
-      throw new AgentError(
-        "callTools must return array",
-        AgentErrorType.INVALID_RESPONSE
-      );
-    }
-
-    return result;
-  }
-
-
-  /**
-   * Create secure endowments for the SES compartment
-   * Only provide safe, necessary globals
-   */
-  private createSecureEndowments(literalBlocks: Map<string, string>): Record<string, any> {
-    // Import real Zod for schema creation and execution
-    const { z } = require('zod');
-
-    // Provide minimal, safe endowments
-    return {
-      // Safe constructors
-      Array: Array,
-      Object: Object,
-      String: String,
-      Number: Number,
-      Boolean: Boolean,
-      
-      // Safe utilities
-      Math: Math,
-      Date: Date,
-      JSON: JSON,
-      
-      // Real Zod library for schema validation
-      z: z,
-      
-      // Stubbed console for safety
-      console: Object.freeze({ 
-        log: () => {}, 
-        error: () => {}, 
-        warn: () => {} 
-      }),
-    };
-  }
+  // Execution methods moved to JSExecutionEngine
 }

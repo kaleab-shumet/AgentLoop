@@ -170,10 +170,11 @@ export abstract class AgentLoop {
    */
   private processConversationHistory(prevInteractionHistory: Interaction[]): { entries: ConversationEntry[], limitNote: string } {
     const maxEntries = 50; // Could be configurable
-    const entries = maxEntries ? prevInteractionHistory.slice(-maxEntries) : prevInteractionHistory;
+    const safeHistory = prevInteractionHistory || [];
+    const entries = maxEntries ? safeHistory.slice(-maxEntries) : safeHistory;
 
-    const limitNote = maxEntries && prevInteractionHistory.length > maxEntries
-      ? ` (showing last ${entries.length} of ${prevInteractionHistory.length} total)`
+    const limitNote = maxEntries && safeHistory.length > maxEntries
+      ? ` (showing last ${entries.length} of ${safeHistory.length} total)`
       : '';
 
     const conversationEntries: ConversationEntry[] = [];
@@ -267,6 +268,29 @@ export abstract class AgentLoop {
     return null; // No stagnation detected
   }
 
+
+  /**
+   * Add interaction to history and limit size
+   */
+  private pushInteractionAndLimit(history: Interaction[], interaction: Interaction, maxChars: number = 100000): Interaction[] {
+    // Create new history with the new interaction added
+    const newHistory = [...history, interaction];
+
+    // Calculate total characters
+    let totalChars = 0;
+    for (const item of newHistory) {
+      totalChars += JSON.stringify(item).length;
+    }
+
+    // If over limit, remove from the beginning until under limit
+    while (totalChars > maxChars && newHistory.length > 1) {
+      const removed = newHistory.shift()!;
+      totalChars -= JSON.stringify(removed).length;
+    }
+
+    return newHistory;
+  }
+
   /**
    * Get default prompt manager configuration based on execution mode
    */
@@ -347,7 +371,7 @@ export abstract class AgentLoop {
     this.resetRunTokenUsage();
 
     const { userPrompt, context = {} } = input;
-    const currentInteractionHistory: Interaction[] = []
+    let currentInteractionHistory: Interaction[] = []
     const turnState = new TurnState();
     let lastError: AgentError | null = null;
     let keepRetry = true;
@@ -370,7 +394,7 @@ export abstract class AgentLoop {
       context: userPrompt
     }
 
-    currentInteractionHistory.push(userPromptInteraction)
+    currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, userPromptInteraction);
 
     try {
       this.initializePromptManager();
@@ -434,20 +458,6 @@ export abstract class AgentLoop {
 
           // Handle report creation for both regular tools and final tool
           const reportResult = iterationResults.find(r => r.context.toolName === this.SELF_REASONING_TOOL);
-          const finalResult = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
-
-          if (finalResult && finalResult.context.success) {
-            // Final tool execution - manually set "Task completed" report
-            const toolCallReport: ToolCallReport = {
-              report: "Task completed",
-              overallSuccess: true,
-              toolCalls: [finalResult],
-              error: undefined
-            };
-
-            currentInteractionHistory.push(toolCallReport);
-          }
-
 
           if (reportResult && reportResult.context.success) {
             // Regular tool execution with report tool
@@ -485,7 +495,7 @@ export abstract class AgentLoop {
               error
             };
 
-            currentInteractionHistory.push(toolCallReport);
+            currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, toolCallReport);
           }
 
 
@@ -496,6 +506,16 @@ export abstract class AgentLoop {
           const failedTools = iterationResults.filter(r => !r.context.success);
 
           if (failedTools.length > 0) {
+            // IMPORTANT: Add ALL tool calls (both successful and failed) to interaction history 
+            // so AI can see what failed and what succeeded in this iteration
+            const allToolCallReport: ToolCallReport = {
+              report: `Tool execution with failures: ${failedTools.map(f => f.context.toolName).join(', ')} failed`,
+              overallSuccess: false,
+              toolCalls: iterationResults, // Include both successful and failed tools
+              error: undefined
+            };
+            currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, allToolCallReport);
+
             const errorMessage = failedTools.map(f => `Tool: ${f.context.toolName}\n  Error: ${f.context?.error ?? 'Unknown error'}`).join('\n');
             const failedToolsError = new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR, { userPrompt, failedTools });
 
@@ -504,7 +524,20 @@ export abstract class AgentLoop {
           } else {
             toolExecutionRetryCount = 0
             lastError = null;
+
             const finalResult: ToolCall | undefined = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
+            if (finalResult && finalResult.context.success) {
+              // Final tool execution - manually set "Task completed" report
+              const toolCallReport: ToolCallReport = {
+                report: "Task completed",
+                overallSuccess: true,
+                toolCalls: [finalResult],
+                error: undefined
+              };
+
+              currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, toolCallReport);
+            }
+
             if (finalResult) {
 
 
@@ -516,7 +549,7 @@ export abstract class AgentLoop {
 
               }
 
-              currentInteractionHistory.push(agentResponse)
+              currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, agentResponse);
 
               await this.hooks.onAgentFinalResponse?.(agentResponse);
               //this.logger.info(`[AgentLoop] Run complete. Final answer: ${finalResult.output?.value?.substring(0, 120)}`);
@@ -552,7 +585,7 @@ export abstract class AgentLoop {
               error: `I apologize, but I've encountered a stagnation loop and cannot make further progress. After ${errorResult.actualError.context?.occurrenceCount} similar attempts with tool "${errorResult.actualError.context?.toolInfo}", I must terminate to prevent infinite loops. The task could not be completed due to repeated unsuccessful reasoning patterns.`
             };
 
-            currentInteractionHistory.push(agentResponse);
+            currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, agentResponse);
             const output: AgentRunOutput = { interactionHistory: currentInteractionHistory, agentResponse };
             await this.hooks.onRunEnd?.(output);
             return output;
@@ -597,7 +630,7 @@ export abstract class AgentLoop {
         error: finalError.getMessage()
       };
 
-      currentInteractionHistory.push(agentResponse);
+      currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, agentResponse);
 
       const output: AgentRunOutput = {
         interactionHistory: currentInteractionHistory,

@@ -47,7 +47,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
         apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
         baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
         model: 'gpt-4.1-mini',
-        temperature: 1
+        temperature: 0
       }
 
       // {
@@ -61,7 +61,8 @@ You are a powerful file manager - use these capabilities responsibly to help use
       formatMode: FormatMode.JSOBJECT,
       maxIterations: 15,
       stagnationTerminationThreshold: 5,
-      parallelExecution: false  // Ensure file operations run sequentially
+      parallelExecution: false,  // Ensure file operations run sequentially
+      sleepBetweenIterationsMs: 10000
       
     });
 
@@ -185,7 +186,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
       argsSchema: z.object({
         file_path: z.string().describe('Path to the file to edit'),
         old_string: z.string().min(1).describe('COMPLETE LINES of text to find - target entire lines or multiple consecutive lines. LITERAL STRING ONLY, NO REGEX PATTERNS'),
-        new_string: z.string().describe('Text to replace with'),
+        new_string: z.string().min(1).describe('Text to replace with'),
         expected_match: z.number().min(1).describe('How many matches of string you want to replace.')
       }),
       handler: async ({ args }: any) => {
@@ -216,14 +217,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
 
           // Check if no matches found
           if (actualMatches === 0) {
-            return {
-              toolName: 'edit_file',
-              success: false,
-              file_path: args.file_path,
-              error: `No matches found for "${args.old_string}". SOLUTION: 1. Read the file first using read_file tool, 2. Then check spelling, exact spacing, indentation, line breaks. Copy text character-by-character from the file.`,
-              expectedMatch: args.expected_match,
-              actualMatches: 0
-            };
+            throw new Error(`No matches found for "${args.old_string}". SOLUTION: 1. Read the file first using read_file tool, 2. Then check spelling, exact spacing, indentation, line breaks. Copy text character-by-character from the file.`);
           }
 
           // Check if match count equals expected
@@ -265,13 +259,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
             };
           } else {
             // Mismatch - guide LLM to include more context without revealing actual count
-            return {
-              toolName: 'edit_file',
-              success: false,
-              file_path: args.file_path,
-              error: `Found ${actualMatches} matches, expected ${args.expected_match}. SOLUTION: Include more surrounding lines/context to make your old_string unique and appear exactly ${args.expected_match} time(s). Additionally you can target text block.`,
-              expectedMatch: args.expected_match
-            };
+            throw new Error(`Found ${actualMatches} matches, expected ${args.expected_match}. SOLUTION: Include more surrounding lines/context to make your old_string unique and appear exactly ${args.expected_match} time(s). Additionally you can target text block.`);
           }
 
         } catch (error) {

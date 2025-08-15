@@ -116,6 +116,7 @@
     "**/*.js",
     "**/*.d.ts",
     "**/*.js.map",
-    "examples/**/*"
+    "examples/**/*",
+    "testfolder/**/*"
   ]
 }

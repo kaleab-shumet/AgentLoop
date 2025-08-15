@@ -55,7 +55,7 @@ Complete user requests via a structured 2-phase process.
 
 Respond ONLY with a JavaScript \`callTools()\` function returning an array of tool calls.
 
-**MANDATORY:** Start code with imports: \`import { LiteralLoader } from './utils';\` and \`import { toolSchemas } from './toolSchemas';\`
+**MANDATORY:** Start code with imports: \`import { LiteralLoader, toolCalls } from './utils';\` and \`import { toolSchemas } from './toolSchemas';\`
 
 ---
 
@@ -64,11 +64,10 @@ Respond ONLY with a JavaScript \`callTools()\` function returning an array of to
 Import and use tool schemas directly:
 
 \`\`\`javascript
-import { LiteralLoader } from './utils';
+import { LiteralLoader, toolCalls } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
-  const toolCalls = [];
 
   // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
   // Parse tool schema directly - toolName included automatically
@@ -100,14 +99,15 @@ with multiple lines and special characters.
 ### Scenario 1: Intermediate Steps
 
 \`\`\`javascript
-import { LiteralLoader } from './utils';
+import { LiteralLoader, toolCalls } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
-  const toolCalls = [];
 
   // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
-  // Parse tool schemas directly - toolName included automatically
+  // I will never declare variables, always use toolSchemas directly with literalLoader for long content
+  // I need to use literalLoader for long content then i will reference it in the xml block
+  // If i use literalLoader, i do not need to escape quotes or special characters, it is easier for me
   toolCalls.push(
     toolSchemas.some_action_tool.parse({
       param1: "value",
@@ -130,20 +130,19 @@ function callTools() {
 ### Scenario 2: Final Answer
 
 \`\`\`javascript
-import { LiteralLoader } from './utils';
+import { LiteralLoader, toolCalls } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
-  const toolCalls = [];
 
   // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
-  // Parse tool schemas directly - toolName included automatically
   toolCalls.push(
     toolSchemas.${finalToolName}.parse({
       param: LiteralLoader("long-answer-id")
     })
   );
 
+  // Always pair with self reasoning tool, I will never forget to use ${selfReasoningTool} tool
   toolCalls.push(
     toolSchemas.${selfReasoningTool}.parse({
       goal: "User's objective",
@@ -167,11 +166,12 @@ function callTools() {
 - **CRITICAL**: Check validation constraints in tool schema before using parse - otherwise it leads to SYSTEM FAILURE.
 - NEVER use \`.default()\` - always use \`.parse()\` with actual values.
 - Use \`LiteralLoader\` for long/multiline strings in parse values.
+- **FORBIDDEN**: Defining variables in the function is completely prohibited.
+- **TEST**: We are testing your ability to: follow instructions, write clean code without defining any variables, and use LiteralLoader in appropriate places.
 - No plain text outside \`<literals>\`.
 - Provide real values that satisfy the imported schema constraints.
 - \`${selfReasoningTool}\` must always accompany another tool.
 - NEVER call \`${selfReasoningTool}\` alone.
-- For multiline strings, use \`LiteralLoader\` with unique IDs in parse values.
 
 `;
     }
