@@ -223,18 +223,16 @@ export abstract class AgentLoop {
   }
 
   /**
-   * Track stagnation in a stateless way by checking report similarity
+   * Track stagnation in a stateless way by checking self_reasoning_tool report similarity
    * Returns null if no stagnation, or AgentError if stagnation detected
    */
   private trackStagnation(
     reportText: string,
     reportHashes: Map<string, { text: string, count: number }>,
-    otherToolResults: ToolCall[],
     terminationThreshold: number
   ): AgentError | null {
-    // Hash the actual tool calls instead of self-reasoning text
-    const toolData = JSON.stringify(otherToolResults);
-    const currentHash = SparkMD5.hash(toolData);
+    // Hash only the self-reasoning report text
+    const currentHash = SparkMD5.hash(reportText);
 
     // Check for stagnation (exact hash matches)
     for (const [existingHash, existingData] of reportHashes) {
@@ -243,23 +241,17 @@ export abstract class AgentLoop {
         // Increment counter for existing hash
         existingData.count++;
 
-        // Extract tool information from other tool results
-        const toolInfo = otherToolResults.length > 0 ? otherToolResults[0].context.toolName : 'Unknown';
-        const toolArgs = otherToolResults.length > 0 ? JSON.stringify(otherToolResults[0].context) : '{}';
-
         // Check if this is the last chance before termination
         const isLastChance = existingData.count === terminationThreshold;
 
         return new AgentError(
-          `Stagnation detected: Identical tool usage (#${existingData.count})${isLastChance ? ' - Final warning!' : ''}`,
+          `Stagnation detected: Identical reasoning pattern (#${existingData.count})${isLastChance ? ' - Final warning!' : ''}`,
           AgentErrorType.STAGNATION_ERROR,
           {
             currentHash: currentHash,
             matchingHash: existingHash,
             currentText: reportText,
             similarText: existingData.text,
-            toolInfo: toolInfo,
-            toolArgs: toolArgs,
             occurrenceCount: existingData.count,
             isLastChance: isLastChance,
             terminationThreshold: terminationThreshold,
@@ -471,7 +463,6 @@ export abstract class AgentLoop {
             const stagnationError = this.trackStagnation(
               reportText,
               reportHashes,
-              otherToolResults,
               this.stagnationTerminationThreshold
             );
 

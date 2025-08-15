@@ -42,22 +42,22 @@ You are a powerful file manager - use these capabilities responsibly to help use
 
   constructor(basePath: string = path.join(process.cwd(), 'testfolder')) {
     super(new DefaultAIProvider(
-      
-    //   {
-    //   service: 'azure',
-    //   apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
-    //   baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
-    //   model: 'gpt-4.1-mini'
-    // }
 
-   {
-      service: 'google',
-      apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-      model: 'gemini-2.5-flash'
-    }
-  
-  
-  ), {
+      {
+        service: 'azure',
+        apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
+        baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
+        model: 'gpt-4.1-mini'
+      }
+
+      //  {
+      //     service: 'google',
+      //     apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+      //     model: 'gemini-2.5-flash'
+      //   }
+
+
+    ), {
       formatMode: FormatMode.JSOBJECT,
       maxIterations: 8,
       stagnationTerminationThreshold: 5
@@ -204,7 +204,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
           // Convert string to escaped regex with global flag to count ALL occurrences
           const escapedString = args.old_string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const globalRegex = new RegExp(escapedString, 'g');
-          
+
           const countResult = await replaceInFile({
             files: fullPath,
             from: globalRegex,
@@ -237,7 +237,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
               to: args.new_string,
               encoding: 'utf8'
             });
-            
+
             const newStats = await fs.promises.stat(fullPath);
             const hasChanged = replaceResult[0]?.hasChanged || false;
 
@@ -257,7 +257,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
               toolName: 'edit_file',
               success: false,
               file_path: args.file_path,
-              error: `Found ${actualMatches} matches, expected ${args.expected_match}. SOLUTION: Include more surrounding lines/context to make your old_string unique and appear exactly ${args.expected_match} time(s).`,
+              error: `Found ${actualMatches} matches, expected ${args.expected_match}. SOLUTION: Include more surrounding lines/context to make your old_string unique and appear exactly ${args.expected_match} time(s). Additionally you can target text block.`,
               expectedMatch: args.expected_match
             };
           }
