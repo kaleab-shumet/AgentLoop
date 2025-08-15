@@ -1,10 +1,7 @@
 // AgentLoop.ts
 import z, { ZodTypeAny, ZodObject } from 'zod';
 import { nanoid } from 'nanoid';
-import { createHash } from 'crypto';
-// @ts-ignore - simhash-js doesn't have TypeScript types
-const sjs = require('simhash-js');
-const simhashInstance = new sjs.SimHash();
+import SparkMD5 from 'spark-md5';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ErrorHandler } from '../utils/ErrorHandler';
 import { AIDataHandler } from '../handlers/AIDataHandler';
@@ -237,14 +234,12 @@ export abstract class AgentLoop {
   ): AgentError | null {
     // Hash the actual tool calls instead of self-reasoning text
     const toolData = JSON.stringify(otherToolResults);
-    const currentSimhash = simhashInstance.hash(toolData);
+    const currentHash = SparkMD5.hash(toolData);
 
-    // Check for stagnation (similar reports)
+    // Check for stagnation (exact hash matches)
     for (const [existingHash, existingData] of reportHashes) {
-      const similarity = sjs.Comparator.similarity(currentSimhash, existingHash);
-
-      // If similarity is > 90%, consider it stagnation
-      if (similarity > 0.9) {
+      // If exact hash match, consider it stagnation
+      if (currentHash === existingHash) {
         // Increment counter for existing hash
         existingData.count++;
 
@@ -256,12 +251,11 @@ export abstract class AgentLoop {
         const isLastChance = existingData.count === terminationThreshold;
 
         return new AgentError(
-          `Stagnation detected: ${(similarity * 100).toFixed(1)}% similarity (#${existingData.count})${isLastChance ? ' - Final warning!' : ''}`,
+          `Stagnation detected: Identical tool usage (#${existingData.count})${isLastChance ? ' - Final warning!' : ''}`,
           AgentErrorType.STAGNATION_ERROR,
           {
-            currentHash: currentSimhash,
-            similarHash: existingHash,
-            similarity: similarity,
+            currentHash: currentHash,
+            matchingHash: existingHash,
             currentText: reportText,
             similarText: existingData.text,
             toolInfo: toolInfo,
@@ -275,8 +269,8 @@ export abstract class AgentLoop {
       }
     }
 
-    // Track this report simhash with initial count of 1
-    reportHashes.set(currentSimhash, { text: reportText, count: 1 });
+    // Track this report hash with initial count of 1
+    reportHashes.set(currentHash, { text: reportText, count: 1 });
 
     return null; // No stagnation detected
   }
