@@ -43,18 +43,18 @@ You are a powerful file manager - use these capabilities responsibly to help use
   constructor(basePath: string = path.join(process.cwd(), 'testfolder')) {
     super(new DefaultAIProvider(
       
-      {
-      service: 'azure',
-      apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
-      baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
-      model: 'gpt-4.1-mini'
-    }
+    //   {
+    //   service: 'azure',
+    //   apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
+    //   baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
+    //   model: 'gpt-4.1-mini'
+    // }
 
-  //  {
-  //     service: 'google',
-  //     apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-  //     model: 'gemini-2.0-flash'
-  //   }
+   {
+      service: 'google',
+      apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+      model: 'gemini-2.5-flash'
+    }
   
   
   ), {
@@ -184,7 +184,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
         file_path: z.string().describe('Path to the file to edit'),
         old_string: z.string().min(1).describe('COMPLETE LINES of text to find - target entire lines or multiple consecutive lines. LITERAL STRING ONLY, NO REGEX PATTERNS'),
         new_string: z.string().describe('Text to replace with'),
-        expected_match: z.number().min(1).describe('Expected number of matches to find')
+        expected_match: z.number().min(1).describe('How many matches of string you want to replace.')
       }),
       handler: async ({ args }: any) => {
         try {
@@ -222,7 +222,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
               toolName: 'edit_file',
               success: false,
               file_path: args.file_path,
-              error: `No matches found for the provided old_string. BE EXTREMELY PRECISE: copy the EXACT text from the file including ALL spaces, tabs, indentation, braces, commas, and line breaks. Even a single character difference will cause failure. Read the file first and copy the exact string character-by-character.`,
+              error: `No matches found. Your old_string doesn't exist in the file. Check: spelling, exact spacing, indentation, line breaks. Copy text character-by-character from the file. Additionaly try to read the file again.`,
               expectedMatch: args.expected_match,
               actualMatches: 0
             };
@@ -257,7 +257,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
               toolName: 'edit_file',
               success: false,
               file_path: args.file_path,
-              error: `The number of matches found in the string is different from the your expected match count. Please add more surrounding string to match exactly or include the whole text block.`,
+              error: `Found ${actualMatches} matches, expected ${args.expected_match}. SOLUTION: Include more surrounding lines/context to make your old_string unique and appear exactly ${args.expected_match} time(s).`,
               expectedMatch: args.expected_match
             };
           }

@@ -24,7 +24,7 @@ Complete user requests via a structured 2-phase process.
 
 ## PHASE 1: DATA GATHERING
 - Use tools to collect ALL needed info.
-- Track all data in Reports and Results.
+- Track all data in Notes.
 - ALWAYS pair each tool call with \`${selfReasoningTool}\`.
 
 ## PHASE 2: FINAL RESPONSE
@@ -41,7 +41,7 @@ Complete user requests via a structured 2-phase process.
 ## STRICT RULES
 - ALWAYS pair tool calls with ${selfReasoningTool}.
 - For non-command inputs, respond using '${finalToolName}' + '${selfReasoningTool}'.
-- Use ONLY listed tools and data from Reports and Results.
+- Use ONLY listed tools and data from Notes.
 - NEVER respond with plain text.
 - NEVER call ${finalToolName} until ready with complete answer.
 - NEVER end interaction without calling ${finalToolName}.
@@ -67,11 +67,11 @@ import { LiteralLoader } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
-  const calledToolsZodList = [];
+  const toolCalls = [];
 
   // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
   // Parse tool schema directly - toolName included automatically
-  calledToolsZodList.push(
+  toolCalls.push(
     toolSchemas.exampleTool.parse({
       parameter1: "valid value", // Must satisfy schema constraints
       parameter2: 42,
@@ -79,7 +79,7 @@ function callTools() {
     })
   );
 
-  return calledToolsZodList;
+  return toolCalls;
 }
 \`\`\`
 
@@ -103,18 +103,18 @@ import { LiteralLoader } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
-  const calledToolsZodList = [];
+  const toolCalls = [];
 
   // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
   // Parse tool schemas directly - toolName included automatically
-  calledToolsZodList.push(
+  toolCalls.push(
     toolSchemas.some_action_tool.parse({
       param1: "value",
       longContent: LiteralLoader("data-id")
     })
   );
 
-  calledToolsZodList.push(
+  toolCalls.push(
     toolSchemas.${selfReasoningTool}.parse({
       goal: "User's objective",
       report: "Action performed. Expected outcome.",
@@ -122,7 +122,7 @@ function callTools() {
     })
   );
 
-  return calledToolsZodList;
+  return toolCalls;
 }
 \`\`\`
 
@@ -133,17 +133,17 @@ import { LiteralLoader } from './utils';
 import { toolSchemas } from './toolSchemas';
 
 function callTools() {
-  const calledToolsZodList = [];
+  const toolCalls = [];
 
   // REMINDER: Check schema constraints before parse() - otherwise SYSTEM FAILURE!
   // Parse tool schemas directly - toolName included automatically
-  calledToolsZodList.push(
+  toolCalls.push(
     toolSchemas.${finalToolName}.parse({
       param: LiteralLoader("long-answer-id")
     })
   );
 
-  calledToolsZodList.push(
+  toolCalls.push(
     toolSchemas.${selfReasoningTool}.parse({
       goal: "User's objective",
       report: "Task complete. Final answer.",
@@ -151,7 +151,7 @@ function callTools() {
     })
   );
 
-  return calledToolsZodList;
+  return toolCalls;
 }
 \`\`\`
 
@@ -161,7 +161,7 @@ function callTools() {
 
 - Response = ONLY \`callTools\` function + optional \`<literals>\` block.
 - ALWAYS import \`LiteralLoader\` from './utils' and \`toolSchemas\` from './toolSchemas'.
-- Use tool schema format: \`calledToolsList.push(toolSchemas.toolName.parse({...}))\`
+- Use tool schema format: \`toolCalls.push(toolSchemas.toolName.parse({...}))\`
 - Parse and push directly - toolName automatically included from schema defaults.
 - **CRITICAL**: Check validation constraints in tool schema before using parse - otherwise it leads to SYSTEM FAILURE.
 - NEVER use \`.default()\` - always use \`.parse()\` with actual values.
@@ -212,9 +212,9 @@ ${entries}
 `;
   }
 
-  private buildReportsAndResultsSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
+  private buildNotesSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
     if (!toolCallReports.length) {
-      return `# REPORTS AND RESULTS
+      return `# NOTES
 
 **Status**: No data collected yet. Begin by gathering data with action tool + ${selfReasoningTool}.`;
     }
@@ -225,9 +225,9 @@ ${entries}
       ).join('\n');
 
       return `### Action #${i + 1}
-**Tools Used**:
+**Tool Used**:
 ${toolsUsed}
-**Results**:
+**Tool Result**:
 \`\`\`json
 ${JSON.stringify(report.toolCalls.map(tc => ({
         name: tc.context.toolName,
@@ -237,7 +237,7 @@ ${JSON.stringify(report.toolCalls.map(tc => ({
 \`\`\``;
     }).join('\n\n');
 
-    return `# REPORTS AND RESULTS
+    return `# NOTES
 
 ## IMPORTANT
 - Use ONLY this data for responses.
@@ -268,12 +268,35 @@ ${reports}`;
 - Gather missing data first.`;
   }
 
-  private buildTaskSection(userPrompt: string, finalToolName: string, selfReasoningTool: string, nextTasks?: string | null, goal?: string | null, report?: string | null): string {
+  private buildTaskSection(userPrompt: string, finalToolName: string, selfReasoningTool: string, nextTasks?: string | null, goal?: string | null, report?: string | null, error?: AgentError | null): string {
 
     const goalSection = goal ? `\n\n## GOAL\n> ${goal}` : '';
     const userRequestSection = `## USER REQUEST> ${userPrompt}\n\n`
-    const reportSection = report ? `In previously turn you said \`${report}\`, filter out task which is already done, now execute task which is not done previously from the following tasks: ` : '';
+    
+    // If there's an error, prioritize error resolution
+    if (error) {
+      return `
+${goalSection}
 
+${userRequestSection}
+      
+# IMMEDIATE TASK
+## ERROR TO RESOLVE FIRST
+- **Error Type**: ${error.type}
+- **Error Message**: ${error.message}
+
+## REQUIRED ACTION
+1. Analyze the error cause
+2. Create a corrected approach
+3. Execute the fix using appropriate tools
+${nextTasks ? `4. After fixing the error, continue with: ${nextTasks}` : ''}
+
+## INSTRUCTIONS
+- Resolve the error before proceeding with other tasks
+${nextTasks ? '- After error is fixed, continue with remaining tasks' : ''}
+- REMEMBER: Always pair tools with ${selfReasoningTool}`;
+    }
+    
     if (nextTasks) {
       let taskSection = `
 ${goalSection}
@@ -281,7 +304,12 @@ ${goalSection}
 ${userRequestSection}
       
 # IMMEDIATE TASK
-> ${reportSection}${nextTasks}`;
+${report ? `## PREVIOUS ATTEMPT
+- You said: "${report}"
+- Filter out completed tasks and execute remaining tasks
+
+` : ''}## TASKS TO EXECUTE
+${nextTasks}`;
 
 
 
@@ -341,17 +369,14 @@ Note: NEVER call ${selfReasoningTool} alone.`;
     }
 
     const reports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
-    sections.push(this.buildReportsAndResultsSection(reports, selfReasoningTool));
+    sections.push(this.buildNotesSection(reports, selfReasoningTool));
 
-    if (lastError) {
-      sections.push(this.buildErrorRecoverySection(finalToolName, selfReasoningTool, lastError));
-    }
 
     if (options.customSections) {
       sections.push(this.buildCustomSectionsContent(options.customSections));
     }
 
-    sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, nextTasks, goal, report));
+    sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, nextTasks, goal, report, lastError));
 
     return sections.join('\n\n---\n\n');
   }

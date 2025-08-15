@@ -550,8 +550,8 @@ export abstract class AgentLoop {
           if (errorResult.feedbackToLLM) {
             lastError = errorResult.actualError;
 
-            // Set next task to focus on fixing this specific error
-            nextTasks = `Fix this error: ${errorResult.actualError.getMessage()}, after that do ${nextTasks}`;
+            // Error will be handled by buildTaskSection in DefaultPromptTemplate
+            // Keep nextTasks as is - error takes priority in immediate task section
           } else {
             // For system errors (feedbackToLLM = false), clear nextTasks and don't set lastError
             nextTasks = null;
