@@ -4,7 +4,6 @@ import z from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as beautify from 'js-beautify';
-import { replaceInFile } from 'replace-in-file';
 
 /**
  * Code Editor Agent - Full File Management Capabilities
@@ -47,20 +46,23 @@ You are a powerful file manager - use these capabilities responsibly to help use
         service: 'azure',
         apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
         baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
-        model: 'gpt-4.1-mini'
+        model: 'gpt-4.1-mini',
+        temperature: 1
       }
 
-      //  {
-      //     service: 'google',
-      //     apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-      //     model: 'gemini-2.5-flash'
-      //   }
+      // {
+      //   service: 'google',
+      //   apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+      //   model: 'gemini-2.0-flash'
+      // }
 
 
     ), {
       formatMode: FormatMode.JSOBJECT,
-      maxIterations: 8,
-      stagnationTerminationThreshold: 5
+      maxIterations: 15,
+      stagnationTerminationThreshold: 5,
+      parallelExecution: false  // Ensure file operations run sequentially
+      
     });
 
     this.basePath = basePath;
@@ -200,21 +202,17 @@ You are a powerful file manager - use these capabilities responsibly to help use
             };
           }
 
-          // First, count matches using replace-in-file dry run with global regex
-          // Convert string to escaped regex with global flag to count ALL occurrences
-          const escapedString = args.old_string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const globalRegex = new RegExp(escapedString, 'g');
+          // Count matches using native Node.js
+          const fileContent = await fs.promises.readFile(fullPath, 'utf8');
+          let actualMatches = 0;
+          let searchIndex = 0;
 
-          const countResult = await replaceInFile({
-            files: fullPath,
-            from: globalRegex,
-            to: args.new_string,
-            dry: true, // Don't actually replace, just count
-            countMatches: true, // Enable counting
-            encoding: 'utf8'
-          });
-
-          const actualMatches = countResult[0]?.numMatches || 0;
+          while (true) {
+            const foundIndex = fileContent.indexOf(args.old_string, searchIndex);
+            if (foundIndex === -1) break;
+            actualMatches++;
+            searchIndex = foundIndex + args.old_string.length;
+          }
 
           // Check if no matches found
           if (actualMatches === 0) {
@@ -222,7 +220,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
               toolName: 'edit_file',
               success: false,
               file_path: args.file_path,
-              error: `No matches found. Your old_string doesn't exist in the file. Check: spelling, exact spacing, indentation, line breaks. Copy text character-by-character from the file. Additionaly try to read the file again.`,
+              error: `No matches found for "${args.old_string}". SOLUTION: 1. Read the file first using read_file tool, 2. Then check spelling, exact spacing, indentation, line breaks. Copy text character-by-character from the file.`,
               expectedMatch: args.expected_match,
               actualMatches: 0
             };
@@ -230,16 +228,30 @@ You are a powerful file manager - use these capabilities responsibly to help use
 
           // Check if match count equals expected
           if (actualMatches === args.expected_match) {
-            // Execute actual replacement using same global regex
-            const replaceResult = await replaceInFile({
-              files: fullPath,
-              from: globalRegex,
-              to: args.new_string,
-              encoding: 'utf8'
-            });
+            // Use native Node.js approach for reliable replacement
+            let newContent = fileContent;
+            let replacementsMade = 0;
+
+            // Replace exactly expected_match number of occurrences
+            let searchIndex = 0;
+            while (replacementsMade < args.expected_match) {
+              const foundIndex = newContent.indexOf(args.old_string, searchIndex);
+              if (foundIndex === -1) break; // No more matches found
+
+              newContent = newContent.substring(0, foundIndex) +
+                args.new_string +
+                newContent.substring(foundIndex + args.old_string.length);
+
+              replacementsMade++;
+              searchIndex = foundIndex + args.new_string.length;
+            }
+
+            const hasChanged = newContent !== fileContent;
+            if (hasChanged) {
+              await fs.promises.writeFile(fullPath, newContent, 'utf8');
+            }
 
             const newStats = await fs.promises.stat(fullPath);
-            const hasChanged = replaceResult[0]?.hasChanged || false;
 
             return {
               toolName: 'edit_file',
@@ -249,7 +261,7 @@ You are a powerful file manager - use these capabilities responsibly to help use
               actualMatches,
               expectedMatch: args.expected_match,
               newSize: newStats.size,
-              replacements: actualMatches
+              replacements: replacementsMade
             };
           } else {
             // Mismatch - guide LLM to include more context without revealing actual count

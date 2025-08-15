@@ -1,6 +1,7 @@
 import { PromptOptions, Interaction, BuildPromptParams, FormatMode } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { ZodTypeAny } from 'zod';
+import { BasePromptTemplate } from './BasePromptTemplate';
 import { DefaultPromptTemplate } from './DefaultPromptTemplate';
 
 /**
@@ -8,7 +9,7 @@ import { DefaultPromptTemplate } from './DefaultPromptTemplate';
  */
 export interface PromptManagerConfig {
   responseFormat?: FormatMode;
-  customTemplate?: DefaultPromptTemplate;
+  customTemplate?: BasePromptTemplate;
   promptOptions?: PromptOptions;
   errorRecoveryInstructions?: string;
 }
@@ -30,7 +31,7 @@ export interface PromptManagerConfig {
  */
 export class PromptManager {
   private systemPrompt: string;
-  private template: DefaultPromptTemplate;
+  private template: BasePromptTemplate;
   private isCustomTemplate: boolean;
   private promptOptions: PromptOptions;
   private errorRecoveryInstructions?: string;

@@ -1,7 +1,8 @@
 import { PromptOptions, ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
+import { BasePromptTemplate } from './BasePromptTemplate';
 
-export class DefaultPromptTemplate {
+export class DefaultPromptTemplate implements BasePromptTemplate {
   private responseFormat: FormatMode;
 
   constructor(responseFormat: FormatMode = FormatMode.JSOBJECT) {
@@ -204,7 +205,7 @@ ${toolDefinitions}`;
       return s;
     }).join('\n\n');
 
-    return `# CONVERSATION HISTORY
+    return `# CONVERSATION HISTORY(OLD ENTRIES)
 ${limitNote}
 ${entries}
 
@@ -237,7 +238,7 @@ ${JSON.stringify(report.toolCalls.map(tc => ({
 \`\`\``;
     }).join('\n\n');
 
-    return `# NOTES
+    return `# NOTES FOR CURRENT TASK
 
 ## IMPORTANT
 - Use ONLY this data for responses.
