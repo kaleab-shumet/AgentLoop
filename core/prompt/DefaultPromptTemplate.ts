@@ -167,7 +167,7 @@ function callTools() {
 - NEVER use \`.default()\` - always use \`.parse()\` with actual values.
 - Use \`LiteralLoader\` for long/multiline strings in parse values.
 - **FORBIDDEN**: Defining variables in the function is completely prohibited.
-- **TEST**: We are testing your ability to: follow instructions, write clean code without defining any variables, and use LiteralLoader in appropriate places.
+- **TEST**: We are testing your ability to: follow instructions, write clean working code without defining any variables, testing your referencing xml skill with LiteralLoader in appropriate places and your reasoning skills using ${selfReasoningTool} usage.
 - No plain text outside \`<literals>\`.
 - Provide real values that satisfy the imported schema constraints.
 - \`${selfReasoningTool}\` must always accompany another tool.
@@ -306,8 +306,8 @@ ${userRequestSection}
       
 # IMMEDIATE TASK
 ${report ? `## PREVIOUS ATTEMPT
-- You said: "${report}"
-- Filter out completed tasks and execute remaining tasks
+- You said: "${report}"(completed task)
+- Filter out completed tasks and execute remaining tasks, do not repeat completed task.
 
 ` : ''}## TASKS TO EXECUTE
 ${nextTasks}`;
