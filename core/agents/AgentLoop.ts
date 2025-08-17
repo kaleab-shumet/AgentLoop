@@ -120,7 +120,7 @@ export abstract class AgentLoop {
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.JSOBJECT);
+    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.LITERAL_JS);
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
   }
@@ -140,7 +140,7 @@ export abstract class AgentLoop {
     this.failureHandlingMode = options.failureHandlingMode || (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
     this.failureTolerance = options.failureTolerance !== undefined ? options.failureTolerance : 0.0;
     this.hooks = options.hooks || {};
-    this.formatMode = options.formatMode || FormatMode.JSOBJECT;
+    this.formatMode = options.formatMode || FormatMode.LITERAL_JS;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
     this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
@@ -307,7 +307,7 @@ export abstract class AgentLoop {
    */
   private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
     // Only JSOBJECT format is supported
-    const responseFormat = FormatMode.JSOBJECT;
+    const responseFormat = FormatMode.LITERAL_JS;
 
     return {
       responseFormat,

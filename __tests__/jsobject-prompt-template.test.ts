@@ -6,7 +6,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
   let template: DefaultPromptTemplate;
 
   beforeEach(() => {
-    template = new DefaultPromptTemplate(FormatMode.JSOBJECT);
+    template = new DefaultPromptTemplate(FormatMode.LITERAL_JS);
   });
 
   describe('JSObject format integration', () => {
@@ -146,12 +146,12 @@ describe('DefaultPromptTemplate JSObject Format', () => {
   describe('Format mode switching', () => {
     it('should switch between format modes correctly', () => {
       // Start with JSObject
-      template.setResponseFormat(FormatMode.JSOBJECT);
-      expect(template.getResponseFormat()).toBe(FormatMode.JSOBJECT);
+      template.setResponseFormat(FormatMode.LITERAL_JS);
+      expect(template.getResponseFormat()).toBe(FormatMode.LITERAL_JS);
 
       // Switch back to JSObject (only format supported)
-      template.setResponseFormat(FormatMode.JSOBJECT);
-      expect(template.getResponseFormat()).toBe(FormatMode.JSOBJECT);
+      template.setResponseFormat(FormatMode.LITERAL_JS);
+      expect(template.getResponseFormat()).toBe(FormatMode.LITERAL_JS);
     });
 
     it('should generate different format instructions for different modes', () => {
@@ -172,13 +172,13 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       };
 
       // JSObject format
-      template.setResponseFormat(FormatMode.JSOBJECT);
+      template.setResponseFormat(FormatMode.LITERAL_JS);
       const jsObjectPrompt = template.buildPrompt(params);
       expect(jsObjectPrompt).toContain('JAVASCRIPT \'callTools\' FUNCTION');
       expect(jsObjectPrompt).toContain('function callTools()');
 
       // Only JSOBJECT format is supported now
-      template.setResponseFormat(FormatMode.JSOBJECT);
+      template.setResponseFormat(FormatMode.LITERAL_JS);
       const jsObjectPrompt2 = template.buildPrompt(params);
       expect(jsObjectPrompt2).toContain('callTools');
       expect(jsObjectPrompt2).toContain('import { LiteralLoader }');

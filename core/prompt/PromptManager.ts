@@ -52,7 +52,7 @@ export class PromptManager {
       this.isCustomTemplate = true;
     } else {
       // Use default template with specified response format
-      const responseFormat = config.responseFormat || FormatMode.JSOBJECT;
+      const responseFormat = config.responseFormat || FormatMode.LITERAL_JS;
       this.template = new DefaultPromptTemplate(responseFormat);
       this.isCustomTemplate = false;
     }
@@ -102,7 +102,7 @@ export class PromptManager {
   /**
    * Switch back to default template with specified format
    */
-  setDefaultTemplate(format: FormatMode = FormatMode.JSOBJECT): PromptManager {
+  setDefaultTemplate(format: FormatMode = FormatMode.LITERAL_JS): PromptManager {
     this.template = new DefaultPromptTemplate(format);
     this.isCustomTemplate = false;
     return this;

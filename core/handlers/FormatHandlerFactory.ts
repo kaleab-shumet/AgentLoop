@@ -14,7 +14,7 @@ export class FormatHandlerFactory {
   static getHandler(mode: FormatMode): FormatHandler {
     if (!this.handlers.has(mode)) {
       switch (mode) {
-        case FormatMode.JSOBJECT:
+        case FormatMode.LITERAL_JS:
           this.handlers.set(mode, new LiteralJSFormatHandler());
           break;
         default:

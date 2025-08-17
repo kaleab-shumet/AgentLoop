@@ -8,7 +8,7 @@ import { FormatHandlerFactory } from "./FormatHandlerFactory";
 export class AIDataHandler {
   private formatHandler: FormatHandler;
 
-  constructor(formatMode: FormatMode = FormatMode.JSOBJECT) {
+  constructor(formatMode: FormatMode = FormatMode.LITERAL_JS) {
     this.formatHandler = FormatHandlerFactory.getHandler(formatMode);
   }
 

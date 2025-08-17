@@ -63,7 +63,7 @@ You approach every task with the mindset of a professional software engineer, co
 
 
     ), {
-      formatMode: FormatMode.JSOBJECT,
+      formatMode: FormatMode.LITERAL_JS,
       maxIterations: 15,
       stagnationTerminationThreshold: 5,
       parallelExecution: false,  // Ensure file operations run sequentially

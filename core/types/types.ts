@@ -6,7 +6,7 @@ import { AgentError } from "../utils/AgentError";
  * Format mode for the agent - only JSObject mode is supported
  */
 export enum FormatMode {
-  JSOBJECT = "jsobject"
+  LITERAL_JS = "literal_js"
 }
 
 /**

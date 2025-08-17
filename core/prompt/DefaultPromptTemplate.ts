@@ -5,7 +5,7 @@ import { BasePromptTemplate } from './BasePromptTemplate';
 export class DefaultPromptTemplate implements BasePromptTemplate {
   private responseFormat: FormatMode;
 
-  constructor(responseFormat: FormatMode = FormatMode.JSOBJECT) {
+  constructor(responseFormat: FormatMode = FormatMode.LITERAL_JS) {
     this.responseFormat = responseFormat;
   }
 
@@ -50,7 +50,7 @@ Complete user requests via a structured 2-phase process.
   }
 
   private buildResponseFormatSection(selfReasoningTool: string, finalToolName: string): string {
-    if (this.responseFormat === FormatMode.JSOBJECT) {
+    if (this.responseFormat === FormatMode.LITERAL_JS) {
       return `# RESPONSE FORMAT: JAVASCRIPT 'callTools' FUNCTION WITH TOOL SCHEMAS
 
 Respond ONLY with a JavaScript \`callTools()\` function returning an array of tool calls.

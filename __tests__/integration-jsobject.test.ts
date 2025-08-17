@@ -7,7 +7,7 @@ import z from 'zod';
 describe('JSObject Integration Test', () => {
   it('should use JSObject format handler correctly', () => {
     // Create AIDataHandler with JSObject format
-    const aiDataHandler = new AIDataHandler(FormatMode.JSOBJECT);
+    const aiDataHandler = new AIDataHandler(FormatMode.LITERAL_JS);
     
     // Create sample tools
     const tools = [
@@ -31,7 +31,7 @@ describe('JSObject Integration Test', () => {
   });
 
   it('should parse JSObject response correctly', async () => {
-    const aiDataHandler = new AIDataHandler(FormatMode.JSOBJECT);
+    const aiDataHandler = new AIDataHandler(FormatMode.LITERAL_JS);
     
     const tools = [
       {
@@ -65,7 +65,7 @@ function callTools() {
   });
 
   it('should create prompt with JSObject format instructions', () => {
-    const template = new DefaultPromptTemplate(FormatMode.JSOBJECT);
+    const template = new DefaultPromptTemplate(FormatMode.LITERAL_JS);
     
     const buildParams = {
       systemPrompt: 'Test system prompt',
@@ -93,7 +93,7 @@ function callTools() {
   });
 
   it('should not contain function calling format when using JSObject', () => {
-    const template = new DefaultPromptTemplate(FormatMode.JSOBJECT);
+    const template = new DefaultPromptTemplate(FormatMode.LITERAL_JS);
     
     const buildParams = {
       systemPrompt: 'Test system prompt',
