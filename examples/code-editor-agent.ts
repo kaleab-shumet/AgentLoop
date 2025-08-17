@@ -67,7 +67,7 @@ You approach every task with the mindset of a professional software engineer, co
       maxIterations: 15,
       stagnationTerminationThreshold: 5,
       parallelExecution: false,  // Ensure file operations run sequentially
-      sleepBetweenIterationsMs: 10000
+      sleepBetweenIterationsMs: 5000
       
     });
 
@@ -544,6 +544,22 @@ You approach every task with the mindset of a professional software engineer, co
             error: error instanceof Error ? error.message : String(error)
           };
         }
+      }
+    }));
+
+    // FINAL RESPONSE TOOL
+    this.defineTool(z => ({
+      name: 'final_response',
+      description: 'Provide a final response summarizing completed work',
+      argsSchema: z.object({
+        summary: z.string().describe('Summary of all work completed or can be used for conversation')
+      }),
+      handler: async ({ args }: any) => {
+        return {
+          toolName: 'final_response',
+          success: true,
+          summary: args.summary
+        };
       }
     }));
   }

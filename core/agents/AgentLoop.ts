@@ -71,6 +71,7 @@ export interface AgentLoopOptions {
   sleepBetweenIterationsMs?: number;
   batchMode?: boolean;                // Whether to process multiple requests in a single turn
   stagnationTerminationThreshold?: number; // Number of similar reasoning attempts before forced termination (default: 3)
+  maxInteractionHistoryCharsLimit?: number; // Maximum character count for interaction history (default: 100000, negative = no limit)
 }
 
 /**
@@ -93,6 +94,7 @@ export abstract class AgentLoop {
   protected sleepBetweenIterationsMs!: number;
   protected batchMode!: boolean;
   protected stagnationTerminationThreshold!: number;
+  protected maxInteractionHistoryCharsLimit!: number;
 
   protected abstract systemPrompt: string;
   public tools: Tool<ZodTypeAny>[] = [];
@@ -142,6 +144,7 @@ export abstract class AgentLoop {
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
     this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
+    this.maxInteractionHistoryCharsLimit = options.maxInteractionHistoryCharsLimit !== undefined ? options.maxInteractionHistoryCharsLimit : 100000;
 
     // Update AIDataHandler when format mode changes
     if (options.formatMode) {
@@ -272,9 +275,17 @@ export abstract class AgentLoop {
   /**
    * Add interaction to history and limit size
    */
-  private pushInteractionAndLimit(history: Interaction[], interaction: Interaction, maxChars: number = 100000): Interaction[] {
+  private pushInteractionAndLimit(history: Interaction[], interaction: Interaction, maxChars?: number): Interaction[] {
+    // Use provided maxChars or fall back to the configured limit
+    const charLimit = maxChars !== undefined ? maxChars : this.maxInteractionHistoryCharsLimit;
+    
     // Create new history with the new interaction added
     const newHistory = [...history, interaction];
+
+    // If charLimit is negative, skip all limiting (no limit)
+    if (charLimit < 0) {
+      return newHistory;
+    }
 
     // Calculate total characters
     let totalChars = 0;
@@ -283,7 +294,7 @@ export abstract class AgentLoop {
     }
 
     // If over limit, remove from the beginning until under limit
-    while (totalChars > maxChars && newHistory.length > 1) {
+    while (totalChars > charLimit && newHistory.length > 1) {
       const removed = newHistory.shift()!;
       totalChars -= JSON.stringify(removed).length;
     }

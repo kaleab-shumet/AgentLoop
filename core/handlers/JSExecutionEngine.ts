@@ -1,6 +1,9 @@
 import { ZodTypeAny } from "zod";
 import { Tool } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
+import { parse } from "@babel/parser";
+import traverse from "@babel/traverse";
+import * as t from "@babel/types";
 
 export type ExecutionMode = 'eval' | 'ses';
 
@@ -44,44 +47,57 @@ export class JSExecutionEngine {
   }
 
   /**
-   * Extract the body of the callTools function, preserving string literals
+   * Extract the body of the callTools function using Babel AST parser
    */
   private extractCallToolsFunctionBody(jsCode: string): string {
-    // Find the callTools function using balanced brace matching
-    const functionMatch = jsCode.match(/function\s+callTools\s*\(\s*\)\s*\{/);
-    if (!functionMatch || functionMatch.index === undefined) {
-      throw new AgentError(
-        "callTools function not found",
-        AgentErrorType.INVALID_RESPONSE
-      );
-    }
+    try {
+      // Parse the JavaScript code into an AST
+      const ast = parse(jsCode, {
+        sourceType: "module",
+        allowImportExportEverywhere: true,
+        allowReturnOutsideFunction: true,
+        plugins: ["jsx", "typescript"]
+      });
 
-    const startIndex = functionMatch.index;
-    const startBraceIndex = startIndex + functionMatch[0].length - 1; // Position of opening brace
-    
-    // Find the matching closing brace
-    let braceCount = 1;
-    let i = startBraceIndex + 1;
-    
-    while (i < jsCode.length && braceCount > 0) {
-      if (jsCode[i] === '{') {
-        braceCount++;
-      } else if (jsCode[i] === '}') {
-        braceCount--;
+      let callToolsFunctionBody: string | null = null;
+
+      // Traverse the AST to find the callTools function
+      traverse(ast, {
+        FunctionDeclaration(path) {
+          if (t.isIdentifier(path.node.id) && path.node.id.name === "callTools") {
+            // Extract the function body as source code
+            const body = path.node.body;
+            if (t.isBlockStatement(body)) {
+              // Get the source location of the function body
+              const start = body.start;
+              const end = body.end;
+              if (start !== null && start !== undefined && end !== null && end !== undefined) {
+                // Extract body content (without the braces)
+                const bodyWithBraces = jsCode.substring(start, end);
+                callToolsFunctionBody = bodyWithBraces.slice(1, -1).trim(); // Remove { and }
+              }
+            }
+          }
+        }
+      });
+
+      if (!callToolsFunctionBody) {
+        throw new AgentError(
+          "callTools function not found",
+          AgentErrorType.INVALID_RESPONSE
+        );
       }
-      i++;
-    }
-    
-    if (braceCount !== 0) {
+
+      return callToolsFunctionBody;
+    } catch (error) {
+      if (error instanceof AgentError) {
+        throw error;
+      }
       throw new AgentError(
-        "Unmatched braces in callTools function",
+        `Failed to parse JavaScript code: ${error instanceof Error ? error.message : String(error)}`,
         AgentErrorType.INVALID_RESPONSE
       );
     }
-
-    // Extract just the function body (everything between the braces)
-    const functionBody = jsCode.substring(startBraceIndex + 1, i - 1);
-    return functionBody.trim();
   }
 
   /**
