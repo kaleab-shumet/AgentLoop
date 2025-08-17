@@ -167,7 +167,16 @@ function callTools() {
 - NEVER use \`.default()\` - always use \`.parse()\` with actual values.
 - Use \`LiteralLoader\` for long/multiline strings in parse values.
 - **FORBIDDEN**: Defining variables in the function is completely prohibited.
-- **TEST**: We are testing your ability to: follow instructions, write clean working code without defining any variables, testing your referencing xml skill with LiteralLoader in appropriate places and your reasoning skills using ${selfReasoningTool} usage.
+
+**TEST**
+- We are evaluating your ability to:
+
+1. Follow instructions precisely.
+2. Write clean, functional code **without defining any variables**.
+3. Correctly reference XML using 'LiteralLoader' in the appropriate places.
+4. Strictly adhere to tool schemas and parameters, ensuring all created data passes schema validation.
+5. Demonstrate reasoning skills through the use of '${selfReasoningTool}'.
+
 - No plain text outside \`<literals>\`.
 - Provide real values that satisfy the imported schema constraints.
 - \`${selfReasoningTool}\` must always accompany another tool.
@@ -273,7 +282,7 @@ ${reports}`;
 
     const goalSection = goal ? `\n\n## GOAL\n> ${goal}` : '';
     const userRequestSection = `## USER REQUEST> ${userPrompt}\n\n`
-    
+
     // If there's an error, prioritize error resolution
     if (error) {
       return `
@@ -297,7 +306,7 @@ ${nextTasks ? `4. After fixing the error, continue with: ${nextTasks}` : ''}
 ${nextTasks ? '- After error is fixed, continue with remaining tasks' : ''}
 - REMEMBER: Always pair tools with ${selfReasoningTool}`;
     }
-    
+
     if (nextTasks) {
       let taskSection = `
 ${goalSection}

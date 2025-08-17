@@ -36,11 +36,11 @@ export class FileManagerConsole {
       model: 'gpt-4.1-mini'
     });
 
-    // this.agent = new SimpleFileManagerAgent({
-    //   service: 'google',
-    //   apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-    //   model: 'gemini-2.0-flash'
-    // });
+    this.agent = new SimpleFileManagerAgent({
+      service: 'google',
+      apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+      model: 'gemini-2.0-flash'
+    });
 
     // Create readline interface
     this.rl = readline.createInterface({
