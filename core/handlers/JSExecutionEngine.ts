@@ -32,11 +32,100 @@ export class JSExecutionEngine {
   ): Promise<any[]> {
     const context = this.createExecutionContext(tools);
     
+    let rawResults: any[];
     if (options.mode === 'ses') {
-      return this.executeWithSES(jsCode, context, options.timeoutMs || 5000);
+      rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs || 5000);
     } else {
-      return this.executeWithEval(jsCode, context, options.timeoutMs || 5000);
+      rawResults = await this.executeWithEval(jsCode, context, options.timeoutMs || 5000);
     }
+
+    // Now do the actual Zod parsing outside eval with preserved string values
+    return this.parseToolCallsWithZod(rawResults, tools);
+  }
+
+  /**
+   * Extract the body of the callTools function, preserving string literals
+   */
+  private extractCallToolsFunctionBody(jsCode: string): string {
+    // Find the callTools function using balanced brace matching
+    const functionMatch = jsCode.match(/function\s+callTools\s*\(\s*\)\s*\{/);
+    if (!functionMatch || functionMatch.index === undefined) {
+      throw new AgentError(
+        "callTools function not found",
+        AgentErrorType.INVALID_RESPONSE
+      );
+    }
+
+    const startIndex = functionMatch.index;
+    const startBraceIndex = startIndex + functionMatch[0].length - 1; // Position of opening brace
+    
+    // Find the matching closing brace
+    let braceCount = 1;
+    let i = startBraceIndex + 1;
+    
+    while (i < jsCode.length && braceCount > 0) {
+      if (jsCode[i] === '{') {
+        braceCount++;
+      } else if (jsCode[i] === '}') {
+        braceCount--;
+      }
+      i++;
+    }
+    
+    if (braceCount !== 0) {
+      throw new AgentError(
+        "Unmatched braces in callTools function",
+        AgentErrorType.INVALID_RESPONSE
+      );
+    }
+
+    // Extract just the function body (everything between the braces)
+    const functionBody = jsCode.substring(startBraceIndex + 1, i - 1);
+    return functionBody.trim();
+  }
+
+  /**
+   * Parse raw tool call data with actual Zod schemas (outside eval environment)
+   */
+  private parseToolCallsWithZod(rawResults: any[], tools: Tool<ZodTypeAny>[]): any[] {
+    const { z } = require('zod');
+    
+    return rawResults.map((rawToolCall) => {
+      if (!rawToolCall.toolName || typeof rawToolCall.toolName !== 'string') {
+        throw new AgentError(
+          "Missing toolName field in tool call",
+          AgentErrorType.INVALID_RESPONSE
+        );
+      }
+
+      const toolName = rawToolCall.toolName;
+      const correspondingTool = tools.find(t => t.name === toolName);
+      if (!correspondingTool) {
+        throw new AgentError(
+          `Tool not found: ${toolName}`,
+          AgentErrorType.TOOL_NOT_FOUND
+        );
+      }
+
+      // Extend schema with toolName default
+      const extendedSchema = (correspondingTool.argsSchema as any).extend({ 
+        toolName: z.string().default(toolName) 
+      });
+      
+      // Use safeParse and let defaults be applied
+      const result = extendedSchema.safeParse(rawToolCall);
+      if (!result.success) {
+        const errorDetails = result.error.errors.map((err: any) => 
+          `${err.path.join('.')}: ${err.message}`
+        ).join('; ');
+        throw new AgentError(
+          `Invalid args for ${toolName}: ${errorDetails}`,
+          AgentErrorType.INVALID_INPUT
+        );
+      }
+
+      return result.data;
+    });
   }
 
   /**
@@ -45,21 +134,19 @@ export class JSExecutionEngine {
   private createExecutionContext(tools: Tool<ZodTypeAny>[]): JSExecutionContext {
     const { z } = require('zod');
     
-    // Generate toolSchemas object
+    // Create wrapper objects that capture raw data instead of doing Zod parsing in eval
     const toolSchemas: Record<string, any> = {};
     for (const tool of tools) {
-      const schema = tool.argsSchema as any;
-      if (schema.extend) {
-        toolSchemas[tool.name] = schema.extend({ 
-          toolName: z.string().default(tool.name) 
-        });
-      } else {
-        // Fallback for schemas that don't support extend
-        toolSchemas[tool.name] = z.object({
-          ...schema._def?.shape || {},
-          toolName: z.string().default(tool.name)
-        });
-      }
+      toolSchemas[tool.name] = {
+        parse: (data: any) => {
+          // Just return the raw data with toolName added
+          // Actual Zod parsing will happen outside eval
+          return {
+            ...data,
+            toolName: tool.name
+          };
+        }
+      };
     }
 
     return {
@@ -82,27 +169,59 @@ export class JSExecutionEngine {
         // Prepare variables for eval context
         const { toolSchemas, toolCalls, z } = context;
 
-        // Strip import statements
-        const cleanedJsCode = jsCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
+        // Extract only the callTools function body instead of dangerous regex stripping
+        const functionBody = this.extractCallToolsFunctionBody(jsCode);
         
-        // Execute with available context
-        const executionCode = `
-          (function() {
-            ${cleanedJsCode}
-            return callTools();
-          })();
-        `;
+        // Make context available globally for eval
+        // Store previous values to restore later
+        const prevToolSchemas = (global as any).toolSchemas;
+        const prevToolCalls = (global as any).toolCalls;
+        const prevZ = (global as any).z;
+        
+        try {
+          // Set global variables for eval execution
+          (global as any).toolSchemas = toolSchemas;
+          (global as any).toolCalls = toolCalls;
+          (global as any).z = z;
+          
+          // Execute the code with extracted function body
+          const executionCode = `
+            (function() {
+              function callTools() {
+                ${functionBody}
+              }
+              return callTools();
+            })();
+          `;
 
-        const result = eval(executionCode);
+          const result = eval(executionCode);
 
-        if (!Array.isArray(result)) {
-          throw new AgentError(
-            "callTools must return array",
-            AgentErrorType.INVALID_RESPONSE
-          );
+          if (!Array.isArray(result)) {
+            throw new AgentError(
+              "callTools must return array",
+              AgentErrorType.INVALID_RESPONSE
+            );
+          }
+
+          return result;
+        } finally {
+          // Restore previous global state
+          if (prevToolSchemas !== undefined) {
+            (global as any).toolSchemas = prevToolSchemas;
+          } else {
+            delete (global as any).toolSchemas;
+          }
+          if (prevToolCalls !== undefined) {
+            (global as any).toolCalls = prevToolCalls;
+          } else {
+            delete (global as any).toolCalls;
+          }
+          if (prevZ !== undefined) {
+            (global as any).z = prevZ;
+          } else {
+            delete (global as any).z;
+          }
         }
-
-        return result;
       } catch (error) {
         throw new AgentError(
           `Eval execution error: ${error instanceof Error ? error.message : String(error)}`,

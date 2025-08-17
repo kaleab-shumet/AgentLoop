@@ -239,11 +239,27 @@ ${beautifiedSchema}`;
       processedCode = processedCode.replace(loaderPattern, escapedContent);
     }
 
-    // Note: toolSchemas is now provided directly through SES endowments
-    // Only add the import statement (will be stripped in executeBySES)
+    // Note: Function body extraction in JSExecutionEngine handles imports
     processedCode = `import { z } from 'zod';\n${processedCode}`;
 
     return processedCode;
+  }
+
+  /**
+   * Fix unescaped single quotes in double-quoted string literals to prevent JavaScript parsing errors
+   */
+  private fixStringLiteralEscaping(jsCode: string): string {
+    // Match double-quoted strings that contain unescaped single quotes
+    // This regex finds: "any content with ' single quotes"
+    return jsCode.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match, content) => {
+      // Check if the string contains unescaped single quotes
+      if (content.includes("'")) {
+        // Escape single quotes that aren't already escaped
+        const escapedContent = content.replace(/(?<!\\)'/g, "\\'");
+        return `"${escapedContent}"`;
+      }
+      return match; // Return unchanged if no single quotes
+    });
   }
 
   /**
@@ -273,31 +289,7 @@ ${beautifiedSchema}`;
     return `const toolSchemas = {\n${schemaEntries}\n};`;
   }
 
-  /**
-   * Generate toolSchemas object directly (for SES endowments)
-   */
-  private generateToolSchemasObject(tools: Tool<ZodTypeAny>[], z: any): Record<string, any> {
-    const toolSchemas: Record<string, any> = {};
-    
-    for (const tool of tools) {
-      // Extend the original schema with toolName default
-      // Cast to ZodObject to access extend method
-      const schema = tool.argsSchema as any;
-      if (schema.extend) {
-        toolSchemas[tool.name] = schema.extend({ 
-          toolName: z.string().default(tool.name) 
-        });
-      } else {
-        // Fallback for schemas that don't support extend
-        toolSchemas[tool.name] = z.object({
-          ...schema._def?.shape || {},
-          toolName: z.string().default(tool.name)
-        });
-      }
-    }
-    
-    return toolSchemas;
-  }
+  // Schema generation moved to JSExecutionEngine
 
   /**
    * Execute JavaScript code using the pluggable execution engine
