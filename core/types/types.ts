@@ -143,7 +143,7 @@ export interface Tool<T extends ZodTypeAny = ZodTypeAny> {
 }
 
 // Essential types only
-export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'cohere' | 'groq' | 'fireworks' | 'deepseek' | 'perplexity' | 'azure';
+export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'groq' | 'perplexity' | 'azure';
 
 
 // Simple AIConfig - only essential fields

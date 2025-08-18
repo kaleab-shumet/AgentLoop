@@ -6,10 +6,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createMistral } from "@ai-sdk/mistral";
-import { createCohere } from "@ai-sdk/cohere";
 import { createGroq } from "@ai-sdk/groq";
-import { createFireworks } from "@ai-sdk/fireworks";
-import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createPerplexity } from "@ai-sdk/perplexity";
 import { createAzure } from "@ai-sdk/azure";
 
@@ -146,26 +143,11 @@ export class DefaultAIProvider implements AIProvider {
                     apiKey: this.config.apiKey,
                 });
                 return mistral(modelName);
-            case 'cohere':
-                const cohere = createCohere({
-                    apiKey: this.config.apiKey,
-                });
-                return cohere(modelName);
             case 'groq':
                 const groq = createGroq({
                     apiKey: this.config.apiKey,
                 });
                 return groq(modelName);
-            case 'fireworks':
-                const fireworks = createFireworks({
-                    apiKey: this.config.apiKey,
-                });
-                return fireworks(modelName);
-            case 'deepseek':
-                const deepseek = createDeepSeek({
-                    apiKey: this.config.apiKey,
-                });
-                return deepseek(modelName);
             case 'perplexity':
                 const perplexity = createPerplexity({
                     apiKey: this.config.apiKey,
@@ -200,14 +182,8 @@ export class DefaultAIProvider implements AIProvider {
                 return 'claude-3-haiku-20240307';
             case 'mistral':
                 return 'mistral-7b-instruct';
-            case 'cohere':
-                return 'command-r-plus';
             case 'groq':
                 return 'llama3-8b-8192';
-            case 'fireworks':
-                return 'accounts/fireworks/models/llama-v3p1-8b-instruct';
-            case 'deepseek':
-                return 'deepseek-chat';
             case 'perplexity':
                 return 'llama-3.1-sonar-small-128k-online';
             case 'azure':
@@ -223,7 +199,7 @@ export class DefaultAIProvider implements AIProvider {
      * Get supported providers
      */
     static getSupportedProviders(): ServiceName[] {
-        return ['openai', 'google', 'anthropic', 'mistral', 'cohere', 'groq', 'fireworks', 'deepseek', 'perplexity', 'azure'];
+        return ['openai', 'google', 'anthropic', 'mistral', 'groq', 'perplexity', 'azure'];
     }
 
 

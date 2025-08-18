@@ -212,6 +212,8 @@ export class JSExecutionEngine {
             })();
           `;
 
+          // Intentional use of eval for secure JavaScript execution engine
+          // This code runs in a SES compartment for security
           const result = eval(executionCode) as unknown;
 
           if (!Array.isArray(result)) {

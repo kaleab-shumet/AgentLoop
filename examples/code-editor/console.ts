@@ -1,5 +1,4 @@
 import * as readline from 'readline';
-import * as path from 'path';
 import { CodeEditorAgent } from './CodeEditorAgent';
 
 class CodeEditorConsole {

@@ -1,4 +1,4 @@
-import { CodeEditorAgent } from './CodeEditorAgent';
+import { CodeEditorAgent } from './CodeEditorAgent.js';
 import * as path from 'path';
 
 async function runDemo() {

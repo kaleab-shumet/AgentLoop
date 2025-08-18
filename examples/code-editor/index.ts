@@ -1,3 +1,3 @@
-export { CodeEditorAgent } from './CodeEditorAgent';
-export { CodeEditorConsole } from './console';
-export { runDemo } from './demo';
+export { CodeEditorAgent } from './CodeEditorAgent.js';
+export { CodeEditorConsole } from './console.js';
+export { runDemo } from './demo.js';

@@ -1,9 +1,9 @@
-import { AgentLoop, FormatMode } from '../../core';
+import { AgentLoop } from '../../core/agents/AgentLoop';
 import { DefaultAIProvider } from '../../core/providers/DefaultAIProvider';
-import z from 'zod';
+import { FormatMode } from '../../core/types/types';
+import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as beautify from 'js-beautify';
 
 /**
  * Code Editor Agent - Full File Management Capabilities
