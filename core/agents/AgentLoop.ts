@@ -204,9 +204,9 @@ export abstract class AgentLoop {
 
     if (reportResults.length > 0) {
       const latestReport = reportResults[reportResults.length - 1];
-      const nextTasks = latestReport.context.nextTasks;
-      const report = latestReport.context.report;
-      const goal = latestReport.context.goal;
+      const nextTasks = typeof latestReport.context.nextTasks === 'string' ? latestReport.context.nextTasks : null;
+      const report = typeof latestReport.context.report === 'string' ? latestReport.context.report : null;
+      const goal = typeof latestReport.context.goal === 'string' ? latestReport.context.goal : null;
       console.log("---------------------------------------");
       console.log("goal: ", goal);
       console.log("report: ", report);
@@ -469,7 +469,9 @@ export abstract class AgentLoop {
 
           if (reportResult?.context.success) {
             // Regular tool execution with report tool
-            const reportText = reportResult.context.report ?? "";
+            const reportText: string = typeof reportResult.context.report === "string"
+              ? reportResult.context.report
+              : JSON.stringify(reportResult.context.report ?? "");
 
             // Get other tool calls executed in this iteration (excluding report and final)
             const otherToolResults = iterationResults.filter(r =>
@@ -497,7 +499,7 @@ export abstract class AgentLoop {
 
             // Create ToolCallReport and add to interaction history
             const toolCallReport: ToolCallReport = {
-              report: reportText,
+              report: typeof reportText === "string" ? reportText : JSON.stringify(reportText ?? ""),
               overallSuccess,
               toolCalls: otherToolResults,
               error

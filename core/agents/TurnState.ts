@@ -8,7 +8,7 @@
  * - Automatic lock cleanup and memory management
  */
 export class TurnState {
-    private store: Map<string, any> = new Map();
+    private store: Map<string, unknown> = new Map();
     private accessLock: Map<string, Promise<void>> = new Map();
   
     private async withLock<T>(key: string, operation: () => T | Promise<T>): Promise<T> {
@@ -19,7 +19,7 @@ export class TurnState {
       }
       
       // Create new lock
-      let resolve: () => void;
+      let resolve: (() => void) | undefined;
       const lock = new Promise<void>((res) => { resolve = res; });
       this.accessLock.set(key, lock);
       
@@ -29,14 +29,16 @@ export class TurnState {
       } finally {
         // Release lock
         this.accessLock.delete(key);
-        resolve!();
+        if (resolve) {
+          resolve();
+        }
       }
     }
   
     /**
      * Set a value for the given key. Thread-safe.
      */
-    async set(key: string, value: any): Promise<void> {
+    async set(key: string, value: unknown): Promise<void> {
       await this.withLock(key, () => {
         this.store.set(key, value);
       });
@@ -96,7 +98,7 @@ export class TurnState {
      * These bypass the locking mechanism and should only be used when you're certain
      * no other tools are accessing the same keys concurrently.
      */
-    setSync(key: string, value: any): void {
+    setSync(key: string, value: unknown): void {
       this.store.set(key, value);
     }
   

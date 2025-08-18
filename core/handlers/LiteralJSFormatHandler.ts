@@ -31,7 +31,7 @@ export class LiteralJSFormatHandler implements FormatHandler {
       
       // Resolve $ref if present by extracting the actual schema from definitions
       let resolvedSchema = jsonSchema;
-      const schemaWithRef = jsonSchema as any;
+      const schemaWithRef = jsonSchema as { $ref?: string; definitions?: Record<string, unknown> };
       if (schemaWithRef.$ref && schemaWithRef.definitions) {
         const refKey = schemaWithRef.$ref.replace('#/definitions/', '');
         if (schemaWithRef.definitions[refKey]) {
@@ -39,7 +39,7 @@ export class LiteralJSFormatHandler implements FormatHandler {
         }
       }
       
-      const zodSchemaString = jsonSchemaToZod(resolvedSchema as any);
+      const zodSchemaString = jsonSchemaToZod(resolvedSchema as Record<string, unknown>);
       
       const beautifiedSchema = beautify.js(zodSchemaString, {
         indent_size: 2,
@@ -96,7 +96,7 @@ ${beautifiedSchema}`;
         );
       }
 
-      const pendingToolCalls: PendingToolCall[] = toolCalls.map((toolCall: any) => {
+      const pendingToolCalls: PendingToolCall[] = toolCalls.map((toolCall: Record<string, unknown>) => {
         // Handle new format: { toolName, ...args } directly from Zod parsing
         if (!toolCall.toolName || typeof toolCall.toolName !== 'string') {
           throw new AgentError(
@@ -279,7 +279,7 @@ ${beautifiedSchema}`;
       
       // Resolve $ref if present by extracting the actual schema from definitions
       let resolvedSchema = jsonSchema;
-      const schemaWithRef = jsonSchema as any;
+      const schemaWithRef = jsonSchema as { $ref?: string; definitions?: Record<string, unknown> };
       if (schemaWithRef.$ref && schemaWithRef.definitions) {
         const refKey = schemaWithRef.$ref.replace('#/definitions/', '');
         if (schemaWithRef.definitions[refKey]) {
@@ -287,7 +287,7 @@ ${beautifiedSchema}`;
         }
       }
       
-      const zodSchemaString = jsonSchemaToZod(resolvedSchema as any);
+      const zodSchemaString = jsonSchemaToZod(resolvedSchema as Record<string, unknown>);
       
       // Extend the schema with toolName default
       return `  ${tool.name}: ${zodSchemaString}.extend({ toolName: z.string().default("${tool.name}") })`;
@@ -301,7 +301,7 @@ ${beautifiedSchema}`;
   /**
    * Execute JavaScript code using the pluggable execution engine
    */
-  private async executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map(), tools: Tool<ZodTypeAny>[]): Promise<any[]> {
+  private async executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map(), tools: Tool<ZodTypeAny>[]): Promise<Record<string, unknown>[]> {
     try {
       // Process the code: populate LiteralLoader references
       const processedCode = this.processCodeForExecution(jsCode, literalBlocks);

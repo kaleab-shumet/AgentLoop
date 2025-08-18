@@ -48,10 +48,10 @@ export enum AgentErrorType {
   
   export class AgentError extends Error {
     public readonly type: AgentErrorType;
-    public readonly context: Record<string, any>;
+    public readonly context: Record<string, unknown>;
     public readonly timestamp: Date;
   
-    constructor(message: string, type: AgentErrorType, context: Record<string, any> = {}) {
+    constructor(message: string, type: AgentErrorType, context: Record<string, unknown> = {}) {
       super(message);
       this.name = 'AgentError';
       this.type = type;

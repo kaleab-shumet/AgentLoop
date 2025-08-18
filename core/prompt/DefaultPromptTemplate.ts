@@ -375,7 +375,7 @@ Note: NEVER call ${selfReasoningTool} alone.`;
     sections.push(this.buildToolsSection(toolDefinitions));
 
     if (options.includePreviousTaskHistory && conversationEntries?.length) {
-      sections.push(this.buildConversationHistorySection(conversationEntries, conversationLimitNote || ''));
+      sections.push(this.buildConversationHistorySection(conversationEntries, conversationLimitNote ?? ''));
     }
 
     const reports = currentInteractionHistory.filter(i => 'toolCalls' in i);

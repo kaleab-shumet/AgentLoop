@@ -13,9 +13,9 @@ export interface JSExecutionOptions {
 }
 
 export interface JSExecutionContext {
-  toolSchemas: Record<string, any>;
-  toolCalls: any[];
-  z: any;
+  toolSchemas: Record<string, { parse: (data: unknown) => Record<string, unknown> }>;
+  toolCalls: Record<string, unknown>[];
+  z: typeof import('zod');
 }
 
 /**
@@ -32,14 +32,14 @@ export class JSExecutionEngine {
     jsCode: string,
     tools: Tool<ZodTypeAny>[],
     options: JSExecutionOptions = { mode: 'eval', timeoutMs: 5000 }
-  ): Promise<any[]> {
+  ): Promise<Record<string, unknown>[]> {
     const context = this.createExecutionContext(tools);
     
-    let rawResults: any[];
+    let rawResults: Record<string, unknown>[];
     if (options.mode === 'ses') {
-      rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs || 5000);
+      rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs ?? 5000);
     } else {
-      rawResults = await this.executeWithEval(jsCode, context, options.timeoutMs || 5000);
+      rawResults = await this.executeWithEval(jsCode, context, options.timeoutMs ?? 5000);
     }
 
     // Now do the actual Zod parsing outside eval with preserved string values
@@ -103,11 +103,11 @@ export class JSExecutionEngine {
   /**
    * Parse raw tool call data with actual Zod schemas (outside eval environment)
    */
-  private parseToolCallsWithZod(rawResults: any[], tools: Tool<ZodTypeAny>[]): any[] {
+  private parseToolCallsWithZod(rawResults: Record<string, unknown>[], tools: Tool<ZodTypeAny>[]): Record<string, unknown>[] {
     const { z } = require('zod');
     
-    return rawResults.map((rawToolCall) => {
-      if (!rawToolCall.toolName || typeof rawToolCall.toolName !== 'string') {
+    return rawResults.map((rawToolCall: Record<string, unknown>) => {
+      if (!rawToolCall || typeof rawToolCall !== 'object' || !rawToolCall.toolName || typeof rawToolCall.toolName !== 'string') {
         throw new AgentError(
           "Missing toolName field in tool call",
           AgentErrorType.INVALID_RESPONSE
@@ -123,16 +123,18 @@ export class JSExecutionEngine {
         );
       }
 
-      // Extend schema with toolName default
-      const extendedSchema = (correspondingTool.argsSchema as any).extend({ 
+      // Extend schema with toolName default - we know argsSchema has extend method from Zod
+      const extendedSchema = (correspondingTool.argsSchema as ZodTypeAny & { extend: (obj: Record<string, unknown>) => ZodTypeAny }).extend({ 
         toolName: z.string().default(toolName) 
       });
       
       // Use safeParse and let defaults be applied
       const result = extendedSchema.safeParse(rawToolCall);
       if (!result.success) {
-        const errorDetails = result.error.errors.map((err: any) => 
-          `${err.path.join('.')}: ${err.message}`
+        const errorDetails = result.error.errors.map((err: { path: (string | number)[]; message: string }) => {
+          const path = Array.isArray(err.path) ? err.path.join('.') : 'unknown';
+          return `${path}: ${err.message}`;
+        }
         ).join('; ');
         throw new AgentError(
           `Invalid args for ${toolName}: ${errorDetails}`,
@@ -151,14 +153,14 @@ export class JSExecutionEngine {
     const { z } = require('zod');
     
     // Create wrapper objects that capture raw data instead of doing Zod parsing in eval
-    const toolSchemas: Record<string, any> = {};
+    const toolSchemas: Record<string, { parse: (data: unknown) => Record<string, unknown> }> = {};
     for (const tool of tools) {
       toolSchemas[tool.name] = {
-        parse: (data: any) => {
+        parse: (data: unknown): Record<string, unknown> => {
           // Just return the raw data with toolName added
           // Actual Zod parsing will happen outside eval
           return {
-            ...data,
+            ...(data as Record<string, unknown>),
             toolName: tool.name
           };
         }
@@ -168,7 +170,7 @@ export class JSExecutionEngine {
     return {
       toolSchemas,
       toolCalls: [],
-      z
+      z: z as typeof import('zod')
     };
   }
 
@@ -179,8 +181,8 @@ export class JSExecutionEngine {
     jsCode: string, 
     context: JSExecutionContext, 
     timeoutMs: number
-  ): Promise<any[]> {
-    return this.withTimeout(async () => {
+  ): Promise<Record<string, unknown>[]> {
+    return this.withTimeout(() => Promise.resolve().then(() => {
       try {
         // Prepare variables for eval context
         const { toolSchemas, toolCalls, z } = context;
@@ -190,15 +192,15 @@ export class JSExecutionEngine {
         
         // Make context available globally for eval
         // Store previous values to restore later
-        const prevToolSchemas = (global as any).toolSchemas;
-        const prevToolCalls = (global as any).toolCalls;
-        const prevZ = (global as any).z;
+        const prevToolSchemas = (global as Record<string, unknown>).toolSchemas;
+        const prevToolCalls = (global as Record<string, unknown>).toolCalls;
+        const prevZ = (global as Record<string, unknown>).z;
         
         try {
           // Set global variables for eval execution
-          (global as any).toolSchemas = toolSchemas;
-          (global as any).toolCalls = toolCalls;
-          (global as any).z = z;
+          (global as Record<string, unknown>).toolSchemas = toolSchemas;
+          (global as Record<string, unknown>).toolCalls = toolCalls;
+          (global as Record<string, unknown>).z = z;
           
           // Execute the code with extracted function body
           const executionCode = `
@@ -210,7 +212,7 @@ export class JSExecutionEngine {
             })();
           `;
 
-          const result = eval(executionCode);
+          const result = eval(executionCode) as unknown;
 
           if (!Array.isArray(result)) {
             throw new AgentError(
@@ -219,23 +221,23 @@ export class JSExecutionEngine {
             );
           }
 
-          return result;
+          return result as Record<string, unknown>[];
         } finally {
           // Restore previous global state
           if (prevToolSchemas !== undefined) {
-            (global as any).toolSchemas = prevToolSchemas;
+            (global as Record<string, unknown>).toolSchemas = prevToolSchemas;
           } else {
-            delete (global as any).toolSchemas;
+            delete (global as Record<string, unknown>).toolSchemas;
           }
           if (prevToolCalls !== undefined) {
-            (global as any).toolCalls = prevToolCalls;
+            (global as Record<string, unknown>).toolCalls = prevToolCalls;
           } else {
-            delete (global as any).toolCalls;
+            delete (global as Record<string, unknown>).toolCalls;
           }
           if (prevZ !== undefined) {
-            (global as any).z = prevZ;
+            (global as Record<string, unknown>).z = prevZ;
           } else {
-            delete (global as any).z;
+            delete (global as Record<string, unknown>).z;
           }
         }
       } catch (error) {
@@ -244,7 +246,7 @@ export class JSExecutionEngine {
           AgentErrorType.INVALID_RESPONSE
         );
       }
-    }, timeoutMs);
+    }), timeoutMs);
   }
 
   /**
@@ -254,7 +256,7 @@ export class JSExecutionEngine {
     jsCode: string,
     context: JSExecutionContext,
     timeoutMs: number
-  ): Promise<any[]> {
+  ): Promise<Record<string, unknown>[]> {
     return this.withTimeout(async () => {
       try {
         // Lazy load SES to avoid dependency issues if not used
@@ -279,7 +281,7 @@ export class JSExecutionEngine {
           callTools();
         `;
 
-        const result = compartment.evaluate(executionCode);
+        const result = compartment.evaluate(executionCode) as unknown;
 
         if (!Array.isArray(result)) {
           throw new AgentError(
@@ -288,7 +290,7 @@ export class JSExecutionEngine {
           );
         }
 
-        return result;
+        return result as Record<string, unknown>[];
       } catch (error) {
         throw new AgentError(
           `SES execution error: ${error instanceof Error ? error.message : String(error)}`,
@@ -301,7 +303,7 @@ export class JSExecutionEngine {
   /**
    * Initialize SES security lockdown
    */
-  private initializeSES(lockdown: any): void {
+  private initializeSES(lockdown: (options: Record<string, unknown>) => void): void {
     if (!this.sesInitialized) {
       try {
         lockdown({
@@ -321,7 +323,7 @@ export class JSExecutionEngine {
   /**
    * Create secure endowments for SES compartment
    */
-  private createSESEndowments(context: JSExecutionContext): Record<string, any> {
+  private createSESEndowments(context: JSExecutionContext): Record<string, unknown> {
     return {
       // Safe constructors
       Array: Array,

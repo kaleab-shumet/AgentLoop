@@ -25,7 +25,7 @@ export interface FunctionDefinition {
   description: string;
   parameters: {
     type: "object";
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required?: string[];
   };
 }
@@ -43,7 +43,7 @@ export interface AgentResponse {
   taskId: string;
   type: "agent_response";
   timestamp: string;
-  context: any;
+  context: unknown;
   error?: string;
   tokenUsage?: TokenUsage;
 }
@@ -52,7 +52,7 @@ export interface AgentResponse {
 export interface ToolCallContext {
   toolName: string;
   success: boolean;
-  [key: string]: any
+  [key: string]: unknown;
   error?: string;
 }
 
@@ -87,14 +87,14 @@ export type Interaction =
  */
 export interface PendingToolCall {
   toolName: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface AgentRunInput {
   userPrompt: string;
   prevInteractionHistory: Interaction[];
-  context?: Record<string, any>;
-  completionOptions?: Record<string, any>;  
+  context?: Record<string, unknown>;
+  completionOptions?: Record<string, unknown>;  
 }
 
 /**
@@ -113,7 +113,7 @@ export interface AgentRunOutput {
  * Currently unused but available for future enhancements.
  */
 export interface ToolChainData {
-  [key: string]: any
+  [key: string]: unknown;
 }
 
 
@@ -146,11 +146,6 @@ export interface Tool<T extends ZodTypeAny = ZodTypeAny> {
 export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'cohere' | 'groq' | 'fireworks' | 'deepseek' | 'perplexity' | 'azure';
 
 
-export interface FunctionCallTool {
-  function: { description: string; name: string; parameters: any };
-  type: "function";
-}
-
 // Simple AIConfig - only essential fields
 export interface AIConfig {
   /** Service to use */
@@ -165,10 +160,6 @@ export interface AIConfig {
   max_tokens?: number;
   /** Base URL for the service (required for Azure) */
   baseURL?: string;
-
-  tools?: FunctionCallTool[];
-
-
 
 }
 
@@ -186,7 +177,7 @@ export interface TypedPaths {
  */
 export interface FormatHandler {
   parseResponse(response: string, tools: Tool<ZodTypeAny>[]): Promise<PendingToolCall[]>;
-  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string | FunctionCallTool[];
+  formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string;
 }
 
 export interface PromptOptions {
@@ -206,7 +197,7 @@ export interface ConversationEntry {
 export interface BuildPromptParams {
   systemPrompt: string;
   userPrompt: string;
-  context: Record<string, any>;
+  context: Record<string, unknown>;
   currentInteractionHistory: Interaction[];
   prevInteractionHistory: Interaction[];
   lastError: AgentError | null;

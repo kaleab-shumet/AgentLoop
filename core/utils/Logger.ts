@@ -5,8 +5,8 @@
  * A standard `console` object satisfies this interface.
  */
 export interface Logger {
-    info(message: any, ...args: any[]): void;
-    warn(message: any, ...args: any[]): void;
-    error(message: any, ...args: any[]): void;
-    debug(message: any, ...args: any[]): void;
+    info(message: unknown, ...args: unknown[]): void;
+    warn(message: unknown, ...args: unknown[]): void;
+    error(message: unknown, ...args: unknown[]): void;
+    debug(message: unknown, ...args: unknown[]): void;
 }

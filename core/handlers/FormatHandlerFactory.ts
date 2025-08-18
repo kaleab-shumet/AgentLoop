@@ -24,7 +24,14 @@ export class FormatHandlerFactory {
           );
       }
     }
-    return this.handlers.get(mode)!;
+    const handler = this.handlers.get(mode);
+    if (!handler) {
+      throw new AgentError(
+        `[ResponseHandlerFactory] Failed to retrieve handler for mode: ${mode}`,
+        AgentErrorType.CONFIGURATION_ERROR
+      );
+    }
+    return handler;
   }
 
   /**

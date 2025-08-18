@@ -26,7 +26,7 @@ export class ErrorHandler {
       : new AgentError((error as Error).message, AgentErrorType.UNKNOWN);
 
     // Use provided retry context or create default
-    const context = retryContext || {
+    const context = retryContext ?? {
       connectionRetryCount: 0,
       connectionRetryLimit: this.defaultMaxRetries,
       toolExecutionRetryCount: 0,
@@ -100,7 +100,7 @@ export class ErrorHandler {
       // 4. Stagnation errors - feedback to LLM, then terminate based on context
       case AgentErrorType.STAGNATION_ERROR:
         return { 
-          shouldTerminate: agentError.context?.isLastChance || false, 
+          shouldTerminate: Boolean(agentError.context?.isLastChance), 
           feedbackToLLM: true 
         };
 

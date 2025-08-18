@@ -1,7 +1,7 @@
-import { FunctionCallTool, AIConfig, ServiceName, AICompletionResponse, TokenUsage } from "../types";
+import { AIConfig, ServiceName, AICompletionResponse, TokenUsage } from "../types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { AIProvider } from "./AIProvider";
-import { generateText, tool } from "ai";
+import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
@@ -51,25 +51,24 @@ export class DefaultAIProvider implements AIProvider {
     /**
      * Get completion - stateless operation
      */
-    async getCompletion(prompt: string, tools: FunctionCallTool[] = [], _options = {}): Promise<AICompletionResponse> {
+    async getCompletion(prompt: string, _options = {}): Promise<AICompletionResponse> {
         try {
 
 
             const model = this.getModel();
 
             // Convert tools to AI-SDK format using the Zod schemas directly
-            const aiTools = tools.length > 0 ? tools.reduce((acc, functionTool) => {
-                acc[functionTool.function.name] = tool({
-                    description: functionTool.function.description,
-                    parameters: functionTool.function.parameters // Use Zod schema directly
-                });
-                return acc;
-            }, {} as Record<string, any>) : undefined;
+            // const aiTools = tools.length > 0 ? tools.reduce((acc, functionTool) => {
+            //     acc[functionTool.function.name] = tool({
+            //         description: functionTool.function.description,
+            //         parameters: functionTool.function.parameters // Use Zod schema directly
+            //     });
+            //     return acc;
+            // }, {} as Record<string, unknown>) : undefined;
 
             const result = await generateText({
                 model,
                 prompt,
-                tools: aiTools,
                 temperature: this.config.temperature,
                 maxTokens: this.config.max_tokens,
             });
@@ -86,28 +85,29 @@ export class DefaultAIProvider implements AIProvider {
                 usage
             };
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             // Enhanced error handling with provider-specific guidance
-            if (error.message?.includes('API key') || error.message?.includes('authentication')) {
+            const errorMessage: string = error instanceof Error ? error.message : String(error);
+            if (errorMessage?.includes('API key') || errorMessage?.includes('authentication')) {
                 throw new AgentError(
                     `API authentication failed for ${this.config.service}. Please check your API key.`,
                     AgentErrorType.CONFIGURATION_ERROR,
-                    { service: this.config.service, hasApiKey: !!this.config.apiKey, originalError: error.message }
+                    { service: this.config.service, hasApiKey: !!this.config.apiKey, originalError: errorMessage }
                 );
             }
 
-            if (error.message?.includes('model')) {
+            if (errorMessage?.includes('model')) {
                 throw new AgentError(
                     `Model "${this.config.model}" not available for ${this.config.service}. Try a different model.`,
                     AgentErrorType.CONFIGURATION_ERROR,
-                    { service: this.config.service, model: this.config.model, originalError: error.message }
+                    { service: this.config.service, model: this.config.model, originalError: errorMessage }
                 );
             }
 
             throw new AgentError(
-                `AI provider error: ${error.message}`,
+                `AI provider error: ${errorMessage}`,
                 AgentErrorType.UNKNOWN,
-                { service: this.config.service, originalError: error.message, errorType: error.name }
+                { service: this.config.service, originalError: errorMessage, errorType: error instanceof Error ? error.name : 'unknown' }
             );
         }
     }
@@ -123,7 +123,7 @@ export class DefaultAIProvider implements AIProvider {
      * Get model instance based on service and configuration
      */
     private getModel() {
-        const modelName = this.config.model || this.getDefaultModel();
+        const modelName = this.config.model ?? this.getDefaultModel();
 
         switch (this.config.service) {
             case 'openai':
