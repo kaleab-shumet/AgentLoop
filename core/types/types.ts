@@ -45,6 +45,7 @@ export type AgentResponse = {
   timestamp: string;
   context: any;
   error?: string;
+  tokenUsage?: TokenUsage;
 };
 
 // Context structure used inside tool_call events

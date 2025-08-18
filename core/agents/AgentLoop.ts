@@ -110,12 +110,6 @@ export abstract class AgentLoop {
   public readonly SELF_REASONING_TOOL = 'self_reasoning_tool';
   formatMode!: FormatMode;
 
-  // Token usage tracking for the current run
-  private currentRunTokenUsage: TokenUsage = {
-    promptTokens: 0,
-    completionTokens: 0,
-    totalTokens: 0
-  };
 
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
@@ -378,10 +372,14 @@ export abstract class AgentLoop {
   public async run(input: AgentRunInput): Promise<AgentRunOutput> {
     await this.hooks.onRunStart?.(input);
 
-    // Reset token usage for this run
-    this.resetRunTokenUsage();
-
     const { userPrompt, context = {} } = input;
+    
+    // Token usage tracking for this run only
+    const runTokenUsage: TokenUsage = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0
+    };
     let currentInteractionHistory: Interaction[] = []
     const turnState = new TurnState();
     let lastError: AgentError | null = null;
@@ -417,7 +415,7 @@ export abstract class AgentLoop {
 
           let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks, goal, report);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
-          const aiResponse = await this.getAIResponse(prompt);
+          const aiResponse = await this.getAIResponse(prompt, {}, runTokenUsage);
           const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
 
           // Validation: If final tool is not included, report tool is required
@@ -556,8 +554,8 @@ export abstract class AgentLoop {
                 taskId,
                 timestamp: finalResult.timestamp,
                 type: "agent_response",
-                context: finalResult.context
-
+                context: finalResult.context,
+                tokenUsage: runTokenUsage
               }
 
               currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, agentResponse);
@@ -599,7 +597,8 @@ export abstract class AgentLoop {
               timestamp: Date.now().toString(),
               type: "agent_response",
               context: undefined,
-              error: `I apologize, but I've encountered a stagnation loop and cannot make further progress. After ${errorResult.actualError.context?.occurrenceCount} similar attempts with tool "${errorResult.actualError.context?.toolInfo}", I must terminate to prevent infinite loops. The task could not be completed due to repeated unsuccessful reasoning patterns.`
+              error: `I apologize, but I've encountered a stagnation loop and cannot make further progress. After ${errorResult.actualError.context?.occurrenceCount} similar attempts with tool "${errorResult.actualError.context?.toolInfo}", I must terminate to prevent infinite loops. The task could not be completed due to repeated unsuccessful reasoning patterns.`,
+              tokenUsage: runTokenUsage
             };
 
             currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, agentResponse);
@@ -651,7 +650,8 @@ export abstract class AgentLoop {
         timestamp: Date.now().toString(),
         type: "agent_response",
         context: undefined,
-        error: finalError.getMessage()
+        error: finalError.getMessage(),
+        tokenUsage: runTokenUsage
       };
 
       currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, agentResponse);
@@ -865,7 +865,7 @@ export abstract class AgentLoop {
   }
 
 
-  private async getAIResponse(prompt: string, options = {}): Promise<{ text: string; usage?: import('../types/types').TokenUsage }> {
+  private async getAIResponse(prompt: string, options = {}, runTokenUsage: TokenUsage): Promise<{ text: string; usage?: import('../types/types').TokenUsage }> {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < this.connectionRetryAttempts; attempt++) {
       try {
@@ -885,9 +885,9 @@ export abstract class AgentLoop {
           this.logger.info(`[AgentLoop] Token Usage - Prompt: ${response.usage.promptTokens}, Completion: ${response.usage.completionTokens}, Total: ${response.usage.totalTokens}`);
 
           // Accumulate tokens for the current run
-          this.currentRunTokenUsage.promptTokens += response.usage.promptTokens;
-          this.currentRunTokenUsage.completionTokens += response.usage.completionTokens;
-          this.currentRunTokenUsage.totalTokens += response.usage.totalTokens;
+          runTokenUsage.promptTokens += response.usage.promptTokens;
+          runTokenUsage.completionTokens += response.usage.completionTokens;
+          runTokenUsage.totalTokens += response.usage.totalTokens;
         }
 
         await this.hooks.onAIRequestEnd?.(response.text);
@@ -946,23 +946,6 @@ export abstract class AgentLoop {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  /**
-   * Reset token usage tracking for a new run
-   */
-  private resetRunTokenUsage(): void {
-    this.currentRunTokenUsage = {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0
-    };
-  }
-
-  /**
-   * Get the accumulated token usage for the current run
-   */
-  public getRunTokenUsage(): Readonly<TokenUsage> {
-    return { ...this.currentRunTokenUsage };
-  }
 
   private async _executeTool(taskId: string, tool: Tool<ZodTypeAny>, call: PendingToolCall, turnState: TurnState): Promise<ToolCall> {
     await this.hooks.onToolCallStart?.(call);
