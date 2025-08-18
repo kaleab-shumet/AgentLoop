@@ -20,7 +20,7 @@ export class LiteralJSFormatHandler implements FormatHandler {
   private readonly executionEngine = new JSExecutionEngine();
   
   // Configurable execution mode - can be switched between 'eval' and 'ses'
-  public executionMode: ExecutionMode = 'eval';
+  public executionMode: ExecutionMode = 'ses';
 
   // Timeout and execution methods moved to JSExecutionEngine
 
