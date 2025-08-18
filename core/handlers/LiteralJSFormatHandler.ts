@@ -1,6 +1,6 @@
 /// <reference path="../types/ses.d.ts" />
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatHandler, FunctionCallTool } from "../types/types";
+import { Tool, PendingToolCall, FormatHandler } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from "zod-to-json-schema";
 import { jsonSchemaToZod } from "json-schema-to-zod";
@@ -63,10 +63,10 @@ ${beautifiedSchema}`;
     const literalBlocks = this.extractLiteralBlocks(response);
     
     // Remove literal blocks from response to get clean text for JS extraction
-    let cleanResponse = this.removeLiteralBlocks(response);
+    const cleanResponse = this.removeLiteralBlocks(response);
     
     // Look for JavaScript function blocks in the clean response
-    let jsMatch = cleanResponse.match(/```javascript\s*\n([\s\S]+?)\n?```/);
+    const jsMatch = cleanResponse.match(/```javascript\s*\n([\s\S]+?)\n?```/);
     let jsContent: string;
     
     if (jsMatch) {
@@ -225,7 +225,7 @@ ${beautifiedSchema}`;
       });
 
       return callToolsFunction;
-    } catch (error) {
+    } catch {
       // If parsing fails, return null (fallback will handle this)
       return null;
     }
@@ -234,7 +234,7 @@ ${beautifiedSchema}`;
   /**
    * Process the extracted function: populate LiteralLoader references and add imports
    */
-  private processCodeForExecution(jsCode: string, literalBlocks: Map<string, string>, tools: Tool<ZodTypeAny>[]): string {
+  private processCodeForExecution(jsCode: string, literalBlocks: Map<string, string>): string {
     let processedCode = jsCode;
 
     // Replace all LiteralLoader("id") calls with actual string literals
@@ -304,7 +304,7 @@ ${beautifiedSchema}`;
   private async executeCallToolsFunction(jsCode: string, literalBlocks: Map<string, string> = new Map(), tools: Tool<ZodTypeAny>[]): Promise<any[]> {
     try {
       // Process the code: populate LiteralLoader references
-      const processedCode = this.processCodeForExecution(jsCode, literalBlocks, tools);
+      const processedCode = this.processCodeForExecution(jsCode, literalBlocks);
 
       // Execute using the configurable execution engine
       return await this.executionEngine.execute(processedCode, tools, {

@@ -2,6 +2,7 @@
   "name": "agentloop",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "scripts": {
@@ -15,7 +16,12 @@
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
     "clean": "rimraf dist",
-    "prepublish": "npm run clean && npm run build",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "lint:unused": "eslint . --ext .ts,.tsx --no-fix",
+    "type-check": "tsc --noEmit",
+    "check": "npm run type-check && npm run lint",
+    "prepublish": "npm run check && npm run clean && npm run build",
     "demo:file": "npm run build && node dist/examples/FileManagementAgent.js"
   },
   "keywords": [],

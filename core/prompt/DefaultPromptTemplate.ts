@@ -1,4 +1,4 @@
-import { PromptOptions, ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
+import { ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { BasePromptTemplate } from './BasePromptTemplate';
 
@@ -378,7 +378,7 @@ Note: NEVER call ${selfReasoningTool} alone.`;
       sections.push(this.buildConversationHistorySection(conversationEntries, conversationLimitNote || ''));
     }
 
-    const reports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
+    const reports = currentInteractionHistory.filter(i => 'toolCalls' in i);
     sections.push(this.buildNotesSection(reports, selfReasoningTool));
 
 

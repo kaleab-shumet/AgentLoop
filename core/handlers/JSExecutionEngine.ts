@@ -311,7 +311,7 @@ export class JSExecutionEngine {
           localeReporting: 'none',
         });
         this.sesInitialized = true;
-      } catch (error) {
+      } catch {
         // SES may already be locked down, which is fine
         this.sesInitialized = true;
       }

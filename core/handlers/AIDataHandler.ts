@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatMode, FormatHandler, FunctionCallTool } from "../types/types";
+import { Tool, PendingToolCall, FormatMode, FormatHandler } from "../types/types";
 import { FormatHandlerFactory } from "./FormatHandlerFactory";
 
 /**

@@ -31,46 +31,46 @@ export interface FunctionDefinition {
 }
 
 // User prompt input to the agent
-export type UserPrompt = {
+export interface UserPrompt {
   taskId: string;
   type: "user_prompt";
   timestamp: string;
   context: string;
-};
+}
 
 // Response message from the agent
-export type AgentResponse = {
+export interface AgentResponse {
   taskId: string;
   type: "agent_response";
   timestamp: string;
   context: any;
   error?: string;
   tokenUsage?: TokenUsage;
-};
+}
 
 // Context structure used inside tool_call events
-export type ToolCallContext = {
+export interface ToolCallContext {
   toolName: string;
   success: boolean;
   [key: string]: any
   error?: string;
-};
+}
 
 // Tool call event (uses ToolCallContext)
-export type ToolCall = {
+export interface ToolCall {
   taskId: string;
   type: "tool_call";
   timestamp: string;
   context: ToolCallContext;
-};
+}
 
 // Tool call report event (groups multiple tool calls with a report)
-export type ToolCallReport = {
+export interface ToolCallReport {
   report: string;
   overallSuccess: boolean;
   toolCalls: ToolCall[];
   error?: string;
-};
+}
 
 // Union of all possible event types
 export type Interaction =
@@ -94,6 +94,7 @@ export interface AgentRunInput {
   userPrompt: string;
   prevInteractionHistory: Interaction[];
   context?: Record<string, any>;
+  completionOptions?: Record<string, any>;  
 }
 
 /**
@@ -128,7 +129,7 @@ export interface HandlerParams<T extends ZodTypeAny = ZodTypeAny> {
 /**
  * Defines the structure for a tool that can be used by the agent.
  */
-export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
+export interface Tool<T extends ZodTypeAny = ZodTypeAny> {
   timeout?: number;
   /** The unique name of the tool. Must not contain spaces or special characters. */
   name: string;
@@ -139,7 +140,7 @@ export type Tool<T extends ZodTypeAny = ZodTypeAny> = {
   /** The handler function that executes the tool's logic. */
   dependencies?: string[];
   handler: (params: HandlerParams<ZodTypeAny>) => ToolCallContext | Promise<ToolCallContext>;
-};
+}
 
 // Essential types only
 export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'cohere' | 'groq' | 'fireworks' | 'deepseek' | 'perplexity' | 'azure';

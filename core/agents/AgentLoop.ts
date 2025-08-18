@@ -9,7 +9,6 @@ import { Logger } from '../utils/Logger';
 import {
   Tool, PendingToolCall,
   AgentRunInput, AgentRunOutput, FormatMode,
-  FunctionCallTool,
   ToolCall,
   ToolCallReport,
   Interaction,
@@ -19,8 +18,7 @@ import {
   UserPrompt,
   BuildPromptParams,
   ConversationEntry,
-  TokenUsage,
-  ErrorHandlingResult
+  TokenUsage
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
@@ -45,7 +43,7 @@ export interface AgentLifecycleHooks {
   onError?: (error: AgentError) => Promise<void>;
 }
 
-export type OutcomeRecord = { args: PendingToolCall, toolCall: ToolCall };
+export interface OutcomeRecord { args: PendingToolCall, toolCall: ToolCall }
 
 export enum FailureHandlingMode {
   FAIL_FAST = 'fail_fast',           // Stop on first failure (current sequential behavior)
@@ -114,7 +112,7 @@ export abstract class AgentLoop {
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.aiDataHandler = new AIDataHandler(options.formatMode || FormatMode.LITERAL_JS);
+    this.aiDataHandler = new AIDataHandler(options.formatMode ?? FormatMode.LITERAL_JS);
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
   }
@@ -124,21 +122,21 @@ export abstract class AgentLoop {
    * Only provided options will be updated; others remain unchanged.
    */
   public setAgentLoopOptions(options: AgentLoopOptions): void {
-    this.logger = options.logger || console;
-    this.maxIterations = options.maxIterations !== undefined ? options.maxIterations : 100;
-    this.toolTimeoutMs = options.toolTimeoutMs !== undefined ? options.toolTimeoutMs : 30000;
-    this.toolExecutionRetryAttempts = options.toolExecutionRetryAttempts !== undefined ? options.toolExecutionRetryAttempts : 5;
-    this.connectionRetryAttempts = options.connectionRetryAttempts !== undefined ? options.connectionRetryAttempts : 5;
-    this.retryDelay = options.retryDelay !== undefined ? options.retryDelay : 1000;
-    this.parallelExecution = options.parallelExecution !== undefined ? options.parallelExecution : true;
-    this.failureHandlingMode = options.failureHandlingMode || (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
-    this.failureTolerance = options.failureTolerance !== undefined ? options.failureTolerance : 0.0;
-    this.hooks = options.hooks || {};
-    this.formatMode = options.formatMode || FormatMode.LITERAL_JS;
-    this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs !== undefined ? options.sleepBetweenIterationsMs : 2000;
-    this.batchMode = options.batchMode !== undefined ? options.batchMode : false;
-    this.stagnationTerminationThreshold = options.stagnationTerminationThreshold !== undefined ? options.stagnationTerminationThreshold : 3;
-    this.maxInteractionHistoryCharsLimit = options.maxInteractionHistoryCharsLimit !== undefined ? options.maxInteractionHistoryCharsLimit : 100000;
+    this.logger = options.logger ?? console;
+    this.maxIterations = options.maxIterations ?? 100;
+    this.toolTimeoutMs = options.toolTimeoutMs ?? 30000;
+    this.toolExecutionRetryAttempts = options.toolExecutionRetryAttempts ?? 5;
+    this.connectionRetryAttempts = options.connectionRetryAttempts ?? 5;
+    this.retryDelay = options.retryDelay ?? 1000;
+    this.parallelExecution = options.parallelExecution ?? true;
+    this.failureHandlingMode = options.failureHandlingMode ?? (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
+    this.failureTolerance = options.failureTolerance ?? 0.0;
+    this.hooks = options.hooks ?? {};
+    this.formatMode = options.formatMode ?? FormatMode.LITERAL_JS;
+    this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs ?? 2000;
+    this.batchMode = options.batchMode ?? false;
+    this.stagnationTerminationThreshold = options.stagnationTerminationThreshold ?? 3;
+    this.maxInteractionHistoryCharsLimit = options.maxInteractionHistoryCharsLimit ?? 100000;
 
     // Update AIDataHandler when format mode changes
     if (options.formatMode) {
@@ -152,11 +150,11 @@ export abstract class AgentLoop {
     if (options.promptManager) {
       this.promptManager = options.promptManager;
     } else if (options.promptManagerConfig || options.formatMode) {
-      const config = options.promptManagerConfig || this.getDefaultPromptManagerConfig(options.formatMode || this.formatMode);
+      const config = options.promptManagerConfig ?? this.getDefaultPromptManagerConfig();
       this.promptManager = new PromptManager(this.systemPrompt, config);
     } else if (!this.promptManager) {
       // If promptManager is still not set, set a default
-      this.promptManager = new PromptManager(this.systemPrompt, this.getDefaultPromptManagerConfig(this.formatMode));
+      this.promptManager = new PromptManager(this.systemPrompt, this.getDefaultPromptManagerConfig());
     }
 
   }
@@ -167,7 +165,7 @@ export abstract class AgentLoop {
    */
   private processConversationHistory(prevInteractionHistory: Interaction[]): { entries: ConversationEntry[], limitNote: string } {
     const maxEntries = 50; // Could be configurable
-    const safeHistory = prevInteractionHistory || [];
+    const safeHistory = prevInteractionHistory ?? [];
     const entries = maxEntries ? safeHistory.slice(-maxEntries) : safeHistory;
 
     const limitNote = maxEntries && safeHistory.length > maxEntries
@@ -179,10 +177,10 @@ export abstract class AgentLoop {
     for (const interaction of entries) {
       if ('type' in interaction) {
         if (interaction.type === 'user_prompt') {
-          const userPrompt = interaction as UserPrompt;
+          const userPrompt = interaction;
           conversationEntries.push({ user: userPrompt.context });
         } else if (interaction.type === 'agent_response') {
-          const agentResponse = interaction as AgentResponse;
+          const agentResponse = interaction;
           const aiContent = typeof agentResponse.context === 'string'
             ? agentResponse.context
             : JSON.stringify(agentResponse.context);
@@ -271,7 +269,7 @@ export abstract class AgentLoop {
    */
   private pushInteractionAndLimit(history: Interaction[], interaction: Interaction, maxChars?: number): Interaction[] {
     // Use provided maxChars or fall back to the configured limit
-    const charLimit = maxChars !== undefined ? maxChars : this.maxInteractionHistoryCharsLimit;
+    const charLimit = maxChars ?? this.maxInteractionHistoryCharsLimit;
 
     // Create new history with the new interaction added
     const newHistory = [...history, interaction];
@@ -289,7 +287,8 @@ export abstract class AgentLoop {
 
     // If over limit, remove from the beginning until under limit
     while (totalChars > charLimit && newHistory.length > 1) {
-      const removed = newHistory.shift()!;
+      const removed = newHistory.shift();
+      if (!removed) break;
       totalChars -= JSON.stringify(removed).length;
     }
 
@@ -299,7 +298,7 @@ export abstract class AgentLoop {
   /**
    * Get default prompt manager configuration based on execution mode
    */
-  private getDefaultPromptManagerConfig(formatMode?: FormatMode): PromptManagerConfig {
+  private getDefaultPromptManagerConfig(): PromptManagerConfig {
     // Only JSOBJECT format is supported
     const responseFormat = FormatMode.LITERAL_JS;
 
@@ -309,7 +308,7 @@ export abstract class AgentLoop {
         includeContext: true,
         includePreviousTaskHistory: true,
         maxPreviousTaskEntries: 50,
-        batchMode: this.parallelExecution || this.batchMode
+        batchMode: this.parallelExecution ?? this.batchMode
       }
     };
   }
@@ -318,7 +317,7 @@ export abstract class AgentLoop {
    * Defines a tool for the agent to use.
    * @param fn A function that returns a tool definition object.
    */
-  protected defineTool(fn: (schema: typeof z) => any): void {
+  protected defineTool(fn: (schema: typeof z) => Tool<ZodTypeAny>): void {
     const toolDefinition = fn(z);
 
     // Check for reserved tool names in public API
@@ -360,7 +359,7 @@ export abstract class AgentLoop {
     // If promptManager was not provided in options or needs system prompt, create new one
     if (!this.promptManager || this.systemPrompt) {
       // Get the execution mode from the LLM data handler
-      const config = this.getDefaultPromptManagerConfig(this.formatMode);
+      const config = this.getDefaultPromptManagerConfig();
       this.promptManager = new PromptManager(this.systemPrompt, config);
     }
   }
@@ -373,7 +372,7 @@ export abstract class AgentLoop {
     await this.hooks.onRunStart?.(input);
 
     const { userPrompt, context = {} } = input;
-    
+
     // Token usage tracking for this run only
     const runTokenUsage: TokenUsage = {
       promptTokens: 0,
@@ -383,7 +382,7 @@ export abstract class AgentLoop {
     let currentInteractionHistory: Interaction[] = []
     const turnState = new TurnState();
     let lastError: AgentError | null = null;
-    let keepRetry = true;
+    const keepRetry = true;
     let nextTasks: string | null = null; // Track next tasks from previous iteration
     let goal: string | null = null; // Track goal from previous iteration
     let report: string | null = null; // Track report from previous iteration
@@ -415,7 +414,7 @@ export abstract class AgentLoop {
 
           let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks, goal, report);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
-          const aiResponse = await this.getAIResponse(prompt, {}, runTokenUsage);
+          const aiResponse = await this.getAIResponse(prompt, input.completionOptions, runTokenUsage);
           const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
 
           // Validation: If final tool is not included, report tool is required
@@ -468,9 +467,9 @@ export abstract class AgentLoop {
           // Handle report creation for both regular tools and final tool
           const reportResult = iterationResults.find(r => r.context.toolName === this.SELF_REASONING_TOOL);
 
-          if (reportResult && reportResult.context.success) {
+          if (reportResult?.context.success) {
             // Regular tool execution with report tool
-            const reportText = reportResult.context.report || "";
+            const reportText = reportResult.context.report ?? "";
 
             // Get other tool calls executed in this iteration (excluding report and final)
             const otherToolResults = iterationResults.filter(r =>
@@ -535,7 +534,7 @@ export abstract class AgentLoop {
             lastError = null;
 
             const finalResult: ToolCall | undefined = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
-            if (finalResult && finalResult.context.success) {
+            if (finalResult?.context.success) {
               // Final tool execution - manually set "Task completed" report
               const toolCallReport: ToolCallReport = {
                 report: "Task completed",
@@ -641,7 +640,7 @@ export abstract class AgentLoop {
         toolExecutionRetryLimit: this.toolExecutionRetryAttempts
       };
       const errorResult = this.errorHandler.handleError(error, retryContext);
-      const finalError = lastError || errorResult.actualError;
+      const finalError = lastError ?? errorResult.actualError;
 
       await this.hooks.onError?.(finalError);
 
@@ -730,7 +729,7 @@ export abstract class AgentLoop {
     const executed = new Map<string, Promise<void>>();
 
     const propagateFailure = (failedToolName: string, chain: string[]) => {
-      const directDependents = dependents.get(failedToolName) || [];
+      const directDependents = dependents.get(failedToolName) ?? [];
       for (const dependentName of directDependents) {
         if (chain.includes(dependentName) || iterationResults.some(r => r.context.toolName === dependentName)) continue;
         const result = this.createFailureToolCallContext(failedToolName, new AgentError(`Skipped due to failure in dependency: '${failedToolName}'`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolName: dependentName, failedDependency: failedToolName }));
@@ -745,7 +744,7 @@ export abstract class AgentLoop {
     };
 
     const triggerDependents = (toolName: string) => {
-      const nextTools = dependents.get(toolName) || [];
+      const nextTools = dependents.get(toolName) ?? [];
       for (const next of nextTools) {
         pending.get(next)?.delete(toolName);
         if (pending.get(next)?.size === 0 && !executionLock.get(next) && !executed.has(next)) {
@@ -757,7 +756,10 @@ export abstract class AgentLoop {
 
     const execute = async (toolName: string): Promise<void> => {
       //this.logger.info(`[AgentLoop] Executing tool: ${toolName}`);
-      const tool = this.tools.find(t => t.name === toolName)!;
+      const tool = this.tools.find(t => t.name === toolName);
+      if (!tool) {
+        throw new AgentError(`Tool '${toolName}' not found during execution`, AgentErrorType.TOOL_NOT_FOUND, { toolName });
+      }
       const callsForTool = validToolCalls.filter(t => t.toolName === toolName);
 
       try {
@@ -809,16 +811,18 @@ export abstract class AgentLoop {
     const pending = new Map<string, Set<string>>();
     const dependents = new Map<string, string[]>();
     const callNames = new Set(toolCalls.map(c => c.toolName));
-    toolCalls.forEach(call => {
-      const tool = this.tools.find(t => t.name === call.toolName)!;
-      const validDeps = (tool.dependencies || []).filter(dep => callNames.has(dep));
+    for (const call of toolCalls) {
+      const tool = this.tools.find(t => t.name === call.toolName);
+      if (!tool) continue;
+      const validDeps = (tool.dependencies ?? []).filter(dep => callNames.has(dep));
       pending.set(call.toolName, new Set(validDeps));
       validDeps.forEach(dep => {
         if (!dependents.has(dep)) dependents.set(dep, []);
-        dependents.get(dep)!.push(call.toolName);
+        const depList = dependents.get(dep);
+        if (depList) depList.push(call.toolName);
       });
-    });
-    const ready = toolCalls.map(c => c.toolName).filter(name => (pending.get(name)?.size || 0) === 0);
+    }
+    const ready = toolCalls.map(c => c.toolName).filter(name => (pending.get(name)?.size ?? 0) === 0);
     return { pending, dependents, ready: Array.from(new Set(ready)) };
   }
 
@@ -827,7 +831,7 @@ export abstract class AgentLoop {
 
     // Build adjacency list from tool dependencies
     for (const tool of tools) {
-      const deps = tool.dependencies || [];
+      const deps = tool.dependencies ?? [];
       adjList.set(tool.name, deps);
     }
 
@@ -838,7 +842,7 @@ export abstract class AgentLoop {
       visited.add(toolName);
       recursionStack.add(toolName);
       path.push(toolName);
-      const neighbors = adjList.get(toolName) || [];
+      const neighbors = adjList.get(toolName) ?? [];
       for (const neighbor of neighbors) {
         // Only check dependencies that exist in the tool list
         if (!adjList.has(neighbor)) continue;
@@ -866,7 +870,6 @@ export abstract class AgentLoop {
 
 
   private async getAIResponse(prompt: string, options = {}, runTokenUsage: TokenUsage): Promise<{ text: string; usage?: import('../types/types').TokenUsage }> {
-    let lastError: Error | null = null;
     for (let attempt = 0; attempt < this.connectionRetryAttempts; attempt++) {
       try {
         await this.hooks.onAIRequestStart?.(prompt);
@@ -906,7 +909,7 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, any>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, goal: string | null = null, report: string | null = null): string {
+  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, goal: string | null = null, report: string | null = null): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
@@ -934,7 +937,7 @@ export abstract class AgentLoop {
       conversationLimitNote: conversationData.limitNote,
     };
 
-    let prompt = this.promptManager.buildPrompt(promptParams);
+    const prompt = this.promptManager.buildPrompt(promptParams);
 
     return prompt;
   }
@@ -949,7 +952,7 @@ export abstract class AgentLoop {
 
   private async _executeTool(taskId: string, tool: Tool<ZodTypeAny>, call: PendingToolCall, turnState: TurnState): Promise<ToolCall> {
     await this.hooks.onToolCallStart?.(call);
-    const toolTimeout = tool.timeout || this.toolTimeoutMs;
+    const toolTimeout = tool.timeout ?? this.toolTimeoutMs;
 
     // Create cancellable timeout
     let timeoutId;
@@ -986,7 +989,7 @@ export abstract class AgentLoop {
       }
     } finally {
       // Clean up timeout to prevent memory leaks
-      if (timeoutId!) {
+      if (timeoutId) {
         clearTimeout(timeoutId);
       }
     }
@@ -1024,7 +1027,7 @@ export abstract class AgentLoop {
     }
 
     // Validate timeout
-    const toolTimeout = tool.timeout || this.toolTimeoutMs;
+    const toolTimeout = tool.timeout ?? this.toolTimeoutMs;
     if (toolTimeout > this.toolTimeoutMs) {
       errors.push(`Tool '${tool.name}' timeout (${toolTimeout}ms) exceeds global timeout (${this.toolTimeoutMs}ms).`);
     }
@@ -1064,7 +1067,7 @@ export abstract class AgentLoop {
     }
 
     // Validate timeout - tool timeout cannot exceed global timeout
-    const toolTimeout = tool.timeout || this.toolTimeoutMs;
+    const toolTimeout = tool.timeout ?? this.toolTimeoutMs;
     if (toolTimeout > this.toolTimeoutMs) {
       this.logger.warn(`[AgentLoop] Tool '${tool.name}' timeout (${toolTimeout}ms) exceeds global timeout (${this.toolTimeoutMs}ms). Using global timeout.`);
     }
@@ -1073,7 +1076,7 @@ export abstract class AgentLoop {
     const toolWithDefaults = {
       ...tool,
       timeout: Math.min(toolTimeout, this.toolTimeoutMs),
-      dependencies: tool.dependencies || []
+      dependencies: tool.dependencies ?? []
     };
 
     this.tools.push(toolWithDefaults);
@@ -1087,7 +1090,7 @@ export abstract class AgentLoop {
         argsSchema: z.object({
           value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.")
         }),
-        handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
+        handler: ({ name, args }: HandlerParams<ZodTypeAny>): ToolCallContext => {
           return {
             toolName: name,
             success: true,
@@ -1114,7 +1117,7 @@ export abstract class AgentLoop {
           `)
 
         }),
-        handler: async ({ name, args, turnState }: HandlerParams<ZodTypeAny>): Promise<ToolCallContext> => {
+        handler: ({ name, args }: HandlerParams<ZodTypeAny>): ToolCallContext => {
           return {
             toolName: name,
             success: true,
@@ -1146,7 +1149,7 @@ export abstract class AgentLoop {
       errorType: error.type,
       originalError: error.message,
       timestamp: new Date().toISOString(),
-      ...(error.context || {})
+      ...(error.context ?? {})
     };
   }
 }

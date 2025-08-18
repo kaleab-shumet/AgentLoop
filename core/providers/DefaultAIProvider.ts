@@ -12,7 +12,6 @@ import { createFireworks } from "@ai-sdk/fireworks";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createPerplexity } from "@ai-sdk/perplexity";
 import { createAzure } from "@ai-sdk/azure";
-import { z } from "zod";
 
 /**
  * DefaultAIProvider - Simple, stateless AI provider using AI-SDK
@@ -52,7 +51,7 @@ export class DefaultAIProvider implements AIProvider {
     /**
      * Get completion - stateless operation
      */
-    async getCompletion(prompt: string, tools: FunctionCallTool[] = [], options = {}): Promise<AICompletionResponse> {
+    async getCompletion(prompt: string, tools: FunctionCallTool[] = [], _options = {}): Promise<AICompletionResponse> {
         try {
 
 

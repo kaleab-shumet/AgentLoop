@@ -1,6 +1,5 @@
-import { PromptOptions, Interaction, BuildPromptParams, FormatMode } from '../types/types';
+import { PromptOptions, BuildPromptParams, FormatMode } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
-import { ZodTypeAny } from 'zod';
 import { BasePromptTemplate } from './BasePromptTemplate';
 import { DefaultPromptTemplate } from './DefaultPromptTemplate';
 
