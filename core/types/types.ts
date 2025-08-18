@@ -221,11 +221,22 @@ export interface BuildPromptParams {
   errorRecoveryInstructions?: string;
 }
 
+/**
+ * Retry counters and limits for different error types
+ */
+export interface RetryContext {
+  connectionRetryCount: number;
+  connectionRetryLimit: number;
+  toolExecutionRetryCount: number;
+  toolExecutionRetryLimit: number;
+}
+
 export interface ErrorHandlingResult {
   errorString: string;
   actualError: AgentError;
   shouldTerminate: boolean;
   feedbackToLLM: boolean;
+  retryContext?: RetryContext;
 }
 
 /**

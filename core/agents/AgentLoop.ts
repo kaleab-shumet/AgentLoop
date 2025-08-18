@@ -278,7 +278,7 @@ export abstract class AgentLoop {
   private pushInteractionAndLimit(history: Interaction[], interaction: Interaction, maxChars?: number): Interaction[] {
     // Use provided maxChars or fall back to the configured limit
     const charLimit = maxChars !== undefined ? maxChars : this.maxInteractionHistoryCharsLimit;
-    
+
     // Create new history with the new interaction added
     const newHistory = [...history, interaction];
 
@@ -417,7 +417,7 @@ export abstract class AgentLoop {
 
           let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks, goal, report);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
-          const aiResponse = await this.getAIResponseWithRetry(prompt);
+          const aiResponse = await this.getAIResponse(prompt);
           const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
 
           // Validation: If final tool is not included, report tool is required
@@ -573,7 +573,13 @@ export abstract class AgentLoop {
 
 
         } catch (error) {
-          const errorResult = this.errorHandler.handleError(error, toolExecutionRetryCount, this.toolExecutionRetryAttempts);
+          const retryContext = {
+            connectionRetryCount,
+            connectionRetryLimit: this.connectionRetryAttempts,
+            toolExecutionRetryCount,
+            toolExecutionRetryLimit: this.toolExecutionRetryAttempts
+          };
+          const errorResult = this.errorHandler.handleError(error, retryContext);
 
           // Set appropriate lastError and nextTasks based on feedback type
           if (errorResult.feedbackToLLM) {
@@ -628,7 +634,14 @@ export abstract class AgentLoop {
 
       throw new AgentError("Maximum iterations reached", AgentErrorType.MAX_ITERATIONS_REACHED, { userPrompt });
     } catch (error) {
-      const errorResult = this.errorHandler.handleError(error);
+      // Final error handling - use current retry context
+      const retryContext = {
+        connectionRetryCount,
+        connectionRetryLimit: this.connectionRetryAttempts,
+        toolExecutionRetryCount,
+        toolExecutionRetryLimit: this.toolExecutionRetryAttempts
+      };
+      const errorResult = this.errorHandler.handleError(error, retryContext);
       const finalError = lastError || errorResult.actualError;
 
       await this.hooks.onError?.(finalError);
@@ -852,16 +865,13 @@ export abstract class AgentLoop {
   }
 
 
-  private async getAIResponseWithRetry(prompt: string, options = {}): Promise<{ text: string; usage?: import('../types/types').TokenUsage }> {
+  private async getAIResponse(prompt: string, options = {}): Promise<{ text: string; usage?: import('../types/types').TokenUsage }> {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < this.connectionRetryAttempts; attempt++) {
       try {
         await this.hooks.onAIRequestStart?.(prompt);
 
-        // Function calling is no longer supported, only JSOBJECT format
-        let functionTools: FunctionCallTool[] | undefined = undefined;
-
-        const response = await this.aiProvider.getCompletion(prompt, functionTools, options);
+        const response = await this.aiProvider.getCompletion(prompt, options);
         if (!response || typeof response !== "object" || typeof response.text !== "string") {
           throw new AgentError(
             "AI provider returned invalid response format.",
@@ -883,14 +893,14 @@ export abstract class AgentLoop {
         await this.hooks.onAIRequestEnd?.(response.text);
         return response;
       } catch (error) {
-        lastError = error as Error;
-        this.logger.warn(`[AgentLoop] AI retry ${attempt + 1}: ${lastError.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`[AgentLoop] AI retry ${attempt + 1}: ${errorMessage}`);
         if (attempt < this.connectionRetryAttempts - 1) await this.sleep(this.retryDelay * Math.pow(2, attempt));
       }
     }
-    throw lastError ?? new AgentError(
+    throw new AgentError(
       "LLM call failed after all retry attempts.",
-      AgentErrorType.UNKNOWN,
+      AgentErrorType.CONNECTION_ERROR,
       { retryAttempts: this.connectionRetryAttempts }
     );
   }

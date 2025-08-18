@@ -1,5 +1,5 @@
 import { AgentError, AgentErrorType } from './AgentError';
-import { ErrorHandlingResult } from '../types/types';
+import { ErrorHandlingResult, RetryContext } from '../types/types';
 
 /**
  * Centralized error handling utility for AgentLoop
@@ -16,18 +16,22 @@ export class ErrorHandler {
    * Handle errors with structured response indicating termination and feedback decisions
    * 
    * @param error - The error to handle (any type, will be converted to AgentError)
-   * @param retryCount - Current retry count (optional)
-   * @param maxRetries - Maximum retry limit (optional, uses constructor default)
+   * @param retryContext - Retry counters and limits for different error types (optional)
    * @returns Structured error handling result
    */
-  handleError(error: unknown, retryCount?: number, maxRetries?: number): ErrorHandlingResult {
+  handleError(error: unknown, retryContext?: RetryContext): ErrorHandlingResult {
     // Convert to AgentError if not already
     const agentError = error instanceof AgentError 
       ? error 
       : new AgentError((error as Error).message, AgentErrorType.UNKNOWN);
 
-    const currentRetryCount = retryCount || 0;
-    const maxRetryLimit = maxRetries || this.defaultMaxRetries;
+    // Use provided retry context or create default
+    const context = retryContext || {
+      connectionRetryCount: 0,
+      connectionRetryLimit: this.defaultMaxRetries,
+      toolExecutionRetryCount: 0,
+      toolExecutionRetryLimit: this.defaultMaxRetries
+    };
 
     // Create JSON string representation
     const errorString = JSON.stringify({
@@ -36,18 +40,18 @@ export class ErrorHandler {
       userMessage: agentError.getMessage(),
       timestamp: agentError.timestamp.toISOString(),
       context: agentError.context,
-      retryCount: currentRetryCount,
-      maxRetries: maxRetryLimit
+      retryContext: context
     });
 
     // Determine termination and feedback based on error type
-    const { shouldTerminate, feedbackToLLM } = this.getErrorPolicy(agentError, currentRetryCount, maxRetryLimit);
+    const { shouldTerminate, feedbackToLLM } = this.getErrorPolicy(agentError, context);
 
     return {
       errorString,
       actualError: agentError,
       shouldTerminate,
-      feedbackToLLM
+      feedbackToLLM,
+      retryContext: context
     };
   }
 
@@ -60,22 +64,28 @@ export class ErrorHandler {
    * 4. Stagnation errors - feedback to LLM, then terminate if not fixed
    * 5. Max iterations - no feedback, terminate immediately
    */
-  private getErrorPolicy(agentError: AgentError, retryCount: number, maxRetries: number): { shouldTerminate: boolean; feedbackToLLM: boolean } {
+  private getErrorPolicy(agentError: AgentError, retryContext: RetryContext): { shouldTerminate: boolean; feedbackToLLM: boolean } {
     switch (agentError.type) {
-      // 1. Network/Provider errors - retry then terminate, no LLM feedback
-      case AgentErrorType.UNKNOWN: // Treat unknown as potential network/system issue
+      // 1. Connection errors - terminate immediately, no LLM feedback
+      case AgentErrorType.CONNECTION_ERROR:
         return { 
-          shouldTerminate: retryCount >= maxRetries, 
+          shouldTerminate: true, 
           feedbackToLLM: false 
         };
 
-      // 2. Format/Validation errors - feedback to LLM to fix format
+      // Network/Provider errors - retry then terminate, no LLM feedback  
+      case AgentErrorType.UNKNOWN: // Treat unknown as potential network/system issue
+        return { 
+          shouldTerminate: retryContext.connectionRetryCount >= retryContext.connectionRetryLimit, 
+          feedbackToLLM: false 
+        };
+
+      // 2. Format/Validation errors - feedback to LLM to fix format, terminate after retries
       case AgentErrorType.INVALID_RESPONSE:
       case AgentErrorType.TOOL_NOT_FOUND:
       case AgentErrorType.INVALID_INPUT:
-      case AgentErrorType.INVALID_USER_INPUT:
         return { 
-          shouldTerminate: false, 
+          shouldTerminate: retryContext.connectionRetryCount >= retryContext.connectionRetryLimit, 
           feedbackToLLM: true 
         };
 
@@ -83,7 +93,7 @@ export class ErrorHandler {
       case AgentErrorType.TOOL_EXECUTION_ERROR:
       case AgentErrorType.TOOL_TIMEOUT_ERROR:
         return { 
-          shouldTerminate: retryCount >= maxRetries, 
+          shouldTerminate: retryContext.toolExecutionRetryCount >= retryContext.toolExecutionRetryLimit, 
           feedbackToLLM: true 
         };
 
@@ -103,14 +113,12 @@ export class ErrorHandler {
       case AgentErrorType.DUPLICATE_TOOL_NAME:
       case AgentErrorType.INVALID_TOOL_NAME:
       case AgentErrorType.RESERVED_TOOL_NAME:
-      case AgentErrorType.MALFORMED_TOOL_FOUND:
-      case AgentErrorType.INVALID_SCHEMA:
         return { shouldTerminate: true, feedbackToLLM: false };
 
       // Default - treat as network/system issue
       default:
         return { 
-          shouldTerminate: retryCount >= maxRetries, 
+          shouldTerminate: retryContext.connectionRetryCount >= retryContext.connectionRetryLimit, 
           feedbackToLLM: false 
         };
     }
@@ -119,8 +127,8 @@ export class ErrorHandler {
   /**
    * Static convenience method for one-off error handling
    */
-  static handle(error: unknown, retryCount?: number, maxRetries?: number): ErrorHandlingResult {
-    const handler = new ErrorHandler(maxRetries);
-    return handler.handleError(error, retryCount, maxRetries);
+  static handle(error: unknown, retryContext?: RetryContext): ErrorHandlingResult {
+    const handler = new ErrorHandler();
+    return handler.handleError(error, retryContext);
   }
 }
