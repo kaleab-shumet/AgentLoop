@@ -19,8 +19,8 @@ export class LiteralJSFormatHandler implements FormatHandler {
   private readonly executionTimeoutMs = 5000; // 5 second timeout for code execution
   private readonly executionEngine = new JSExecutionEngine();
   
-  // Configurable execution mode - can be switched between 'eval' and 'ses'
-  public executionMode: ExecutionMode = 'ses';
+  // Configurable execution mode - can be switched between 'eval', 'ses', and 'websandbox'
+  public executionMode: ExecutionMode = 'eval';
 
   // Timeout and execution methods moved to JSExecutionEngine
 

@@ -38,7 +38,9 @@ export class ErrorHandler {
       type: agentError.type,
       message: agentError.message,
       userMessage: agentError.getMessage(),
-      timestamp: agentError.timestamp.toISOString(),
+      timestamp: agentError.timestamp instanceof Date && !isNaN(agentError.timestamp.getTime()) 
+        ? agentError.timestamp.toISOString() 
+        : new Date().toISOString(),
       context: agentError.context,
       retryContext: context
     });

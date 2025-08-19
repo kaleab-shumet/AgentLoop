@@ -47,19 +47,19 @@ You approach every task with the mindset of a professional software engineer, co
   constructor(basePath: string = path.join(process.cwd(), 'testfolder')) {
     super(new DefaultAIProvider(
 
-      {
-        service: 'azure',
-        apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
-        baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
-        model: 'gpt-4.1-mini',
-        temperature: 0
-      }
-
       // {
-      //   service: 'google',
-      //   apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-      //   model: 'gemini-2.0-flash'
+      //   service: 'azure',
+      //   apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
+      //   baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
+      //   model: 'gpt-4.1-mini',
+      //   temperature: 0
       // }
+
+      {
+        service: 'google',
+        apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+        model: 'gemini-2.0-flash'
+      }
 
 
     ), {

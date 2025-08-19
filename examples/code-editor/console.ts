@@ -59,6 +59,7 @@ class CodeEditorConsole {
 
   private async processUserRequest(userInput: string): Promise<void> {
     const startTime = Date.now();
+    console.log(`[DEBUG] Start time: ${startTime}`);
     
     try {
       console.log(`\n🤖 Processing: "${userInput}"\n`);
@@ -68,7 +69,10 @@ class CodeEditorConsole {
         prevInteractionHistory: []
       });
 
-      const duration = Date.now() - startTime;
+      const endTime = Date.now();
+      console.log(`[DEBUG] End time: ${endTime}`);
+      const duration = endTime - startTime;
+      console.log(`[DEBUG] Duration: ${duration}`);
       
       if (result.agentResponse && !result.agentResponse.error) {
         console.log('✅ Task completed successfully!\n');

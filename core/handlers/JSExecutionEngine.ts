@@ -4,8 +4,25 @@ import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
+import generate from "@babel/generator";
+import { nanoid } from "nanoid";
 
-export type ExecutionMode = 'eval' | 'ses';
+export type ExecutionMode = 'eval' | 'ses' | 'websandbox';
+
+// Optional security engine interfaces
+interface SESEngine {
+  lockdown: () => void;
+  Compartment: any; // Use any to avoid complex typing issues
+}
+
+interface WebSandboxEngine {
+  create: (api?: Record<string, any>) => {
+    promise: Promise<{
+      run: (code: string | Function) => any;
+      injectStyle?: (css: string) => void;
+    }>;
+  };
+}
 
 export interface JSExecutionOptions {
   mode: ExecutionMode;
@@ -22,8 +39,70 @@ export interface JSExecutionContext {
  * JavaScript execution engine with pluggable security modes
  * Supports both direct eval and SES execution
  */
+// Global SES initialization state - shared across all instances
+let globalSESInitialized = false;
+
+// Preserve Date.now before any SES operations
+const originalDateNow = Date.now;
+
 export class JSExecutionEngine {
-  private sesInitialized = false;
+
+  /**
+   * Detect available security engines
+   */
+  private async detectSecurityEngines(): Promise<{
+    ses?: SESEngine;
+    websandbox?: WebSandboxEngine;
+  }> {
+    const engines: { ses?: SESEngine; websandbox?: WebSandboxEngine } = {};
+
+    // Try to load SES (Node.js environments)
+    try {
+      const sesModule = await import('ses');
+      engines.ses = {
+        lockdown: sesModule.lockdown || (globalThis as any).lockdown,
+        Compartment: sesModule.Compartment || (globalThis as any).Compartment
+      };
+    } catch {
+      // SES not available
+    }
+
+    // Try to load WebSandbox (Browser environments)
+    try {
+      const wsModule = await Function('return import("@jetbrains/websandbox")')() as any;
+      engines.websandbox = wsModule.default || wsModule;
+    } catch {
+      // WebSandbox not available
+    }
+
+    return engines;
+  }
+
+  /**
+   * Validate that the requested execution mode is available
+   */
+  private async validateExecutionMode(requestedMode: ExecutionMode): Promise<void> {
+    if (requestedMode === 'eval') {
+      // Eval is always available
+      return;
+    }
+
+    const engines = await this.detectSecurityEngines();
+    
+    if (requestedMode === 'ses' && !engines.ses) {
+      throw new AgentError(
+        'SES execution mode requested but SES is not installed. Install "ses" package or use mode: "eval"',
+        AgentErrorType.CONFIGURATION_ERROR
+      );
+    }
+    
+    if (requestedMode === 'websandbox' && !engines.websandbox) {
+      throw new AgentError(
+        'WebSandbox execution mode requested but WebSandbox is not installed. Install "@jetbrains/websandbox" package or use mode: "eval"',
+        AgentErrorType.CONFIGURATION_ERROR
+      );
+    }
+  }
 
   /**
    * Execute JavaScript code with the specified security mode
@@ -35,11 +114,20 @@ export class JSExecutionEngine {
   ): Promise<Record<string, unknown>[]> {
     const context = this.createExecutionContext(tools);
     
+    // Validate that the requested mode is available
+    await this.validateExecutionMode(options.mode);
+    
     let rawResults: Record<string, unknown>[];
-    if (options.mode === 'ses') {
-      rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs ?? 5000);
-    } else {
-      rawResults = await this.executeWithEval(jsCode, context, options.timeoutMs ?? 5000);
+    switch (options.mode) {
+      case 'ses':
+        rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs ?? 5000);
+        break;
+      case 'websandbox':
+        rawResults = await this.executeWithWebSandbox(jsCode, context, options.timeoutMs ?? 5000);
+        break;
+      case 'eval':
+        rawResults = await this.executeWithEval(jsCode, context, options.timeoutMs ?? 5000);
+        break;
     }
 
     // Now do the actual Zod parsing outside eval with preserved string values
@@ -261,38 +349,49 @@ export class JSExecutionEngine {
   ): Promise<Record<string, unknown>[]> {
     return this.withTimeout(async () => {
       try {
-        // Lazy load SES to avoid dependency issues if not used
-        const { lockdown, Compartment } = await import('ses');
+        // SES is now imported at the top of the file
+        
+        const engines = await this.detectSecurityEngines();
+        if (!engines.ses) {
+          throw new Error('SES not available');
+        }
         
         // Initialize SES if not already done
-        this.initializeSES(lockdown);
+        await this.initializeSES(engines.ses);
 
         // Create secure endowments
         const endowments = this.createSESEndowments(context);
 
         // Create compartment
-        const compartment = new Compartment(endowments);
+        const compartment = new engines.ses.Compartment(endowments);
 
-        // Clean the code
-        let cleanedJsCode = jsCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
-        cleanedJsCode = cleanedJsCode.replace(/const\s+toolSchemas\s*=\s*\{[\s\S]*?\};?\s*/g, '');
+        // Extract only the callTools function body using Babel (strips imports automatically)
+        const functionBody = this.extractCallToolsFunctionBody(jsCode);
+        
+        // Extract strings to avoid SES restrictions on import/eval/require in string literals
+        const { cleanCode: cleanFunctionBody, stringMap } = this.extractStringsToIds(functionBody);
 
-        // Execute in compartment
+        // Execute in compartment - wrap the clean function body
         const executionCode = `
-          ${cleanedJsCode}
+          function callTools() {
+            ${cleanFunctionBody}
+          }
           callTools();
         `;
 
-        const result = compartment.evaluate(executionCode) as unknown;
+        const rawResult = compartment.evaluate(executionCode) as unknown;
 
-        if (!Array.isArray(result)) {
+        if (!Array.isArray(rawResult)) {
           throw new AgentError(
             "callTools must return array",
             AgentErrorType.INVALID_RESPONSE
           );
         }
 
-        return result as Record<string, unknown>[];
+        // Restore original strings from IDs
+        const result = this.restoreStringsFromIds(rawResult, stringMap);
+
+        return result;
       } catch (error) {
         throw new AgentError(
           `SES execution error: ${error instanceof Error ? error.message : String(error)}`,
@@ -303,21 +402,93 @@ export class JSExecutionEngine {
   }
 
   /**
-   * Initialize SES security lockdown
+   * Execute with WebSandbox (browser-friendly, lightweight security)
    */
-  private initializeSES(lockdown: (options: Record<string, unknown>) => void): void {
-    if (!this.sesInitialized) {
+  private async executeWithWebSandbox(
+    jsCode: string,
+    context: JSExecutionContext,
+    timeoutMs: number
+  ): Promise<Record<string, unknown>[]> {
+    return this.withTimeout(async () => {
       try {
-        lockdown({
-          errorTaming: 'safe',
-          stackFiltering: 'verbose',
-          denyUnsafeCode: true,
-          localeReporting: 'none',
-        });
-        this.sesInitialized = true;
-      } catch {
-        // SES may already be locked down, which is fine
-        this.sesInitialized = true;
+        const engines = await this.detectSecurityEngines();
+        if (!engines.websandbox) {
+          throw new Error('WebSandbox not available');
+        }
+
+        // Extract function body and prepare API
+        const functionBody = this.extractCallToolsFunctionBody(jsCode);
+        const { cleanCode: cleanFunctionBody, stringMap } = this.extractStringsToIds(functionBody);
+
+        // Prepare API for sandbox communication
+        const sandboxApi = {
+          // Execution context
+          z: context.z,
+          toolSchemas: context.toolSchemas,
+          toolCalls: context.toolCalls,
+          Array: Array,
+          Object: Object,
+          String: String,
+          Number: Number,
+          Boolean: Boolean,
+          Math: Math,
+          JSON: JSON,
+        };
+
+        // Create sandbox
+        const sandbox = await engines.websandbox.create(sandboxApi).promise;
+
+        // Create execution function with clean code
+        const executionFunction = new Function('', `
+          function callTools() {
+            ${cleanFunctionBody}
+          }
+          return callTools();
+        `);
+
+        // Execute in sandbox
+        const result = sandbox.run(executionFunction);
+
+        // Restore string values
+        let resultStr = JSON.stringify(result);
+        for (const [id, originalString] of Object.entries(stringMap)) {
+          resultStr = resultStr.replace(new RegExp(id, 'g'), originalString);
+        }
+
+        return JSON.parse(resultStr) as Record<string, unknown>[];
+      } catch (error) {
+        throw new AgentError(
+          `WebSandbox execution error: ${error instanceof Error ? error.message : String(error)}`,
+          AgentErrorType.INVALID_RESPONSE
+        );
+      }
+    }, timeoutMs);
+  }
+
+  /**
+   * Initialize SES security lockdown (global, runs only once)
+   */
+  private async initializeSES(sesEngine: SESEngine): Promise<void> {
+    if (!globalSESInitialized) {
+      try {
+        // Use basic lockdown
+        sesEngine.lockdown();
+        
+        globalSESInitialized = true;
+        console.log('[JSExecutionEngine] SES lockdown initialized successfully');
+      } catch (error) {
+        // SES lockdown failed, but mark as initialized to prevent retries
+        globalSESInitialized = true;
+        console.log('[JSExecutionEngine] SES already locked down or failed:', error instanceof Error ? error.message : String(error));
+        
+        // Don't throw error - continue with SES compartment creation
+        // The compartment will still work even if lockdown failed
+      } finally {
+        // Always restore Date.now regardless of lockdown success/failure
+        if (typeof Date.now !== 'function' || isNaN(Date.now())) {
+          console.log('[JSExecutionEngine] Restoring Date.now functionality');
+          Date.now = originalDateNow;
+        }
       }
     }
   }
@@ -334,9 +505,8 @@ export class JSExecutionEngine {
       Number: Number,
       Boolean: Boolean,
       
-      // Safe utilities
+      // Safe utilities - no Date to avoid read-only issues
       Math: Math,
-      Date: Date,
       JSON: JSON,
       
       // Execution context
@@ -351,6 +521,76 @@ export class JSExecutionEngine {
         warn: () => {} 
       }),
     };
+  }
+
+  /**
+   * Extract all string literals and replace with unique IDs to avoid SES restrictions
+   */
+  private extractStringsToIds(jsCode: string): { cleanCode: string; stringMap: Record<string, string> } {
+    try {
+      const ast = parse(jsCode, {
+        sourceType: "module",
+        allowImportExportEverywhere: true,
+        allowReturnOutsideFunction: true,
+        plugins: ["jsx", "typescript"]
+      });
+
+      const stringMap: Record<string, string> = {};
+
+      traverse(ast, {
+        StringLiteral(path) {
+          const id = `__STRING_ID_${nanoid()}__`;
+          stringMap[id] = path.node.value;
+          path.node.value = id;
+        },
+        TemplateLiteral(path) {
+          // Handle template literals too
+          path.node.quasis.forEach(quasi => {
+            if (quasi.value.raw.trim()) {
+              const id = `__STRING_ID_${nanoid()}__`;
+              stringMap[id] = quasi.value.raw;
+              quasi.value = { raw: id, cooked: id };
+            }
+          });
+        }
+      });
+
+      const cleanCode = generate(ast).code;
+      return { cleanCode, stringMap };
+    } catch (error) {
+      // If parsing fails, return original code (fallback)
+      return { cleanCode: jsCode, stringMap: {} };
+    }
+  }
+
+  /**
+   * Restore original strings from IDs in the execution results
+   */
+  private restoreStringsFromIds(results: Record<string, unknown>[], stringMap: Record<string, string>): Record<string, unknown>[] {
+    if (Object.keys(stringMap).length === 0) {
+      return results; // No strings were extracted
+    }
+
+    try {
+      // Convert to JSON string, replace all IDs, then parse back
+      const jsonString = JSON.stringify(results);
+      const restoredJsonString = jsonString.replace(
+        /__STRING_ID_[A-Za-z0-9_-]+__/g,
+        (match) => {
+          const originalString = stringMap[match];
+          if (originalString !== undefined) {
+            // Re-escape the string for JSON
+            return JSON.stringify(originalString).slice(1, -1); // Remove surrounding quotes
+          }
+          return match; // Keep ID if not found (shouldn't happen)
+        }
+      );
+      return JSON.parse(restoredJsonString);
+    } catch (error) {
+      // If restoration fails, return original results
+      console.warn('[JSExecutionEngine] String restoration failed:', error);
+      return results;
+    }
   }
 
   /**

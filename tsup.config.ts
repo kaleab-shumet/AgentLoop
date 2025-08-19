@@ -10,7 +10,7 @@ export default defineConfig([
     clean: true,
     splitting: false,
     treeshake: true,
-    minify: false,
+    minify: true,
     target: 'node16',
     outDir: 'dist',
     outExtension({ format }) {
@@ -34,7 +34,7 @@ export default defineConfig([
     clean: false,
     splitting: false,
     treeshake: false,
-    minify: false,
+    minify: true,
     target: 'node16',
     outDir: 'dist',
     outExtension() {

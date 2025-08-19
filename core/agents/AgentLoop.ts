@@ -58,7 +58,7 @@ export interface AgentLoopOptions {
   failureTolerance?: number;          // 0.0-1.0, percentage of tools that can fail in partial mode
   logger?: Logger;
   maxIterations?: number;
-  toolTimeoutMs?: number;
+  globalToolTimeoutMs?: number;              // Global timeout in ms for all tools (default: -1, disabled. Use negative value to disable timeout)
   toolExecutionRetryAttempts?: number;  // Retry attempts for tool execution errors
   connectionRetryAttempts?: number;     // Retry attempts for connection/parsing errors
   retryDelay?: number;
@@ -124,7 +124,7 @@ export abstract class AgentLoop {
   public setAgentLoopOptions(options: AgentLoopOptions): void {
     this.logger = options.logger ?? console;
     this.maxIterations = options.maxIterations ?? 100;
-    this.toolTimeoutMs = options.toolTimeoutMs ?? 30000;
+    this.toolTimeoutMs = options.globalToolTimeoutMs ?? -1;
     this.toolExecutionRetryAttempts = options.toolExecutionRetryAttempts ?? 5;
     this.connectionRetryAttempts = options.connectionRetryAttempts ?? 5;
     this.retryDelay = options.retryDelay ?? 1000;
@@ -956,22 +956,34 @@ export abstract class AgentLoop {
     await this.hooks.onToolCallStart?.(call);
     const toolTimeout = tool.timeout ?? this.toolTimeoutMs;
 
-    // Create cancellable timeout
-    let timeoutId;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() =>
-        reject(new AgentError(`Tool '${tool.name}' exceeded timeout of ${toolTimeout}ms.`, AgentErrorType.TOOL_TIMEOUT_ERROR, { toolName: tool.name, timeout: toolTimeout })),
-        toolTimeout
-      );
-    });
-
     let result: ToolCall;
     try {
-      // The handler now returns the full ToolResult object directly.
-      const toolCallContext = await Promise.race([
-        tool.handler({ name: tool.name, args: call, turnState }),
-        timeoutPromise,
-      ]);
+      let toolCallContext;
+      
+      // If timeout is negative, disable timeout by running without Promise.race
+      if (toolTimeout < 0) {
+        toolCallContext = await tool.handler({ name: tool.name, args: call, turnState });
+      } else {
+        // Create cancellable timeout
+        let timeoutId;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() =>
+            reject(new AgentError(`Tool '${tool.name}' exceeded timeout of ${toolTimeout}ms.`, AgentErrorType.TOOL_TIMEOUT_ERROR, { toolName: tool.name, timeout: toolTimeout })),
+            toolTimeout
+          );
+        });
+
+        // The handler now returns the full ToolResult object directly.
+        toolCallContext = await Promise.race([
+          tool.handler({ name: tool.name, args: call, turnState }),
+          timeoutPromise,
+        ]);
+        
+        // Clean up timeout to prevent memory leaks
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
 
       result = {
         type: "tool_call",
@@ -988,11 +1000,6 @@ export abstract class AgentLoop {
         taskId,
         timestamp: Date.now().toString(),
         context: errCtx
-      }
-    } finally {
-      // Clean up timeout to prevent memory leaks
-      if (timeoutId) {
-        clearTimeout(timeoutId);
       }
     }
 
@@ -1028,9 +1035,9 @@ export abstract class AgentLoop {
       errors.push(`The argsSchema for tool '${tool.name}' must be a Zod object (e.g., z.object({})).`);
     }
 
-    // Validate timeout
+    // Validate timeout - negative values disable timeout, positive values must not exceed global timeout
     const toolTimeout = tool.timeout ?? this.toolTimeoutMs;
-    if (toolTimeout > this.toolTimeoutMs) {
+    if (toolTimeout > 0 && this.toolTimeoutMs > 0 && toolTimeout > this.toolTimeoutMs) {
       errors.push(`Tool '${tool.name}' timeout (${toolTimeout}ms) exceeds global timeout (${this.toolTimeoutMs}ms).`);
     }
 
@@ -1068,16 +1075,25 @@ export abstract class AgentLoop {
       );
     }
 
-    // Validate timeout - tool timeout cannot exceed global timeout
+    // Validate timeout - negative values disable timeout, positive values cannot exceed global timeout
     const toolTimeout = tool.timeout ?? this.toolTimeoutMs;
-    if (toolTimeout > this.toolTimeoutMs) {
+    if (toolTimeout > 0 && this.toolTimeoutMs > 0 && toolTimeout > this.toolTimeoutMs) {
       this.logger.warn(`[AgentLoop] Tool '${tool.name}' timeout (${toolTimeout}ms) exceeds global timeout (${this.toolTimeoutMs}ms). Using global timeout.`);
     }
 
-    // Set default timeout if not provided and ensure it doesn't exceed global timeout
+    // Set default timeout if not provided, handle negative timeouts (disable), and ensure positive timeouts don't exceed global timeout
+    let finalTimeout: number;
+    if (toolTimeout < 0) {
+      finalTimeout = toolTimeout; // Keep negative value to disable timeout
+    } else if (this.toolTimeoutMs < 0) {
+      finalTimeout = this.toolTimeoutMs; // Use global disabled timeout
+    } else {
+      finalTimeout = Math.min(toolTimeout, this.toolTimeoutMs); // Enforce global limit for positive timeouts
+    }
+
     const toolWithDefaults = {
       ...tool,
-      timeout: Math.min(toolTimeout, this.toolTimeoutMs),
+      timeout: finalTimeout,
       dependencies: tool.dependencies ?? []
     };
 

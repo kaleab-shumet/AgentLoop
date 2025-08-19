@@ -130,6 +130,7 @@ export interface HandlerParams<T extends ZodTypeAny = ZodTypeAny> {
  * Defines the structure for a tool that can be used by the agent.
  */
 export interface Tool<T extends ZodTypeAny = ZodTypeAny> {
+  /** Timeout for tool execution in milliseconds. Use negative value to disable timeout. */
   timeout?: number;
   /** The unique name of the tool. Must not contain spaces or special characters. */
   name: string;
