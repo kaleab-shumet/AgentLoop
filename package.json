@@ -5,6 +5,16 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/index.js",
+    "dist/index.mjs",
+    "dist/index.d.ts",
+    "dist/index.d.mts",
+    "dist/index.js.map",
+    "dist/index.mjs.map",
+    "README.md",
+    "LICENSE"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -15,6 +25,9 @@
   "scripts": {
     "start": "ts-node src/index.ts",
     "build": "tsup",
+    "build:core": "BUILD_TYPE=core tsup --config tsup.config.ts",
+    "build:examples": "BUILD_TYPE=examples tsup --config tsup.config.ts",
+    "build:npm": "npm run build:core",
     "dev": "npm run build && node dist/console.js",
     "dev:watch": "concurrently \"tsup --watch\" \"nodemon --watch dist dist/console.js\"",
     "test": "jest",
@@ -76,10 +89,14 @@
     "zod-to-json-schema": "^3.24.6"
   },
   "peerDependencies": {
-    "ses": "^1.14.0"
+    "ses": "1.14.0",
+    "@jetbrains/websandbox": "1.1.2"
   },
   "peerDependenciesMeta": {
     "ses": {
+      "optional": true
+    },
+    "@jetbrains/websandbox": {
       "optional": true
     }
   }

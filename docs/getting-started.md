@@ -313,10 +313,10 @@ For production environments, add secure code execution:
 
 ```bash
 # For Node.js servers
-npm install ses
+npm install ses@1.14.0
 
 # For browser applications  
-npm install @jetbrains/websandbox
+npm install @jetbrains/websandbox@1.1.2
 ```
 
 Update your agent configuration:

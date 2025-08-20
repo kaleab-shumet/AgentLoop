@@ -291,7 +291,7 @@ const agent = new MyAgent(aiProvider, {
 - 📦 Requires `ses` package
 
 ```typescript
-npm install ses
+npm install ses@1.14.0
 
 // Configure in AgentLoop options
 const agent = new MyAgent(aiProvider, {
@@ -306,7 +306,7 @@ const agent = new MyAgent(aiProvider, {
 - 📦 Requires `@jetbrains/websandbox` package
 
 ```typescript
-npm install @jetbrains/websandbox
+npm install @jetbrains/websandbox@1.1.2
 
 // Configure in AgentLoop options
 const agent = new MyAgent(aiProvider, {
@@ -319,8 +319,8 @@ const agent = new MyAgent(aiProvider, {
 | Configuration | Dependencies |
 |---------------|--------------|
 | `eval` mode   | None (built-in) |
-| `ses` mode    | `npm install ses` |
-| `websandbox` mode | `npm install @jetbrains/websandbox` |
+| `ses` mode    | `npm install ses@1.14.0` |
+| `websandbox` mode | `npm install @jetbrains/websandbox@1.1.2` |
 
 ### Security Mode Validation
 

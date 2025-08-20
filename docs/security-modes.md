@@ -7,8 +7,8 @@ AgentLoop provides three distinct execution modes for JavaScript code execution,
 | Mode | Environment | Security Level | Dependencies | Use Case |
 |------|-------------|----------------|--------------|----------|
 | `eval` | Universal | None | None | Development, trusted environments |
-| `ses` | Node.js | High | `ses` package | Production servers, untrusted code |
-| `websandbox` | Browser | Medium | `@jetbrains/websandbox` | Browser apps, client-side security |
+| `ses` | Node.js | High | `ses@1.14.0` | Production servers, untrusted code |
+| `websandbox` | Browser | Medium | `@jetbrains/websandbox@1.1.2` | Browser apps, client-side security |
 
 ## eval Mode (Default)
 
@@ -46,7 +46,7 @@ SES (Secure ECMAScript) provides secure compartmentalized execution for Node.js 
 
 ### Installation
 ```bash
-npm install ses
+npm install ses@1.14.0
 ```
 
 ### Usage
@@ -101,7 +101,7 @@ WebSandbox provides lightweight sandboxing specifically designed for browser env
 
 ### Installation
 ```bash
-npm install @jetbrains/websandbox
+npm install @jetbrains/websandbox@1.1.2
 ```
 
 ### Usage
@@ -198,8 +198,8 @@ This ensures that AI-generated code with import statements or other restricted s
 | Mode | Startup Time | Execution Speed | Memory Usage | Dependencies |
 |------|-------------|-----------------|--------------|--------------|
 | `eval` | Instant | Fastest | Minimal | None |
-| `ses` | Slow (lockdown) | Medium | High | `ses` package |
-| `websandbox` | Medium | Medium | Medium | `@jetbrains/websandbox` |
+| `ses` | Slow (lockdown) | Medium | High | `ses@1.14.0` |
+| `websandbox` | Medium | Medium | Medium | `@jetbrains/websandbox@1.1.2` |
 
 ## Best Practices
 
