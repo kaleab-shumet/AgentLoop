@@ -48,6 +48,14 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaleab-shumet/AgentLoop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kaleab-shumet/AgentLoop/issues"
+  },
+  "homepage": "https://github.com/kaleab-shumet/AgentLoop#readme",
   "devDependencies": {
     "@jest/globals": "^30.0.4",
     "@types/jest": "^30.0.0",
