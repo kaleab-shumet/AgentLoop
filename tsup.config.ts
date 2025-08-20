@@ -1,8 +1,8 @@
-import { defineConfig } from 'tsup'
+import { defineConfig, type Options } from 'tsup'
 
-const buildType = process.env.BUILD_TYPE || 'all'
+const buildType = process.env.BUILD_TYPE ?? 'all'
 
-const coreConfig = {
+const coreConfig: Options = {
   name: 'core',
   entry: ['core/index.ts'],
   format: ['cjs', 'esm'],
@@ -14,20 +14,20 @@ const coreConfig = {
   minify: true,
   target: 'node16',
   outDir: 'dist',
-  outExtension({ format }) {
+  outExtension({ format }: { format: string }) {
     return {
       js: format === 'cjs' ? '.js' : '.mjs'
     }
   },
-  esbuildOptions(options) {
+  esbuildOptions(options: { logOverride?: Record<string, string> }) {
     // Suppress eval warning - we intentionally use eval() in JSExecutionEngine for secure code execution
     options.logOverride = {
       'direct-eval': 'silent'
     }
   }
-} as const
+}
 
-const examplesConfig = {
+const examplesConfig: Options = {
   name: 'examples',
   entry: ['examples/**/*.ts'],
   format: ['cjs'],
@@ -44,15 +44,15 @@ const examplesConfig = {
       js: '.js'
     }
   },
-  esbuildOptions(options) {
+  esbuildOptions(options: { logOverride?: Record<string, string> }) {
     // Suppress eval warning - we intentionally use eval() in JSExecutionEngine for secure code execution
     options.logOverride = {
       'direct-eval': 'silent'
     }
   }
-} as const
+}
 
-let configs = [coreConfig, examplesConfig]
+let configs: Options[] = [coreConfig, examplesConfig]
 
 if (buildType === 'core') {
   configs = [coreConfig]

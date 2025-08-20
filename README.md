@@ -181,6 +181,12 @@ AgentLoop Framework
 └── Examples (File Manager, Code Editor)
 ```
 
+### Process Flow
+
+![AgentLoop Process Flow](./docs/flowchart.png)
+
+The diagram above illustrates AgentLoop's iterative execution process: receiving user input, building prompts with context and tool schemas, generating and executing JavaScript code through AI providers, validating and executing tools, and feeding results back into the loop until task completion.
+
 ### Key Components
 
 - **AgentLoop**: Main execution engine with stateless design

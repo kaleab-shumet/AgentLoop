@@ -383,7 +383,7 @@ export class JSExecutionEngine {
           callTools();
         `;
 
-        const rawResult = compartment.evaluate(executionCode) as unknown;
+        const rawResult = compartment.evaluate(executionCode);
 
         if (!Array.isArray(rawResult)) {
           throw new AgentError(
