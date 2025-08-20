@@ -1,11 +1,11 @@
 /// <reference path="../types/ses.d.ts" />
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatHandler } from "../types/types";
+import { Tool, PendingToolCall, FormatHandler, JsExecutionMode } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from "zod-to-json-schema";
 import { jsonSchemaToZod } from "json-schema-to-zod";
 import * as beautify from 'js-beautify';
-import { JSExecutionEngine, ExecutionMode } from './JSExecutionEngine';
+import { JSExecutionEngine } from './JSExecutionEngine';
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
@@ -20,7 +20,11 @@ export class LiteralJSFormatHandler implements FormatHandler {
   private readonly executionEngine = new JSExecutionEngine();
   
   // Configurable execution mode - can be switched between 'eval', 'ses', and 'websandbox'
-  public executionMode: ExecutionMode = 'eval';
+  public executionMode: JsExecutionMode = 'eval';
+
+  constructor(jsExecutionMode: JsExecutionMode = 'eval') {
+    this.executionMode = jsExecutionMode;
+  }
 
   // Timeout and execution methods moved to JSExecutionEngine
 

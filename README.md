@@ -17,7 +17,7 @@ AgentLoop is a sophisticated TypeScript framework that enables developers to bui
 
 ### Secure Code Execution
 - **🔒 Multiple Security Modes**: Choose between `eval`, `ses`, or `websandbox` execution
-- **📦 Lightweight Core**: ~158KB minified (without optional security engines)
+- **📦 Lightweight Core**: Minimal bundle impact with optional security engines
 - **🌐 Cross-Platform**: Works in Node.js and browsers
 - **🛡️ Optional Security**: Install SES/WebSandbox only when needed
 
@@ -234,6 +234,7 @@ interface AgentLoopOptions {
   maxIterations?: number;                    // Max reasoning iterations (default: 100)
   parallelExecution?: boolean;              // Run tools in parallel (default: true)
   toolTimeoutMs?: number;                   // Tool execution timeout (default: 30s)
+  jsExecutionMode?: 'eval' | 'ses' | 'websandbox'; // JS execution security mode (default: 'eval')
   stagnationTerminationThreshold?: number;  // Prevent infinite loops (default: 3)
   maxInteractionHistoryCharsLimit?: number; // Memory management (default: 100k)
   sleepBetweenIterationsMs?: number;        // Rate limiting (default: 2s)
@@ -274,48 +275,52 @@ AgentLoop offers three execution modes with different security trade-offs:
 - ✅ Always available, no dependencies
 - ✅ Fast execution, minimal overhead
 - ⚠️ No sandboxing or security isolation
-- 📦 ~158KB bundle size
+- 📦 Minimal bundle impact
 
 ```typescript
-import { LiteralJSFormatHandler } from 'agentloop';
-
-const handler = new LiteralJSFormatHandler();
-handler.executionMode = 'eval'; // Default mode
+// Configure in AgentLoop options (default mode)
+const agent = new MyAgent(aiProvider, {
+  jsExecutionMode: 'eval' // Default mode
+});
 ```
 
 ### `ses` Mode (Node.js Secure)
 - 🔒 Secure compartment isolation with SES
 - 🛡️ Prototype pollution protection
 - 🚫 Import statement restrictions handled automatically
-- 📦 Requires `ses` package (~4.3MB additional)
+- 📦 Requires `ses` package
 
 ```typescript
 npm install ses
 
-const handler = new LiteralJSFormatHandler();
-handler.executionMode = 'ses';
+// Configure in AgentLoop options
+const agent = new MyAgent(aiProvider, {
+  jsExecutionMode: 'ses'
+});
 ```
 
 ### `websandbox` Mode (Browser Secure)
 - 🌐 Browser-friendly lightweight sandboxing
 - ⚡ Isolated execution environment
 - 🔗 API communication between host and sandbox
-- 📦 Requires `@jetbrains/websandbox` package (~100KB additional)
+- 📦 Requires `@jetbrains/websandbox` package
 
 ```typescript
 npm install @jetbrains/websandbox
 
-const handler = new LiteralJSFormatHandler();
-handler.executionMode = 'websandbox';
+// Configure in AgentLoop options
+const agent = new MyAgent(aiProvider, {
+  jsExecutionMode: 'websandbox'
+});
 ```
 
-### Bundle Size Comparison
+### Security Engine Dependencies
 
-| Configuration | Core Size | Security Engine | Total Size |
-|---------------|-----------|----------------|------------|
-| Core only     | ~158KB    | -              | ~158KB     |
-| + SES         | ~158KB    | +4.3MB         | ~4.5MB     |
-| + WebSandbox  | ~158KB    | +~100KB        | ~258KB     |
+| Configuration | Dependencies |
+|---------------|--------------|
+| `eval` mode   | None (built-in) |
+| `ses` mode    | `npm install ses` |
+| `websandbox` mode | `npm install @jetbrains/websandbox` |
 
 ### Security Mode Validation
 

@@ -880,8 +880,6 @@ const result = await agent.run({
 An agent configured for secure production environments:
 
 ```typescript
-import { LiteralJSFormatHandler } from 'agentloop';
-
 class SecureAgent extends AgentLoop {
   constructor() {
     super(new DefaultAIProvider({
@@ -891,23 +889,12 @@ class SecureAgent extends AgentLoop {
     }), {
       globalToolTimeoutMs: 10000, // 10 second timeout
       toolExecutionRetryAttempts: 2,
-      maxIterations: 5
+      maxIterations: 5,
+      // Configure secure execution mode via options
+      jsExecutionMode: process.env.NODE_ENV === 'production' ? 'ses' : 'eval'
     });
 
-    // Configure secure execution mode
-    this.configureSecureExecution();
     this.setupSecureTools();
-  }
-
-  private configureSecureExecution() {
-    const handler = this.getFormatHandler() as LiteralJSFormatHandler;
-    
-    // Use SES in production, eval in development
-    if (process.env.NODE_ENV === 'production') {
-      handler.executionMode = 'ses';
-    } else {
-      handler.executionMode = 'eval';
-    }
   }
 
   private setupSecureTools() {

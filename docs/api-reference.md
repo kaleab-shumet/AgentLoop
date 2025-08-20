@@ -117,6 +117,8 @@ interface AgentLoopOptions {
   parallelExecution?: boolean;
   /** Global timeout in ms for all tools (default: -1, disabled) */
   globalToolTimeoutMs?: number;
+  /** JavaScript execution mode for tool calling (default: 'eval') */
+  jsExecutionMode?: 'eval' | 'ses' | 'websandbox';
   /** Retry attempts for tool execution errors */
   toolExecutionRetryAttempts?: number;
   /** Retry attempts for connection/parsing errors */
@@ -147,10 +149,10 @@ enum FormatMode {
 }
 ```
 
-### Execution Modes
+### JavaScript Execution Modes
 
 ```typescript
-type ExecutionMode = 'eval' | 'ses' | 'websandbox';
+type JsExecutionMode = 'eval' | 'ses' | 'websandbox';
 ```
 
 ## AI Providers
@@ -222,8 +224,10 @@ Handles JavaScript-based tool calling format.
 
 ```typescript
 class LiteralJSFormatHandler implements FormatHandler {
-  /** Configurable execution mode */
-  public executionMode: ExecutionMode = 'eval';
+  /** JavaScript execution mode configured via constructor */
+  public executionMode: JsExecutionMode;
+  
+  constructor(jsExecutionMode?: JsExecutionMode);
   
   /** Format tool definitions for AI consumption */
   formatToolDefinitions(tools: Tool[]): string;
@@ -247,7 +251,7 @@ class JSExecutionEngine {
 }
 
 interface JSExecutionOptions {
-  mode: ExecutionMode;
+  mode: JsExecutionMode;
   timeoutMs?: number;
 }
 ```
@@ -292,14 +296,19 @@ enum AgentErrorType {
 
 ```typescript
 interface AgentLifecycleHooks {
-  onStart?: (params: AgentRunParams) => Promise<void> | void;
-  onEnd?: (result: AgentRunResult) => Promise<void> | void;
-  onError?: (error: AgentError) => Promise<void> | void;
-  onToolCallStart?: (call: PendingToolCall) => Promise<void> | void;
-  onToolCallEnd?: (result: ToolCall) => Promise<void> | void;
-  onIteration?: (iteration: number) => Promise<void> | void;
-  onAIRequest?: (prompt: string) => Promise<void> | void;
-  onAIResponse?: (response: string) => Promise<void> | void;
+  onRunStart?: (input: AgentRunInput) => Promise<void>;
+  onRunEnd?: (output: AgentRunOutput) => Promise<void>;
+  onIterationStart?: (iteration: number) => Promise<void>;
+  onIterationEnd?: (iteration: number, results: ToolCall[]) => Promise<void>;
+  onPromptCreate?: (prompt: string) => Promise<string>; // Can modify the prompt
+  onAIRequestStart?: (prompt: string) => Promise<void>;
+  onAIRequestEnd?: (response: string) => Promise<void>;
+  onToolCallStart?: (call: PendingToolCall) => Promise<void>;
+  onToolCallEnd?: (result: ToolCall) => Promise<void>;
+  onReportData?: (report: string | null, nextTasks: string | null, goal: string | null, iteration: number) => Promise<void>;
+  onStagnationDetected?: (reportText: string, iteration: number) => Promise<void>;
+  onAgentFinalResponse?: (result: AgentResponse) => Promise<void>;
+  onError?: (error: AgentError) => Promise<void>;
 }
 ```
 
@@ -457,15 +466,12 @@ class CustomAIProvider implements AIProvider {
 ### Security Configuration
 
 ```typescript
-import { LiteralJSFormatHandler } from 'agentloop';
-
 class SecureAgent extends AgentLoop {
   constructor() {
-    super(aiProvider, options);
-    
-    // Configure secure execution
-    const handler = this.getFormatHandler() as LiteralJSFormatHandler;
-    handler.executionMode = process.env.NODE_ENV === 'production' ? 'ses' : 'eval';
+    super(aiProvider, {
+      // Configure secure execution via options
+      jsExecutionMode: process.env.NODE_ENV === 'production' ? 'ses' : 'eval'
+    });
   }
 }
 ```

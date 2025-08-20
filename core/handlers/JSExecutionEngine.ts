@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool } from "../types/types";
+import { Tool, JsExecutionMode } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
@@ -7,18 +7,19 @@ import * as t from "@babel/types";
 import generate from "@babel/generator";
 import { nanoid } from "nanoid";
 
-export type ExecutionMode = 'eval' | 'ses' | 'websandbox';
+// Alias for backward compatibility  
+export type ExecutionMode = JsExecutionMode;
 
 // Optional security engine interfaces
 interface SESEngine {
   lockdown: () => void;
-  Compartment: any; // Use any to avoid complex typing issues
+  Compartment: unknown; // Use unknown for better type safety
 }
 
 interface WebSandboxEngine {
-  create: (api?: Record<string, any>) => {
+  create: (api?: Record<string, unknown>) => {
     promise: Promise<{
-      run: (code: string | Function) => any;
+      run: (code: string | Function) => unknown;
       injectStyle?: (css: string) => void;
     }>;
   };
@@ -60,8 +61,8 @@ export class JSExecutionEngine {
     try {
       const sesModule = await import('ses');
       engines.ses = {
-        lockdown: sesModule.lockdown || (globalThis as any).lockdown,
-        Compartment: sesModule.Compartment || (globalThis as any).Compartment
+        lockdown: sesModule.lockdown ?? (globalThis as Record<string, unknown>).lockdown,
+        Compartment: sesModule.Compartment ?? (globalThis as Record<string, unknown>).Compartment
       };
     } catch {
       // SES not available
@@ -69,8 +70,8 @@ export class JSExecutionEngine {
 
     // Try to load WebSandbox (Browser environments)
     try {
-      const wsModule = await Function('return import("@jetbrains/websandbox")')() as any;
-      engines.websandbox = wsModule.default || wsModule;
+      const wsModule = await Function('return import("@jetbrains/websandbox")')();
+      engines.websandbox = wsModule.default ?? wsModule;
     } catch {
       // WebSandbox not available
     }
@@ -357,13 +358,16 @@ export class JSExecutionEngine {
         }
         
         // Initialize SES if not already done
-        await this.initializeSES(engines.ses);
+        this.initializeSES(engines.ses);
 
         // Create secure endowments
         const endowments = this.createSESEndowments(context);
 
         // Create compartment
-        const compartment = new engines.ses.Compartment(endowments);
+        const Compartment = engines.ses.Compartment as new (endowments: Record<string, unknown>) => {
+          evaluate: (code: string) => unknown;
+        };
+        const compartment = new Compartment(endowments);
 
         // Extract only the callTools function body using Babel (strips imports automatically)
         const functionBody = this.extractCallToolsFunctionBody(jsCode);
@@ -468,7 +472,7 @@ export class JSExecutionEngine {
   /**
    * Initialize SES security lockdown (global, runs only once)
    */
-  private async initializeSES(sesEngine: SESEngine): Promise<void> {
+  private initializeSES(sesEngine: SESEngine): void {
     if (!globalSESInitialized) {
       try {
         // Use basic lockdown
@@ -557,7 +561,7 @@ export class JSExecutionEngine {
 
       const cleanCode = generate(ast).code;
       return { cleanCode, stringMap };
-    } catch (error) {
+    } catch {
       // If parsing fails, return original code (fallback)
       return { cleanCode: jsCode, stringMap: {} };
     }

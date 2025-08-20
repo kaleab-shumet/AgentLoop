@@ -18,7 +18,8 @@ import {
   UserPrompt,
   BuildPromptParams,
   ConversationEntry,
-  TokenUsage
+  TokenUsage,
+  JsExecutionMode
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
@@ -34,11 +35,15 @@ import { PromptManager, PromptManagerConfig } from '../prompt/PromptManager';
 export interface AgentLifecycleHooks {
   onRunStart?: (input: AgentRunInput) => Promise<void>;
   onRunEnd?: (output: AgentRunOutput) => Promise<void>;
+  onIterationStart?: (iteration: number) => Promise<void>;
+  onIterationEnd?: (iteration: number, results: ToolCall[]) => Promise<void>;
   onPromptCreate?: (prompt: string) => Promise<string>; // Can modify the prompt
   onAIRequestStart?: (prompt: string) => Promise<void>;
   onAIRequestEnd?: (response: string) => Promise<void>;
   onToolCallStart?: (call: PendingToolCall) => Promise<void>;
   onToolCallEnd?: (result: ToolCall) => Promise<void>; // Replaces onToolCallSuccess and onToolCallFail
+  onReportData?: (report: string | null, nextTasks: string | null, goal: string | null, iteration: number) => Promise<void>;
+  onStagnationDetected?: (reportText: string, iteration: number) => Promise<void>;
   onAgentFinalResponse?: (result: AgentResponse) => Promise<void>;
   onError?: (error: AgentError) => Promise<void>;
 }
@@ -64,6 +69,7 @@ export interface AgentLoopOptions {
   retryDelay?: number;
   hooks?: AgentLifecycleHooks;
   formatMode?: FormatMode;
+  jsExecutionMode?: JsExecutionMode;   // JavaScript execution mode for tool calling (default: 'eval')
   promptManager?: PromptManager;
   promptManagerConfig?: PromptManagerConfig;
   sleepBetweenIterationsMs?: number;
@@ -112,7 +118,10 @@ export abstract class AgentLoop {
 
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
-    this.aiDataHandler = new AIDataHandler(options.formatMode ?? FormatMode.LITERAL_JS);
+    this.aiDataHandler = new AIDataHandler(
+      options.formatMode ?? FormatMode.LITERAL_JS, 
+      options.jsExecutionMode ?? 'eval'
+    );
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
   }
@@ -138,9 +147,12 @@ export abstract class AgentLoop {
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold ?? 3;
     this.maxInteractionHistoryCharsLimit = options.maxInteractionHistoryCharsLimit ?? 100000;
 
-    // Update AIDataHandler when format mode changes
-    if (options.formatMode) {
-      this.aiDataHandler = new AIDataHandler(this.formatMode);
+    // Update AIDataHandler when format mode or execution mode changes
+    if (options.formatMode || options.jsExecutionMode) {
+      this.aiDataHandler = new AIDataHandler(
+        this.formatMode, 
+        options.jsExecutionMode ?? 'eval'
+      );
     }
 
     // Initialize ErrorHandler
@@ -409,6 +421,12 @@ export abstract class AgentLoop {
       this.initializeFinalTool();
       this.initializeSelfReasoningTool();
       for (let i = 0; i < this.maxIterations; i++) {
+        let iterationResults: ToolCall[] = [];
+
+        // Call iteration start hook
+        if (this.hooks.onIterationStart) {
+          await this.hooks.onIterationStart(i + 1);
+        }
 
         try {
 
@@ -450,7 +468,7 @@ export abstract class AgentLoop {
           connectionRetryCount = 0; // Reset retries on successful LLM response
 
           // executeToolCalls now directly adds results to toolCallHistory
-          const iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
+          iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
           // Process tool results and extract NEXT commands from reports
           const toolResultData = this.processToolResults(iterationResults);
@@ -462,6 +480,11 @@ export abstract class AgentLoop {
             nextTasks = null;
             goal = null;
             report = null;
+          }
+
+          // Call hook with report data
+          if (this.hooks.onReportData) {
+            await this.hooks.onReportData(report, nextTasks, goal, i + 1);
           }
 
           // Handle report creation for both regular tools and final tool
@@ -487,6 +510,10 @@ export abstract class AgentLoop {
             );
 
             if (stagnationError) {
+              // Call stagnation hook before throwing
+              if (this.hooks.onStagnationDetected) {
+                await this.hooks.onStagnationDetected(reportText, i + 1);
+              }
               // Throw stagnation error to be handled by catch block
               throw stagnationError;
             }
@@ -627,6 +654,11 @@ export abstract class AgentLoop {
           } else {
             this.logger.error(`[AgentLoop] System error: ${errorResult.errorString}`);
           }
+        }
+
+        // Call iteration end hook
+        if (this.hooks.onIterationEnd) {
+          await this.hooks.onIterationEnd(i + 1, iterationResults);
         }
 
         await this.sleep(this.sleepBetweenIterationsMs);

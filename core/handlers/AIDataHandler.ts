@@ -1,5 +1,5 @@
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatMode, FormatHandler } from "../types/types";
+import { Tool, PendingToolCall, FormatMode, FormatHandler, JsExecutionMode } from "../types/types";
 import { FormatHandlerFactory } from "./FormatHandlerFactory";
 
 /**
@@ -8,8 +8,8 @@ import { FormatHandlerFactory } from "./FormatHandlerFactory";
 export class AIDataHandler {
   private formatHandler: FormatHandler;
 
-  constructor(formatMode: FormatMode = FormatMode.LITERAL_JS) {
-    this.formatHandler = FormatHandlerFactory.getHandler(formatMode);
+  constructor(formatMode: FormatMode = FormatMode.LITERAL_JS, jsExecutionMode: JsExecutionMode = 'eval') {
+    this.formatHandler = FormatHandlerFactory.getHandler(formatMode, jsExecutionMode);
   }
 
   async parseAndValidate(aiResponse: string, tools: Tool<ZodTypeAny>[]): Promise<PendingToolCall[]> {

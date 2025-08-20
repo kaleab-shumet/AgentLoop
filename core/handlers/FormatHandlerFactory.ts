@@ -1,4 +1,4 @@
-import { FormatMode, FormatHandler } from "../types/types";
+import { FormatMode, FormatHandler, JsExecutionMode } from "../types/types";
 import { LiteralJSFormatHandler } from "./LiteralJSFormatHandler";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 
@@ -6,17 +6,32 @@ import { AgentError, AgentErrorType } from "../utils/AgentError";
  * Factory for creating response handlers - only LiteralJS mode is supported
  */
 export class FormatHandlerFactory {
-  private static handlers: Map<FormatMode, FormatHandler> = new Map();
+  private static handlers: Map<string, FormatHandler> = new Map();
 
   /**
-   * Get response handler for the specified format mode
+   * Get response handler for the specified format mode and execution mode
    */
-  static getHandler(mode: FormatMode): FormatHandler {
+  static getHandler(mode: FormatMode, jsExecutionMode: JsExecutionMode = 'eval'): FormatHandler {
+    // For LiteralJS mode, create handler with execution mode
+    if (mode === FormatMode.LITERAL_JS) {
+      const key = `${mode}-${jsExecutionMode}`;
+      
+      if (!this.handlers.has(key)) {
+        this.handlers.set(key, new LiteralJSFormatHandler(jsExecutionMode));
+      }
+      const handler = this.handlers.get(key);
+      if (!handler) {
+        throw new AgentError(
+          `[ResponseHandlerFactory] Failed to retrieve handler for mode: ${mode}`,
+          AgentErrorType.CONFIGURATION_ERROR
+        );
+      }
+      return handler;
+    }
+    
+    // For other modes, ignore jsExecutionMode
     if (!this.handlers.has(mode)) {
       switch (mode) {
-        case FormatMode.LITERAL_JS:
-          this.handlers.set(mode, new LiteralJSFormatHandler());
-          break;
         default:
           throw new AgentError(
             `[ResponseHandlerFactory] Unsupported format mode: ${mode}`,

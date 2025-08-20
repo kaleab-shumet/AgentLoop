@@ -322,15 +322,12 @@ npm install @jetbrains/websandbox
 Update your agent configuration:
 
 ```typescript
-import { LiteralJSFormatHandler } from 'agentloop';
-
 class SecureAgent extends MyFirstAgent {
   constructor() {
-    super(/* ... same config ... */);
-    
-    // Enable secure execution
-    const handler = this.getFormatHandler() as LiteralJSFormatHandler;
-    handler.executionMode = 'ses'; // or 'websandbox' for browsers
+    super(/* ... same ai provider config ... */, {
+      // Enable secure execution via options
+      jsExecutionMode: 'ses' // or 'websandbox' for browsers
+    });
   }
 }
 ```

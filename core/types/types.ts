@@ -143,6 +143,11 @@ export interface Tool<T extends ZodTypeAny = ZodTypeAny> {
   handler: (params: HandlerParams<ZodTypeAny>) => ToolCallContext | Promise<ToolCallContext>;
 }
 
+/**
+ * JavaScript execution modes for tool calling
+ */
+export type JsExecutionMode = 'eval' | 'ses' | 'websandbox';
+
 // Essential types only
 export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'groq' | 'perplexity' | 'azure';
 
@@ -161,7 +166,8 @@ export interface AIConfig {
   max_tokens?: number;
   /** Base URL for the service (required for Azure) */
   baseURL?: string;
-
+  /** API version for Azure OpenAI (optional, defaults to latest) */
+  apiVersion?: string;
 }
 
 

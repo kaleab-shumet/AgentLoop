@@ -157,7 +157,7 @@ export class DefaultAIProvider implements AIProvider {
                 const azure = createAzure({
                     apiKey: this.config.apiKey,
                     resourceName: this.config.baseURL, // baseURL now contains just the resource name
-                    apiVersion: '2024-10-01-preview'
+                    apiVersion: this.config.apiVersion
                 });
                 return azure(modelName);
             default:

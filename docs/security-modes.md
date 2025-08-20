@@ -4,11 +4,11 @@ AgentLoop provides three distinct execution modes for JavaScript code execution,
 
 ## Overview
 
-| Mode | Environment | Security Level | Bundle Impact | Use Case |
-|------|-------------|----------------|---------------|----------|
-| `eval` | Universal | None | Minimal (~158KB) | Development, trusted environments |
-| `ses` | Node.js | High | Large (+4.3MB) | Production servers, untrusted code |
-| `websandbox` | Browser | Medium | Small (+~100KB) | Browser apps, client-side security |
+| Mode | Environment | Security Level | Dependencies | Use Case |
+|------|-------------|----------------|--------------|----------|
+| `eval` | Universal | None | None | Development, trusted environments |
+| `ses` | Node.js | High | `ses` package | Production servers, untrusted code |
+| `websandbox` | Browser | Medium | `@jetbrains/websandbox` | Browser apps, client-side security |
 
 ## eval Mode (Default)
 
@@ -17,22 +17,21 @@ The default execution mode uses JavaScript's native `eval()` function for code e
 ### Characteristics
 - ✅ **Universal**: Works in all JavaScript environments
 - ✅ **Fast**: Direct code execution with minimal overhead
-- ✅ **Small**: No additional dependencies or bundle size
+- ✅ **No Dependencies**: Built into JavaScript, no additional packages
 - ⚠️ **No Security**: Direct access to global scope and APIs
 
 ### Usage
 ```typescript
-import { LiteralJSFormatHandler } from 'agentloop';
-
-const handler = new LiteralJSFormatHandler();
-// eval mode is the default
-console.log(handler.executionMode); // 'eval'
+// Configure in AgentLoop options (eval is default)
+const agent = new MyAgent(aiProvider, {
+  jsExecutionMode: 'eval' // Default mode - no need to specify
+});
 ```
 
 ### When to Use
 - Development and testing environments
 - Trusted code execution environments
-- When bundle size is critical
+- When no additional dependencies are desired
 - When maximum performance is needed
 
 ## SES Mode (Secure ECMAScript)
@@ -43,7 +42,7 @@ SES (Secure ECMAScript) provides secure compartmentalized execution for Node.js 
 - 🔒 **Secure Compartments**: Code executes in isolated compartments
 - 🛡️ **Prototype Protection**: Prevents prototype pollution attacks
 - 🚫 **Restricted Globals**: Limited access to dangerous APIs
-- 📦 **Large Bundle**: Adds ~4.3MB to bundle size
+- 📦 **Additional Dependency**: Requires `ses` package
 
 ### Installation
 ```bash
@@ -52,10 +51,10 @@ npm install ses
 
 ### Usage
 ```typescript
-import { LiteralJSFormatHandler } from 'agentloop';
-
-const handler = new LiteralJSFormatHandler();
-handler.executionMode = 'ses';
+// Configure in AgentLoop options
+const agent = new MyAgent(aiProvider, {
+  jsExecutionMode: 'ses'
+});
 ```
 
 ### Security Features
@@ -96,7 +95,7 @@ WebSandbox provides lightweight sandboxing specifically designed for browser env
 
 ### Characteristics
 - 🌐 **Browser Native**: Designed for browser execution
-- ⚡ **Lightweight**: Small bundle size impact (~100KB)
+- ⚡ **Lightweight**: Minimal performance overhead
 - 🔗 **API Communication**: Bidirectional communication between host and sandbox
 - 🎯 **Targeted Security**: Browser-specific security model
 
@@ -107,10 +106,10 @@ npm install @jetbrains/websandbox
 
 ### Usage
 ```typescript
-import { LiteralJSFormatHandler } from 'agentloop';
-
-const handler = new LiteralJSFormatHandler();
-handler.executionMode = 'websandbox';
+// Configure in AgentLoop options
+const agent = new MyAgent(aiProvider, {
+  jsExecutionMode: 'websandbox'
+});
 ```
 
 ### Technical Implementation
@@ -133,7 +132,7 @@ const result = sandbox.run(executionFunction);
 - Browser-based applications
 - Client-side AI agent execution
 - When SES is not available (browser environment)
-- Applications requiring moderate security with small overhead
+- Applications requiring moderate security with minimal setup
 
 ## Security Mode Validation
 
@@ -141,15 +140,15 @@ AgentLoop enforces strict mode validation with **no automatic fallbacks**:
 
 ```typescript
 // ✅ Always works
-handler.executionMode = 'eval';
+const agent = new MyAgent(aiProvider, { jsExecutionMode: 'eval' });
 
 // ❌ Throws error if package not installed
-handler.executionMode = 'ses';
+const agent = new MyAgent(aiProvider, { jsExecutionMode: 'ses' });
 // AgentError: "SES execution mode requested but SES is not installed. 
 //              Install 'ses' package or use mode: 'eval'"
 
 // ❌ Throws error if not available
-handler.executionMode = 'websandbox'; 
+const agent = new MyAgent(aiProvider, { jsExecutionMode: 'websandbox' }); 
 // AgentError: "WebSandbox execution mode requested but WebSandbox is not installed.
 //              Install '@jetbrains/websandbox' package or use mode: 'eval'"
 ```
@@ -196,11 +195,11 @@ This ensures that AI-generated code with import statements or other restricted s
 
 ## Performance Comparison
 
-| Mode | Startup Time | Execution Speed | Memory Usage | Bundle Size |
-|------|-------------|-----------------|--------------|-------------|
-| `eval` | Instant | Fastest | Minimal | ~158KB |
-| `ses` | Slow (lockdown) | Medium | High | ~4.5MB |
-| `websandbox` | Medium | Medium | Medium | ~258KB |
+| Mode | Startup Time | Execution Speed | Memory Usage | Dependencies |
+|------|-------------|-----------------|--------------|--------------|
+| `eval` | Instant | Fastest | Minimal | None |
+| `ses` | Slow (lockdown) | Medium | High | `ses` package |
+| `websandbox` | Medium | Medium | Medium | `@jetbrains/websandbox` |
 
 ## Best Practices
 
@@ -221,6 +220,7 @@ This ensures that AI-generated code with import statements or other restricted s
 
 ```typescript
 // Environment-based configuration
-const handler = new LiteralJSFormatHandler();
-handler.executionMode = process.env.NODE_ENV === 'production' ? 'ses' : 'eval';
+const agent = new MyAgent(aiProvider, {
+  jsExecutionMode: process.env.NODE_ENV === 'production' ? 'ses' : 'eval'
+});
 ```
