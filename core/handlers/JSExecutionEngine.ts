@@ -1,10 +1,9 @@
 import { z, ZodTypeAny } from "zod";
 import { Tool, JsExecutionMode } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
-import { parse } from "@babel/parser";
-import traverse from "@babel/traverse";
-import * as t from "@babel/types";
-import generate from "@babel/generator";
+import { parse } from "acorn";
+import { simple as walkSimple } from "acorn-walk";
+import { generate } from "escodegen";
 import { nanoid } from "nanoid";
 
 // Alias for backward compatibility  
@@ -136,27 +135,25 @@ export class JSExecutionEngine {
   }
 
   /**
-   * Extract the body of the callTools function using Babel AST parser
+   * Extract the body of the callTools function using Acorn AST parser
    */
   private extractCallToolsFunctionBody(jsCode: string): string {
     try {
       // Parse the JavaScript code into an AST
       const ast = parse(jsCode, {
-        sourceType: "module",
-        allowImportExportEverywhere: true,
-        allowReturnOutsideFunction: true,
-        plugins: ["jsx", "typescript"]
+        ecmaVersion: 2022,
+        sourceType: "module"
       });
 
       let callToolsFunctionBody: string | null = null;
 
       // Traverse the AST to find the callTools function
-      traverse(ast, {
-        FunctionDeclaration(path) {
-          if (t.isIdentifier(path.node.id) && path.node.id.name === "callTools") {
+      walkSimple(ast, {
+        FunctionDeclaration(node: any) {
+          if (node.id && node.id.type === "Identifier" && node.id.name === "callTools") {
             // Extract the function body as source code
-            const body = path.node.body;
-            if (t.isBlockStatement(body)) {
+            const body = node.body;
+            if (body && body.type === "BlockStatement") {
               // Get the source location of the function body
               const start = body.start;
               const end = body.end;
@@ -531,33 +528,36 @@ export class JSExecutionEngine {
   private extractStringsToIds(jsCode: string): { cleanCode: string; stringMap: Record<string, string> } {
     try {
       const ast = parse(jsCode, {
-        sourceType: "module",
-        allowImportExportEverywhere: true,
-        allowReturnOutsideFunction: true,
-        plugins: ["jsx", "typescript"]
+        ecmaVersion: 2022,
+        sourceType: "module"
       });
 
       const stringMap: Record<string, string> = {};
 
-      traverse(ast, {
-        StringLiteral(path) {
-          const id = `__STRING_ID_${nanoid()}__`;
-          stringMap[id] = path.node.value;
-          path.node.value = id;
+      walkSimple(ast, {
+        Literal(node: any) {
+          if (typeof node.value === "string") {
+            const id = `__STRING_ID_${nanoid()}__`;
+            stringMap[id] = node.value;
+            node.value = id;
+            node.raw = `"${id}"`;
+          }
         },
-        TemplateLiteral(path) {
+        TemplateLiteral(node: any) {
           // Handle template literals too
-          path.node.quasis.forEach(quasi => {
-            if (quasi.value.raw.trim()) {
-              const id = `__STRING_ID_${nanoid()}__`;
-              stringMap[id] = quasi.value.raw;
-              quasi.value = { raw: id, cooked: id };
-            }
-          });
+          if (node.quasis) {
+            node.quasis.forEach((quasi: any) => {
+              if (quasi.value?.raw?.trim()) {
+                const id = `__STRING_ID_${nanoid()}__`;
+                stringMap[id] = quasi.value.raw;
+                quasi.value = { raw: id, cooked: id };
+              }
+            });
+          }
         }
       });
 
-      const cleanCode = generate(ast).code;
+      const cleanCode = generate(ast);
       return { cleanCode, stringMap };
     } catch {
       // If parsing fails, return original code (fallback)
