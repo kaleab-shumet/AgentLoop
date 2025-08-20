@@ -334,10 +334,10 @@ class SecureAgent extends MyFirstAgent {
 
 ## Next Steps
 
-1. **Read the [Tool Development Guide](./tool-development.md)** to create more sophisticated tools
+1. **Read the [Tool Development Guide](./tool-development.md)** to create additional tools
 2. **Explore [Security Modes](./security-modes.md)** to understand execution options
 3. **Check out [Examples](./examples.md)** for real-world use cases
-4. **Review [API Reference](./api-reference.md)** for advanced configuration
+4. **Review [API Reference](./api-reference.md)** for additional configuration options
 
 ## Common Issues
 

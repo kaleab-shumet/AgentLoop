@@ -144,7 +144,6 @@ interface AgentLoopOptions {
 
 ```typescript
 enum FormatMode {
-  JSOBJECT = 'jsobject',
   LITERAL_JS = 'literaljs'
 }
 ```

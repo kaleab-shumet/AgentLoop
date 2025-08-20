@@ -311,7 +311,7 @@ export abstract class AgentLoop {
    * Get default prompt manager configuration based on execution mode
    */
   private getDefaultPromptManagerConfig(): PromptManagerConfig {
-    // Only JSOBJECT format is supported
+    // Only LITERAL_JS format is supported
     const responseFormat = FormatMode.LITERAL_JS;
 
     return {
