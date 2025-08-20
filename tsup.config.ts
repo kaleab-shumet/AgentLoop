@@ -7,7 +7,7 @@ const coreConfig: Options = {
   entry: ['core/index.ts'],
   format: ['cjs', 'esm'],
   dts: true,
-  sourcemap: true,
+  sourcemap: false,
   clean: true,
   splitting: false,
   treeshake: true,

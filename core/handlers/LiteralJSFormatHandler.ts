@@ -6,9 +6,8 @@ import zodToJsonSchema from "zod-to-json-schema";
 import { jsonSchemaToZod } from "json-schema-to-zod";
 import * as beautify from 'js-beautify';
 import { JSExecutionEngine } from './JSExecutionEngine';
-import { parse } from "@babel/parser";
-import traverse from "@babel/traverse";
-import * as t from "@babel/types";
+import { parse } from "acorn";
+import { simple as walkSimple } from "acorn-walk";
 
 /**
  * Handles Literal+JavaScript response format for tool calls
@@ -200,27 +199,25 @@ ${beautifiedSchema}`;
   }
 
   /**
-   * Extract function from text using Babel AST parser
+   * Extract function from text using Acorn AST parser
    */
   private extractFunctionFromText(text: string): string | null {
     try {
       // Parse the JavaScript code into an AST
       const ast = parse(text, {
-        sourceType: "module",
-        allowImportExportEverywhere: true,
-        allowReturnOutsideFunction: true,
-        plugins: ["jsx", "typescript"]
+        ecmaVersion: 2022,
+        sourceType: "module"
       });
 
       let callToolsFunction: string | null = null;
 
       // Traverse the AST to find the callTools function
-      traverse(ast, {
-        FunctionDeclaration(path) {
-          if (t.isIdentifier(path.node.id) && path.node.id.name === "callTools") {
+      walkSimple(ast, {
+        FunctionDeclaration(node: any): void {
+          if (node.id && node.id.name === "callTools") {
             // Extract the entire function as source code
-            const start = path.node.start;
-            const end = path.node.end;
+            const start = node.start;
+            const end = node.end;
             if (start !== null && start !== undefined && end !== null && end !== undefined) {
               callToolsFunction = text.substring(start, end);
             }
