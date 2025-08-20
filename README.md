@@ -187,32 +187,127 @@ The diagram above illustrates AgentLoop's iterative execution process: receiving
 
 ## 📋 Examples
 
-### Code Editor Agent  
+### File Management Agent
 ```typescript
-import { AgentLoop, DefaultAIProvider, FormatMode } from 'agentloop';
+import { AgentLoop } from 'agentloop';
+import { DefaultAIProvider } from 'agentloop/providers';
+import { z } from 'zod';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
-class CodeEditorAgent extends AgentLoop {
-  constructor(basePath: string = process.cwd()) {
+class FileManagerAgent extends AgentLoop {
+  protected systemPrompt = "You are a helpful file management assistant. Help users read, write, and organize files safely.";
+
+  constructor(private basePath: string = process.cwd()) {
     super(new DefaultAIProvider({
       service: 'openai',
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: process.env.OPENAI_API_KEY!,
       model: 'gpt-4'
-    }), {
-      formatMode: FormatMode.LITERAL_JS,
-      maxIterations: 50
-    });
-    
-    this.setupFileTools(basePath);
+    }));
+
+    this.setupTools();
   }
-  
-  private setupFileTools(basePath: string) {
-    // Add code editor tools here
+
+  private setupTools() {
+    this.defineTool(z => ({
+      name: 'read_file',
+      description: 'Read the contents of a file',
+      argsSchema: z.object({
+        filepath: z.string().describe('Path to the file to read')
+      }),
+      handler: async ({ args }) => {
+        try {
+          const fullPath = path.resolve(this.basePath, args.filepath);
+          const content = await fs.readFile(fullPath, 'utf8');
+          const stats = await fs.stat(fullPath);
+          return { 
+            content, 
+            filepath: args.filepath,
+            size: stats.size,
+            success: true 
+          };
+        } catch (error) {
+          return { 
+            error: error.message, 
+            success: false 
+          };
+        }
+      }
+    }));
+
+    this.defineTool(z => ({
+      name: 'write_file',
+      description: 'Write content to a file',
+      argsSchema: z.object({
+        filepath: z.string().describe('Path to the file to write'),
+        content: z.string().describe('Content to write to the file')
+      }),
+      handler: async ({ args }) => {
+        try {
+          const fullPath = path.resolve(this.basePath, args.filepath);
+          await fs.mkdir(path.dirname(fullPath), { recursive: true });
+          await fs.writeFile(fullPath, args.content);
+          
+          return { 
+            filepath: args.filepath,
+            bytesWritten: Buffer.byteLength(args.content, 'utf8'),
+            success: true 
+          };
+        } catch (error) {
+          return { 
+            error: error.message, 
+            success: false 
+          };
+        }
+      }
+    }));
+
+    this.defineTool(z => ({
+      name: 'list_directory',
+      description: 'List files and directories in a path',
+      argsSchema: z.object({
+        dirpath: z.string().optional().describe('Directory path (default: current directory)')
+      }),
+      handler: async ({ args }) => {
+        try {
+          const fullPath = path.resolve(this.basePath, args.dirpath || '.');
+          const entries = await fs.readdir(fullPath, { withFileTypes: true });
+          
+          const items = entries.map(entry => ({
+            name: entry.name,
+            type: entry.isDirectory() ? 'directory' : 'file'
+          }));
+
+          return { 
+            path: args.dirpath || '.',
+            items,
+            count: items.length,
+            success: true 
+          };
+        } catch (error) {
+          return { 
+            error: error.message, 
+            success: false 
+          };
+        }
+      }
+    }));
+
+    this.defineTool(z => ({
+      name: 'final_response',
+      description: 'Provide the final response to the user',
+      argsSchema: z.object({
+        message: z.string().describe('Final message to the user')
+      }),
+      handler: async ({ args }) => ({ message: args.message, final: true })
+    }));
   }
 }
 
-const agent = new CodeEditorAgent();
+// Usage
+const agent = new FileManagerAgent('/project/path');
 const result = await agent.run({
-  userPrompt: "Create a new React component called Button",
+  userPrompt: "List all files in the src directory, read package.json, and create a project-info.md file with a summary of the project structure and dependencies",
   prevInteractionHistory: []
 });
 ```
