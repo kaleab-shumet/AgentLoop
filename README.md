@@ -2,7 +2,9 @@
 
 > **A Production-Ready Framework for Building Tool-Using AI Agents**
 
-AgentLoop is a sophisticated TypeScript framework that enables developers to build reliable, scalable AI agents capable of executing complex tool chains. With support for 10+ AI providers, innovative JavaScript-based tool calling, and enterprise-grade error handling, AgentLoop abstracts away the complexity of multi-step AI workflows while maintaining full type safety and extensibility.
+AgentLoop is a sophisticated TypeScript framework that enables developers to build scalable AI agents capable of executing complex tool chains. With support for 10+ AI providers, innovative JavaScript-based tool calling, and enterprise-grade error handling, AgentLoop abstracts away the complexity of multi-step AI workflows while maintaining full type safety and extensibility.
+
+**Note:** AgentLoop uses JavaScript-based tool calling instead of traditional function calling APIs. AI models generate JavaScript code that calls tools, providing more flexibility and control over execution flow.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
@@ -168,19 +170,6 @@ const agent = new MyAgent({
 
 ## 🏗️ Architecture
 
-AgentLoop follows a modular, plugin-based architecture:
-
-```
-AgentLoop Framework
-├── Core Engine (AgentLoop)
-├── AI Providers (OpenAI, Gemini, Claude, etc.)
-├── Format Handlers (JavaScript, Function Calling)
-├── Prompt Management (Templates, Context)
-├── Tool System (Validation, Dependencies)
-├── Error Handling (Retry, Recovery)
-└── Examples (File Manager, Code Editor)
-```
-
 ### Process Flow
 
 ![AgentLoop Process Flow](./docs/flowchart.png)
@@ -198,38 +187,47 @@ The diagram above illustrates AgentLoop's iterative execution process: receiving
 
 ## 📋 Examples
 
-### File Management Agent
+### Code Editor Agent  
 ```typescript
-import { FileManagerAgent } from 'agentloop/examples';
+import { AgentLoop, DefaultAIProvider, FormatMode } from 'agentloop';
 
-const agent = new FileManagerAgent('/project/path');
+class CodeEditorAgent extends AgentLoop {
+  constructor(basePath: string = process.cwd()) {
+    super(new DefaultAIProvider({
+      service: 'openai',
+      apiKey: process.env.OPENAI_API_KEY,
+      model: 'gpt-4'
+    }), {
+      formatMode: FormatMode.LITERAL_JS,
+      maxIterations: 50
+    });
+    
+    this.setupFileTools(basePath);
+  }
+  
+  private setupFileTools(basePath: string) {
+    // Add code editor tools here
+  }
+}
+
+const agent = new CodeEditorAgent();
 const result = await agent.run({
   userPrompt: "Create a new React component called Button",
   prevInteractionHistory: []
 });
 ```
 
-### Code Editor Agent  
-```typescript
-import { CodeEditorAgent } from 'agentloop/examples';
-
-const agent = new CodeEditorAgent();
-const result = await agent.run({
-  userPrompt: "Initialize a Node.js project and install dependencies",
-  prevInteractionHistory: []
-});
-```
-
-### Interactive Console
+### Development Scripts
 ```bash
-# Run file manager
-npm run file-manager
+# Build and run examples
+npm run build:examples
+node dist/console.js
 
-# Run code editor
-npm run code-editor
+# Run code editor demo
+npm run demo:codeeditor
 
-# Run custom demo
-npm run demo
+# Development with watch mode
+npm run dev:watch
 ```
 
 ## ⚙️ Configuration
@@ -444,4 +442,4 @@ This project is licensed under the ISC License - see the [LICENSE](LICENSE) file
 
 ---
 
-**AgentLoop** - Build Reliable AI Agents That Get Things Done
+**AgentLoop** - Build AI Agents That Get Things Done

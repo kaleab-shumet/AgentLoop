@@ -1,6 +1,6 @@
 {
   "name": "agentloop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -43,11 +43,19 @@
     "type-check": "tsc --noEmit",
     "check": "npm run type-check && npm run lint",
     "prepublish": "npm run check && npm run clean && npm run build",
-    "demo:file": "npm run build && node dist/examples/FileManagementAgent.js"
+    "demo:codeeditor": "npm run build:examples && node dist/demo.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaleab-shumet/AgentLoop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kaleab-shumet/AgentLoop/issues"
+  },
+  "homepage": "https://github.com/kaleab-shumet/AgentLoop#readme",
   "devDependencies": {
     "@jest/globals": "^30.0.4",
     "@types/jest": "^30.0.0",
