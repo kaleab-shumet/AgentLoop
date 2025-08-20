@@ -58,7 +58,7 @@ export class JSExecutionEngine {
 
     // Try to load SES (Node.js environments)
     try {
-      const sesModule = await import('ses');
+      const sesModule = await Function('return import("ses")')();
       engines.ses = {
         lockdown: sesModule.lockdown ?? (globalThis as Record<string, unknown>).lockdown,
         Compartment: sesModule.Compartment ?? (globalThis as Record<string, unknown>).Compartment
