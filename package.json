@@ -43,7 +43,7 @@
     "type-check": "tsc --noEmit",
     "check": "npm run type-check && npm run lint",
     "prepublish": "npm run check && npm run clean && npm run build",
-    "demo:file": "npm run build && node dist/examples/FileManagementAgent.js"
+    "demo:codeeditor": "npm run build:examples && node dist/demo.js"
   },
   "keywords": [],
   "author": "",
