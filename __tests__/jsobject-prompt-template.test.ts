@@ -177,7 +177,7 @@ describe('DefaultPromptTemplate JSObject Format', () => {
       expect(jsObjectPrompt).toContain('JAVASCRIPT \'callTools\' FUNCTION');
       expect(jsObjectPrompt).toContain('function callTools()');
 
-      // Only JSOBJECT format is supported now
+      // Only LITERAL_JS format is supported now
       template.setResponseFormat(FormatMode.LITERAL_JS);
       const jsObjectPrompt2 = template.buildPrompt(params);
       expect(jsObjectPrompt2).toContain('callTools');

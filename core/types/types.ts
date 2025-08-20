@@ -3,7 +3,7 @@ import { TurnState } from "../agents/TurnState";
 import { AgentError } from "../utils/AgentError";
 
 /**
- * Format mode for the agent - only JSObject mode is supported
+ * Format mode for the agent - only LITERAL_JS mode is supported
  */
 export enum FormatMode {
   LITERAL_JS = "literal_js"

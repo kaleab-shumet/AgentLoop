@@ -531,7 +531,7 @@ app.listen(port, () => {
 }
 ```
 
-## Advanced Examples
+## Additional Examples
 
 ### Code Analysis Agent
 

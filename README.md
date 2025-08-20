@@ -1,8 +1,8 @@
 # AgentLoop
 
-> **A Production-Ready Framework for Building Tool-Using AI Agents**
+> **A TypeScript Framework for Building Tool-Using AI Agents**
 
-AgentLoop is a sophisticated TypeScript framework that enables developers to build scalable AI agents capable of executing complex tool chains. With support for 10+ AI providers, innovative JavaScript-based tool calling, and enterprise-grade error handling, AgentLoop abstracts away the complexity of multi-step AI workflows while maintaining full type safety and extensibility.
+AgentLoop is a TypeScript framework that enables developers to build AI agents capable of executing complex tool chains. With support for 10+ AI providers, JavaScript-based tool calling, and error handling, AgentLoop abstracts away the complexity of multi-step AI workflows while maintaining full type safety and extensibility.
 
 **Note:** AgentLoop uses JavaScript-based tool calling instead of traditional function calling APIs. AI models generate JavaScript code that calls tools, providing more flexibility and control over execution flow.
 
@@ -26,19 +26,19 @@ AgentLoop is a sophisticated TypeScript framework that enables developers to bui
 ### Innovative Tool Calling
 - **JavaScript-Based Tools**: AI writes JavaScript functions for tool execution
 - **Type-Safe Validation**: Zod schemas ensure runtime type safety
-- **Advanced Features**: Literal blocks for large content, dependency management, parallel/sequential execution
+- **Additional Features**: Literal blocks for large content, dependency management, parallel/sequential execution
 
-### Enterprise-Grade Reliability
+### Error Handling & Monitoring
 - **Stateless Architecture**: Horizontally scalable, no internal state storage
-- **Comprehensive Error Handling**: 19 error types with automatic retry logic
+- **Error Handling**: Multiple error types with automatic retry logic
 - **Stagnation Detection**: Prevents infinite loops and repetitive behavior
-- **Lifecycle Hooks**: Monitor and customize every aspect of agent execution
+- **Lifecycle Hooks**: Monitor and customize agent execution
 
 ### Developer Experience
 - **Full TypeScript Support**: Complete type safety from tools to responses
 - **Extensible Architecture**: Custom providers, templates, and tool formats
-- **Rich Configuration**: Fine-tune behavior for any use case
-- **Production Ready**: Battle-tested with comprehensive error handling
+- **Configurable**: Fine-tune behavior for different use cases
+- **Error Recovery**: Built-in error handling and retry mechanisms
 
 ## 📦 Installation
 
@@ -75,7 +75,7 @@ class MyAgent extends AgentLoop {
       apiKey: process.env.OPENAI_API_KEY,
       model: 'gpt-4'
     }), {
-      formatMode: FormatMode.JSOBJECT,
+      formatMode: FormatMode.LITERAL_JS,
       maxIterations: 10
     });
     
@@ -183,7 +183,7 @@ The diagram above illustrates AgentLoop's iterative execution process: receiving
 - **FormatHandler**: Manages tool calling formats and execution
 - **PromptManager**: Handles prompt templates and context
 - **ToolSystem**: Type-safe tool definition and execution
-- **ErrorHandler**: Comprehensive error management and recovery
+- **ErrorHandler**: Error management and recovery
 
 ## 📋 Examples
 
@@ -438,7 +438,7 @@ handler.executionMode = 'websandbox';
 // Error: "WebSandbox execution mode requested but WebSandbox is not installed"
 ```
 
-## 🔧 Advanced Features
+## 🔧 Additional Features
 
 ### Custom AI Providers
 ```typescript
@@ -469,7 +469,7 @@ class CustomTemplate implements BasePromptTemplate {
 
 ## 📊 Error Handling
 
-AgentLoop provides comprehensive error handling with automatic recovery:
+AgentLoop provides error handling with automatic recovery:
 
 ```typescript
 enum AgentErrorType {
