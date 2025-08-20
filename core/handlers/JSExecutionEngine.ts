@@ -1,4 +1,4 @@
-import { ZodTypeAny } from "zod";
+import { z, ZodTypeAny } from "zod";
 import { Tool, JsExecutionMode } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { parse } from "@babel/parser";
@@ -193,7 +193,6 @@ export class JSExecutionEngine {
    * Parse raw tool call data with actual Zod schemas (outside eval environment)
    */
   private parseToolCallsWithZod(rawResults: Record<string, unknown>[], tools: Tool<ZodTypeAny>[]): Record<string, unknown>[] {
-    const { z } = require('zod');
     
     return rawResults.map((rawToolCall: Record<string, unknown>) => {
       if (!rawToolCall || typeof rawToolCall !== 'object' || !rawToolCall.toolName || typeof rawToolCall.toolName !== 'string') {
@@ -239,7 +238,6 @@ export class JSExecutionEngine {
    * Create execution context with tool schemas and utilities
    */
   private createExecutionContext(tools: Tool<ZodTypeAny>[]): JSExecutionContext {
-    const { z } = require('zod');
     
     // Create wrapper objects that capture raw data instead of doing Zod parsing in eval
     const toolSchemas: Record<string, { parse: (data: unknown) => Record<string, unknown> }> = {};
