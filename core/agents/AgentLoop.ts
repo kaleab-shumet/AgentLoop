@@ -1133,22 +1133,23 @@ export abstract class AgentLoop {
   }
 
   private initializeFinalTool(): void {
-    if (!this.tools.some(t => t.name === this.FINAL_TOOL_NAME)) {
-      this.defineTool((z) => ({
-        name: this.FINAL_TOOL_NAME,
-        description: `Call this tool to provide your final answer when the task is complete. Use when: (1) You have completed the user's request, (2) All necessary operations are done, (3) You can provide a complete response, or (4) You need to explain why the task cannot be completed. This tool ends the conversation.`,
-        argsSchema: z.object({
-          value: z.string().describe("The final, complete answer summarizing what was accomplished and any results.")
-        }),
-        handler: ({ name, args }: HandlerParams<ZodTypeAny>): ToolCallContext => {
-          return {
-            toolName: name,
-            success: true,
-            ...args,
-          };
-        },
-      }));
-    }
+   if (!this.tools.some(t => t.name === this.FINAL_TOOL_NAME)) {
+  this.defineTool((z) => ({
+    name: this.FINAL_TOOL_NAME,
+    description: `Use this tool to talk with the user and give your final answer. Use when: (1) You want to reply to the user, (2) The task is complete, (3) All steps are done, or (4) You need to explain why the task cannot be completed. Calling this tool finalizes the task or conversation.`,
+    argsSchema: z.object({
+      value: z.string().describe("The final reply to the user, summarizing the result or explanation.")
+    }),
+    handler: ({ name, args }: HandlerParams<ZodTypeAny>): ToolCallContext => {
+      return {
+        toolName: name,
+        success: true,
+        ...args,
+      };
+    },
+  }));
+}
+
   }
 
   private initializeSelfReasoningTool(): void {

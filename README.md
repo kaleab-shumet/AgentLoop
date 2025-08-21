@@ -112,6 +112,73 @@ const result = await agent.run({
 console.log(result.agentResponse?.context);
 ```
 
+## 📖 API Reference
+
+### `run(input: AgentRunInput): Promise<AgentRunOutput>`
+
+The main method to execute the agent. This is a stateless operation that processes a single turn of conversation.
+
+#### Parameters (`AgentRunInput`)
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `userPrompt` | `string` | ✅ | The user's message or instruction to the agent |
+| `prevInteractionHistory` | `Interaction[]` | ✅ | Array of previous interactions (can be empty `[]` for first turn) |
+| `context` | `Record<string, unknown>` | ❌ | Optional context data to pass to the agent |
+| `completionOptions` | `Record<string, unknown>` | ❌ | Optional AI provider completion options (temperature, max_tokens, etc.) |
+
+#### Return Value (`AgentRunOutput`)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `interactionHistory` | `Interaction[]` | Complete interaction history including the new turn. **Persist this for the next run** |
+| `agentResponse` | `AgentResponse?` | The agent's final response (only present if agent called the `final_tool`) |
+
+#### Interaction Types
+
+An `Interaction` can be one of:
+- **`UserPrompt`** - User's input message
+- **`ToolCallReport`** - Results from tool execution(s)
+- **`AgentResponse`** - Agent's final response
+
+#### Example Usage
+
+```typescript
+// First conversation turn
+let conversationHistory: Interaction[] = [];
+
+const result1 = await agent.run({
+  userPrompt: "Read the file config.json",
+  prevInteractionHistory: conversationHistory
+});
+
+// Update history for next turn
+conversationHistory = result1.interactionHistory;
+
+// Continue conversation
+const result2 = await agent.run({
+  userPrompt: "Now analyze the configuration",
+  prevInteractionHistory: conversationHistory,
+  context: { priority: "high" },
+  completionOptions: { temperature: 0.3 }
+});
+
+// Final response from agent (if any)
+if (result2.agentResponse) {
+  console.log("Agent says:", result2.agentResponse.context);
+}
+```
+
+#### Stateless Design
+
+AgentLoop is **completely stateless** - it doesn't store any conversation history internally. You must:
+
+1. **Pass the complete `prevInteractionHistory`** from previous runs
+2. **Persist the returned `interactionHistory`** for the next turn
+3. **Handle conversation state** in your application
+
+This design makes AgentLoop scalable and easy to integrate with databases, session storage, or distributed systems.
+
 ## 🛠️ Core Concepts
 
 ### Tools with Dependencies
