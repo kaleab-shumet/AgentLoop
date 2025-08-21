@@ -224,9 +224,9 @@ ${entries}
 
   private buildNotesSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
     if (!toolCallReports.length) {
-      return `# NOTES
+      return `# NOTES(Tool Call results)
 
-**Status**: No data collected yet. Begin by gathering data with action tool + ${selfReasoningTool}.`;
+**Status**: No results yet. Your tool output will appear here once available, please call appropriate tool with ${selfReasoningTool}.`;
     }
 
     const reports = toolCallReports.map((report, i) => {
