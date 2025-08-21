@@ -58,7 +58,7 @@ export class JSExecutionEngine {
 
     // Try to load SES (Node.js environments)
     try {
-      const sesModule = await import('ses');
+      const sesModule = await Function('return import("ses")')();
       engines.ses = {
         lockdown: sesModule.lockdown ?? (globalThis as Record<string, unknown>).lockdown,
         Compartment: sesModule.Compartment ?? (globalThis as Record<string, unknown>).Compartment
@@ -275,16 +275,19 @@ export class JSExecutionEngine {
         const functionBody = this.extractCallToolsFunctionBody(jsCode);
         
         // Make context available globally for eval
+        // Use globalThis for browser compatibility, fallback to global for Node.js
+        const globalObj = (typeof globalThis !== 'undefined' ? globalThis : typeof global !== 'undefined' ? global : {}) as Record<string, unknown>;
+        
         // Store previous values to restore later
-        const prevToolSchemas = (global as Record<string, unknown>).toolSchemas;
-        const prevToolCalls = (global as Record<string, unknown>).toolCalls;
-        const prevZ = (global as Record<string, unknown>).z;
+        const prevToolSchemas = globalObj.toolSchemas;
+        const prevToolCalls = globalObj.toolCalls;
+        const prevZ = globalObj.z;
         
         try {
           // Set global variables for eval execution
-          (global as Record<string, unknown>).toolSchemas = toolSchemas;
-          (global as Record<string, unknown>).toolCalls = toolCalls;
-          (global as Record<string, unknown>).z = z;
+          globalObj.toolSchemas = toolSchemas;
+          globalObj.toolCalls = toolCalls;
+          globalObj.z = z;
           
           // Execute the code with extracted function body
           const executionCode = `
@@ -311,19 +314,19 @@ export class JSExecutionEngine {
         } finally {
           // Restore previous global state
           if (prevToolSchemas !== undefined) {
-            (global as Record<string, unknown>).toolSchemas = prevToolSchemas;
+            globalObj.toolSchemas = prevToolSchemas;
           } else {
-            delete (global as Record<string, unknown>).toolSchemas;
+            delete globalObj.toolSchemas;
           }
           if (prevToolCalls !== undefined) {
-            (global as Record<string, unknown>).toolCalls = prevToolCalls;
+            globalObj.toolCalls = prevToolCalls;
           } else {
-            delete (global as Record<string, unknown>).toolCalls;
+            delete globalObj.toolCalls;
           }
           if (prevZ !== undefined) {
-            (global as Record<string, unknown>).z = prevZ;
+            globalObj.z = prevZ;
           } else {
-            delete (global as Record<string, unknown>).z;
+            delete globalObj.z;
           }
         }
       } catch (error) {
