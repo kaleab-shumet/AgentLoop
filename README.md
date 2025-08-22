@@ -18,10 +18,10 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 - **Provider-Specific Optimizations**: Automatic handling of rate limits, context windows, and capabilities
 
 ### Secure Code Execution
-- **🔒 Multiple Security Modes**: Choose between `eval`, `ses`, or `websandbox` execution
-- **📦 Lightweight Core**: Minimal bundle impact with optional security engines
-- **🌐 Cross-Platform**: Works in Node.js and browsers
-- **🛡️ Optional Security**: Install SES/WebSandbox only when needed
+- **🔒 Secure by Default**: Uses SES (Secure EcmaScript) for safe JavaScript execution
+- **⚡ Performance Options**: Choose `ses` (secure, default) or `eval` (faster, explicit only)
+- **🌐 Cross-Platform**: Works in Node.js and browsers with zero configuration
+- **🛡️ Built-in Security**: SES included out of the box, no additional installation needed
 
 ### Innovative Tool Calling
 - **JavaScript-Based Tools**: AI writes JavaScript functions for tool execution
@@ -46,17 +46,7 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 npm install agentloop
 ```
 
-### Optional Security Engines
-
-Choose your security level by installing optional dependencies:
-
-```bash
-# For Node.js secure execution
-npm install ses
-
-# For browser secure execution  
-npm install @jetbrains/websandbox
-```
+**That's it!** SES (Secure EcmaScript) is included out of the box for secure JavaScript execution.
 
 ## 🎯 Quick Start
 
@@ -178,6 +168,34 @@ AgentLoop is **completely stateless** - it doesn't store any conversation histor
 3. **Handle conversation state** in your application
 
 This design makes AgentLoop scalable and easy to integrate with databases, session storage, or distributed systems.
+
+### JavaScript Execution Modes
+
+AgentLoop supports two execution modes for running AI-generated JavaScript code:
+
+#### SES (Secure EcmaScript) - Default & Recommended
+```typescript
+const agent = new MyAgent(provider, {
+  jsExecutionMode: 'ses'  // Default - can be omitted
+});
+```
+- **✅ Secure by default**: Runs in isolated SES compartments
+- **✅ Memory safe**: No access to global objects or sensitive APIs
+- **✅ Zero configuration**: Included out of the box
+- **✅ Cross-platform**: Works in both Node.js and browsers
+
+#### Eval Mode - Explicit Only
+```typescript
+const agent = new MyAgent(provider, {
+  jsExecutionMode: 'eval'  // Must be explicitly set
+});
+```
+- **⚠️ Less secure**: Direct eval execution
+- **⚡ Faster performance**: No sandboxing overhead  
+- **🎯 Developer choice**: Only available when explicitly requested
+- **🚫 No fallback**: SES failures throw errors instead of falling back to eval
+
+**Recommendation**: Always use the default SES mode unless you have specific performance requirements and understand the security implications.
 
 ## 🛠️ Core Concepts
 

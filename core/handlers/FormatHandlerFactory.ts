@@ -11,7 +11,7 @@ export class FormatHandlerFactory {
   /**
    * Get response handler for the specified format mode and execution mode
    */
-  static getHandler(mode: FormatMode, jsExecutionMode: JsExecutionMode = 'eval'): FormatHandler {
+  static getHandler(mode: FormatMode, jsExecutionMode: JsExecutionMode = 'ses'): FormatHandler {
     // For LiteralJS mode, create handler with execution mode
     if (mode === FormatMode.LITERAL_JS) {
       const key = `${mode}-${jsExecutionMode}`;

@@ -120,7 +120,7 @@ export abstract class AgentLoop {
     this.aiProvider = provider;
     this.aiDataHandler = new AIDataHandler(
       options.formatMode ?? FormatMode.LITERAL_JS, 
-      options.jsExecutionMode ?? 'eval'
+      options.jsExecutionMode ?? 'ses'
     );
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
@@ -151,7 +151,7 @@ export abstract class AgentLoop {
     if (options.formatMode || options.jsExecutionMode) {
       this.aiDataHandler = new AIDataHandler(
         this.formatMode, 
-        options.jsExecutionMode ?? 'eval'
+        options.jsExecutionMode ?? 'ses'
       );
     }
 
