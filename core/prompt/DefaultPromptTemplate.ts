@@ -1,4 +1,4 @@
-import { ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode } from '../types/types';
+import { ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode, PromptOptions } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { BasePromptTemplate } from './BasePromptTemplate';
 
@@ -343,13 +343,13 @@ ${userRequestSection}
 Note: NEVER call ${selfReasoningTool} alone.`;
   }
 
-  private buildCustomSectionsContent(customSections: Record<string, string>): string {
-    return Object.entries(customSections)
+  private buildContextContent(context: Record<string, string>): string {
+    return Object.entries(context)
       .map(([title, content]) => `# ${title.toUpperCase()}\n${content}`)
       .join('\n\n');
   }
 
-  buildPrompt(params: BuildPromptParams): string {
+  buildPrompt(params: BuildPromptParams, options: PromptOptions): string {
     const {
       systemPrompt,
       userPrompt,
@@ -358,12 +358,12 @@ Note: NEVER call ${selfReasoningTool} alone.`;
       finalToolName,
       reportToolName: selfReasoningTool,
       toolDefinitions,
-      options,
       nextTasks,
       goal,
       report,
       conversationEntries,
       conversationLimitNote,
+      context
     } = params;
 
     const sections: string[] = [];
@@ -382,8 +382,8 @@ Note: NEVER call ${selfReasoningTool} alone.`;
     sections.push(this.buildNotesSection(reports, selfReasoningTool));
 
 
-    if (options.customSections) {
-      sections.push(this.buildCustomSectionsContent(options.customSections));
+    if (context && options.includeContext) {
+      sections.push(this.buildContextContent(context));
     }
 
     sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, nextTasks, goal, report, lastError));

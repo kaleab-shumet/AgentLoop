@@ -955,7 +955,7 @@ export abstract class AgentLoop {
     const promptParams: BuildPromptParams = {
       systemPrompt: this.systemPrompt,
       userPrompt,
-      context,
+      context: Object.fromEntries(Object.entries(context).map(([k, v]) => [k, String(v)])),
       currentInteractionHistory,
       prevInteractionHistory: previousTaskHistory,
       lastError,
@@ -963,7 +963,6 @@ export abstract class AgentLoop {
       finalToolName: this.FINAL_TOOL_NAME,
       reportToolName: this.SELF_REASONING_TOOL,
       toolDefinitions: toolDef,
-      options: {}, // Will be merged by PromptManager
       nextTasks: nextTasks,
       goal: goal,
       report: report,

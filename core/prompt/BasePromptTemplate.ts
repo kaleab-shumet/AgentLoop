@@ -1,7 +1,7 @@
-import { BuildPromptParams, FormatMode } from '../types/types';
+import { BuildPromptParams, FormatMode, PromptOptions } from '../types/types';
 
 export interface BasePromptTemplate {
   setResponseFormat(format: FormatMode): void;
   getResponseFormat(): FormatMode;
-  buildPrompt(params: BuildPromptParams): string;
+  buildPrompt(params: BuildPromptParams, options: PromptOptions): string;
 }
