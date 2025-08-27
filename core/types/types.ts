@@ -145,8 +145,9 @@ export interface Tool<T extends ZodTypeAny = ZodTypeAny> {
 
 /**
  * JavaScript execution modes for tool calling
+ * SES is the recommended secure default
  */
-export type JsExecutionMode = 'eval' | 'ses' | 'websandbox';
+export type JsExecutionMode = 'eval' | 'ses';
 
 // Essential types only
 export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'groq' | 'perplexity' | 'azure';
@@ -204,7 +205,7 @@ export interface ConversationEntry {
 export interface BuildPromptParams {
   systemPrompt: string;
   userPrompt: string;
-  context: Record<string, unknown>;
+  context: Record<string, string>;
   currentInteractionHistory: Interaction[];
   prevInteractionHistory: Interaction[];
   lastError: AgentError | null;
@@ -212,7 +213,6 @@ export interface BuildPromptParams {
   finalToolName: string;
   reportToolName: string;
   toolDefinitions: string;
-  options: PromptOptions;
   nextTasks?: string | null;
   goal?: string | null;
   report?: string | null;

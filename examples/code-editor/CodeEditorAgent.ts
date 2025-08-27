@@ -67,8 +67,7 @@ You approach every task with the mindset of a professional software engineer, co
       maxIterations: 15,
       stagnationTerminationThreshold: 5,
       parallelExecution: false,  // Ensure file operations run sequentially
-      sleepBetweenIterationsMs: 5000,
-      jsExecutionMode: 'eval'
+      sleepBetweenIterationsMs: 5000
       
     });
 

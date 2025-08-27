@@ -18,11 +18,11 @@ export class LiteralJSFormatHandler implements FormatHandler {
   private readonly executionTimeoutMs = 5000; // 5 second timeout for code execution
   private readonly executionEngine = new JSExecutionEngine();
   
-  // Configurable execution mode - can be switched between 'eval', 'ses', and 'websandbox'
-  public executionMode: JsExecutionMode = 'eval';
+  // SES-only secure execution 
+  public executionMode: JsExecutionMode = 'ses';
 
-  constructor(jsExecutionMode: JsExecutionMode = 'eval') {
-    this.executionMode = jsExecutionMode;
+  constructor(jsExecutionMode: JsExecutionMode = 'ses') {
+    this.executionMode = 'ses'; // Always use SES for security
   }
 
   // Timeout and execution methods moved to JSExecutionEngine
@@ -307,7 +307,7 @@ ${beautifiedSchema}`;
       // Process the code: populate LiteralLoader references
       const processedCode = this.processCodeForExecution(jsCode, literalBlocks);
 
-      // Execute using the configurable execution engine
+      // Execute using secure execution engine (SES by default)
       return await this.executionEngine.execute(processedCode, tools, {
         mode: this.executionMode,
         timeoutMs: this.executionTimeoutMs

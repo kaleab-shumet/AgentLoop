@@ -5,27 +5,20 @@ import { parse } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
 import { generate } from "escodegen";
 import { nanoid } from "nanoid";
+import * as ses from 'ses';
 
-// Alias for backward compatibility  
-export type ExecutionMode = JsExecutionMode;
-
-// Optional security engine interfaces
-interface SESEngine {
-  lockdown: () => void;
-  Compartment: unknown; // Use unknown for better type safety
+// Support both eval and SES execution modes
+interface SESCompartment {
+  evaluate: (code: string) => unknown;
 }
 
-interface WebSandboxEngine {
-  create: (api?: Record<string, unknown>) => {
-    promise: Promise<{
-      run: (code: string | Function) => unknown;
-      injectStyle?: (css: string) => void;
-    }>;
-  };
+interface SESEngine {
+  lockdown: () => void;
+  Compartment: new (endowments?: Record<string, unknown>) => SESCompartment;
 }
 
 export interface JSExecutionOptions {
-  mode: ExecutionMode;
+  mode?: JsExecutionMode;
   timeoutMs?: number;
 }
 
@@ -50,87 +43,46 @@ export class JSExecutionEngine {
   /**
    * Detect available security engines
    */
-  private async detectSecurityEngines(): Promise<{
-    ses?: SESEngine;
-    websandbox?: WebSandboxEngine;
-  }> {
-    const engines: { ses?: SESEngine; websandbox?: WebSandboxEngine } = {};
-
-    // Try to load SES (Node.js environments)
-    try {
-      const sesModule = await Function('return import("ses")')();
-      engines.ses = {
-        lockdown: sesModule.lockdown ?? (globalThis as Record<string, unknown>).lockdown,
-        Compartment: sesModule.Compartment ?? (globalThis as Record<string, unknown>).Compartment
-      };
-    } catch {
-      // SES not available
-    }
-
-    // Try to load WebSandbox (Browser environments)
-    try {
-      const wsModule = await Function('return import("@jetbrains/websandbox")')();
-      engines.websandbox = wsModule.default ?? wsModule;
-    } catch {
-      // WebSandbox not available
-    }
-
-    return engines;
-  }
-
   /**
-   * Validate that the requested execution mode is available
+   * Get SES engine (always available since it's directly imported)
    */
-  private async validateExecutionMode(requestedMode: ExecutionMode): Promise<void> {
-    if (requestedMode === 'eval') {
-      // Eval is always available
-      return;
-    }
-
-    const engines = await this.detectSecurityEngines();
+  private getSESEngine(): SESEngine {
+    // Use cross-platform global object detection for browser/Node.js compatibility
+    const globalObj = (typeof globalThis !== 'undefined' ? globalThis : typeof global !== 'undefined' ? global : {}) as Record<string, unknown>;
     
-    if (requestedMode === 'ses' && !engines.ses) {
-      throw new AgentError(
-        'SES execution mode requested but SES is not installed. Install "ses" package or use mode: "eval"',
-        AgentErrorType.CONFIGURATION_ERROR
-      );
-    }
-    
-    if (requestedMode === 'websandbox' && !engines.websandbox) {
-      throw new AgentError(
-        'WebSandbox execution mode requested but WebSandbox is not installed. Install "@jetbrains/websandbox" package or use mode: "eval"',
-        AgentErrorType.CONFIGURATION_ERROR
-      );
-    }
+    return {
+      lockdown: ses.lockdown ?? globalObj.lockdown as (() => void),
+      Compartment: ses.Compartment ?? globalObj.Compartment as (new (endowments?: Record<string, unknown>) => SESCompartment)
+    };
   }
 
   /**
-   * Execute JavaScript code with the specified security mode
+   * Execute JavaScript code with specified execution mode (defaults to SES for security)
    */
   async execute(
     jsCode: string,
     tools: Tool<ZodTypeAny>[],
-    options: JSExecutionOptions = { mode: 'eval', timeoutMs: 5000 }
+    options: JSExecutionOptions = { mode: 'ses', timeoutMs: 5000 }
   ): Promise<Record<string, unknown>[]> {
     const context = this.createExecutionContext(tools);
-    
-    // Validate that the requested mode is available
-    await this.validateExecutionMode(options.mode);
+    const mode = options.mode ?? 'ses'; // Default to SES for security
     
     let rawResults: Record<string, unknown>[];
-    switch (options.mode) {
-      case 'ses':
-        rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs ?? 5000);
-        break;
-      case 'websandbox':
-        rawResults = await this.executeWithWebSandbox(jsCode, context, options.timeoutMs ?? 5000);
-        break;
-      case 'eval':
-        rawResults = await this.executeWithEval(jsCode, context, options.timeoutMs ?? 5000);
-        break;
+    
+    if (mode === 'ses') {
+      // Use secure SES execution (default and recommended)
+      rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs ?? 5000);
+    } else if (mode === 'eval') {
+      // Use eval only if explicitly requested by developer
+      rawResults = await this.executeWithEval(jsCode, context, options.timeoutMs ?? 5000);
+    } else {
+      throw new AgentError(
+        `Unsupported execution mode: ${mode}. Use 'ses' (recommended) or 'eval'.`,
+        AgentErrorType.CONFIGURATION_ERROR
+      );
     }
 
-    // Now do the actual Zod parsing outside eval with preserved string values
+    // Parse results with actual Zod schemas outside the execution environment
     return this.parseToolCallsWithZod(rawResults, tools);
   }
 
@@ -259,11 +211,11 @@ export class JSExecutionEngine {
   }
 
   /**
-   * Execute with direct eval (fast, less secure)
+   * Execute with eval (less secure, use only when explicitly requested)
    */
   private async executeWithEval(
-    jsCode: string, 
-    context: JSExecutionContext, 
+    jsCode: string,
+    context: JSExecutionContext,
     timeoutMs: number
   ): Promise<Record<string, unknown>[]> {
     return this.withTimeout(() => Promise.resolve().then(() => {
@@ -271,11 +223,11 @@ export class JSExecutionEngine {
         // Prepare variables for eval context
         const { toolSchemas, toolCalls, z } = context;
 
-        // Extract only the callTools function body instead of dangerous regex stripping
+        // Extract only the callTools function body
         const functionBody = this.extractCallToolsFunctionBody(jsCode);
         
         // Make context available globally for eval
-        // Use globalThis for browser compatibility, fallback to global for Node.js
+        // Use cross-platform global object detection
         const globalObj = (typeof globalThis !== 'undefined' ? globalThis : typeof global !== 'undefined' ? global : {}) as Record<string, unknown>;
         
         // Store previous values to restore later
@@ -299,8 +251,7 @@ export class JSExecutionEngine {
             })();
           `;
 
-          // Intentional use of eval for secure JavaScript execution engine
-          // This code runs in a SES compartment for security
+          // Intentional use of eval for JavaScript execution
           const result = eval(executionCode) as unknown;
 
           if (!Array.isArray(result)) {
@@ -339,7 +290,7 @@ export class JSExecutionEngine {
   }
 
   /**
-   * Execute with SES (slower, more secure)
+   * Execute with SES (secure)
    */
   private async executeWithSES(
     jsCode: string,
@@ -348,24 +299,17 @@ export class JSExecutionEngine {
   ): Promise<Record<string, unknown>[]> {
     return this.withTimeout(async () => {
       try {
-        // SES is now imported at the top of the file
-        
-        const engines = await this.detectSecurityEngines();
-        if (!engines.ses) {
-          throw new Error('SES not available');
-        }
+        // Get SES engine (always available since it's imported)
+        const sesEngine = this.getSESEngine();
         
         // Initialize SES if not already done
-        this.initializeSES(engines.ses);
+        this.initializeSES(sesEngine);
 
         // Create secure endowments
         const endowments = this.createSESEndowments(context);
 
         // Create compartment
-        const Compartment = engines.ses.Compartment as new (endowments: Record<string, unknown>) => {
-          evaluate: (code: string) => unknown;
-        };
-        const compartment = new Compartment(endowments);
+        const compartment = new sesEngine.Compartment(endowments);
 
         // Extract only the callTools function body using Babel (strips imports automatically)
         const functionBody = this.extractCallToolsFunctionBody(jsCode);
@@ -403,69 +347,6 @@ export class JSExecutionEngine {
     }, timeoutMs);
   }
 
-  /**
-   * Execute with WebSandbox (browser-friendly, lightweight security)
-   */
-  private async executeWithWebSandbox(
-    jsCode: string,
-    context: JSExecutionContext,
-    timeoutMs: number
-  ): Promise<Record<string, unknown>[]> {
-    return this.withTimeout(async () => {
-      try {
-        const engines = await this.detectSecurityEngines();
-        if (!engines.websandbox) {
-          throw new Error('WebSandbox not available');
-        }
-
-        // Extract function body and prepare API
-        const functionBody = this.extractCallToolsFunctionBody(jsCode);
-        const { cleanCode: cleanFunctionBody, stringMap } = this.extractStringsToIds(functionBody);
-
-        // Prepare API for sandbox communication
-        const sandboxApi = {
-          // Execution context
-          z: context.z,
-          toolSchemas: context.toolSchemas,
-          toolCalls: context.toolCalls,
-          Array: Array,
-          Object: Object,
-          String: String,
-          Number: Number,
-          Boolean: Boolean,
-          Math: Math,
-          JSON: JSON,
-        };
-
-        // Create sandbox
-        const sandbox = await engines.websandbox.create(sandboxApi).promise;
-
-        // Create execution function with clean code
-        const executionFunction = new Function('', `
-          function callTools() {
-            ${cleanFunctionBody}
-          }
-          return callTools();
-        `);
-
-        // Execute in sandbox
-        const result = sandbox.run(executionFunction);
-
-        // Restore string values
-        let resultStr = JSON.stringify(result);
-        for (const [id, originalString] of Object.entries(stringMap)) {
-          resultStr = resultStr.replace(new RegExp(id, 'g'), originalString);
-        }
-
-        return JSON.parse(resultStr) as Record<string, unknown>[];
-      } catch (error) {
-        throw new AgentError(
-          `WebSandbox execution error: ${error instanceof Error ? error.message : String(error)}`,
-          AgentErrorType.INVALID_RESPONSE
-        );
-      }
-    }, timeoutMs);
-  }
 
   /**
    * Initialize SES security lockdown (global, runs only once)

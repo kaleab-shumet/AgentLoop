@@ -137,11 +137,10 @@ export class PromptManager {
     // Merge options and error recovery instructions with provided params
     const fullParams: BuildPromptParams = {
       ...params,
-      options: this.promptOptions,
       errorRecoveryInstructions: this.errorRecoveryInstructions,
     };
     
-    return this.template.buildPrompt(fullParams);
+    return this.template.buildPrompt(fullParams, this.promptOptions);
   }
 
 }
