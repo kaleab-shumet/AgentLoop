@@ -75,7 +75,7 @@ function callTools() {
     toolSchemas.exampleTool.parse({
       parameter1: "valid value", // Must satisfy schema constraints
       parameter2: 42,
-      longContent: LiteralLoader("unique-id")
+      longContent: LiteralLoader("unique-id") // Reference to XML literal block, unique-id can be max 16 chars, check the xml block below
     })
   );
 
@@ -111,7 +111,7 @@ function callTools() {
   toolCalls.push(
     toolSchemas.some_action_tool.parse({
       param1: "value",
-      longContent: LiteralLoader("data-id")
+      longContent: LiteralLoader("data-id") // Reference to XML literal block below
     })
   );
 
@@ -125,6 +125,15 @@ function callTools() {
 
   return toolCalls;
 }
+\`\`\`
+
+\`\`\`xml
+<literals>
+  <literal id="data-id">
+This is my long content,
+with multiple lines
+</literal>      
+</literals>
 \`\`\`
 
 ### Scenario 2: Final Answer
@@ -167,6 +176,7 @@ function callTools() {
 - NEVER use \`.default()\` - always use \`.parse()\` with actual values.
 - Use \`LiteralLoader\` for long/multiline strings in parse values.
 - **FORBIDDEN**: Defining variables in the function is completely prohibited.
+- While using \`LiteralLoader("id")\`, ensure 'id' is unique (max 16 chars) and defined in the XML block below.
 
 **TEST**
 - We are evaluating your ability to:
