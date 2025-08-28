@@ -471,7 +471,7 @@ interface AgentLoopOptions {
   maxIterations?: number;                    // Max reasoning iterations (default: 100)
   parallelExecution?: boolean;              // Run tools in parallel (default: true)
   toolTimeoutMs?: number;                   // Tool execution timeout (default: 30s)
-  jsExecutionMode?: 'eval' | 'ses' | 'websandbox'; // JS execution security mode (default: 'eval')
+  // JavaScript execution is always secure with SES - no configuration needed
   stagnationTerminationThreshold?: number;  // Prevent infinite loops (default: 3)
   maxInteractionHistoryCharsLimit?: number; // Memory management (default: 100k)
   sleepBetweenIterationsMs?: number;        // Rate limiting (default: 2s)
@@ -504,76 +504,22 @@ new DefaultAIProvider({
 })
 ```
 
-## 🔒 Security Modes
+## Security
 
-AgentLoop offers three execution modes with different security trade-offs:
+AgentLoop uses **SES (Secure EcmaScript)** as the only execution mode for maximum security:
 
-### `eval` Mode (Default)
-- ✅ Always available, no dependencies
-- ✅ Fast execution, minimal overhead
-- ⚠️ No sandboxing or security isolation
-- 📦 Minimal bundle impact
+- **Compartmentalized Execution**: All AI-generated code runs in isolated SES compartments
+- **Zero Configuration**: SES is included and enabled by default
+- **Cross-Platform**: Works identically in Node.js and browsers
+- **No Unsafe Alternatives**: Removed eval and other insecure execution modes
 
 ```typescript
-// Configure in AgentLoop options (default mode)
+// Security is automatic - no configuration needed
 const agent = new MyAgent(aiProvider, {
-  jsExecutionMode: 'eval' // Default mode
+  maxIterations: 10,
+  parallelExecution: true
+  // SES security is always enabled
 });
-```
-
-### `ses` Mode (Node.js Secure)
-- 🔒 Secure compartment isolation with SES
-- 🛡️ Prototype pollution protection
-- 🚫 Import statement restrictions handled automatically
-- 📦 Requires `ses` package
-
-```typescript
-npm install ses@1.14.0
-
-// Configure in AgentLoop options
-const agent = new MyAgent(aiProvider, {
-  jsExecutionMode: 'ses'
-});
-```
-
-### `websandbox` Mode (Browser Secure)
-- 🌐 Browser-friendly lightweight sandboxing
-- ⚡ Isolated execution environment
-- 🔗 API communication between host and sandbox
-- 📦 Requires `@jetbrains/websandbox` package
-
-```typescript
-npm install @jetbrains/websandbox@1.1.2
-
-// Configure in AgentLoop options
-const agent = new MyAgent(aiProvider, {
-  jsExecutionMode: 'websandbox'
-});
-```
-
-### Security Engine Dependencies
-
-| Configuration | Dependencies |
-|---------------|--------------|
-| `eval` mode   | None (built-in) |
-| `ses` mode    | `npm install ses@1.14.0` |
-| `websandbox` mode | `npm install @jetbrains/websandbox@1.1.2` |
-
-### Security Mode Validation
-
-AgentLoop strictly validates execution modes with **no automatic fallbacks**:
-
-```typescript
-// ✅ Works - eval mode always available
-handler.executionMode = 'eval';
-
-// ❌ Throws error if SES not installed
-handler.executionMode = 'ses';
-// Error: "SES execution mode requested but SES is not installed"
-
-// ❌ Throws error if WebSandbox not available  
-handler.executionMode = 'websandbox';
-// Error: "WebSandbox execution mode requested but WebSandbox is not installed"
 ```
 
 ## 🔧 Additional Features
