@@ -31,7 +31,7 @@ Execute the agent with a user prompt.
 ```typescript
 interface AgentRunParams {
   userPrompt: string;
-  prevInteractionHistory: InteractionHistoryItem[];
+  prevInteractionHistory: Interaction[]; // v2.0.0: Uses linearized Interaction types
   turnState?: TurnState;
 }
 
@@ -156,6 +156,8 @@ type JsExecutionMode = 'ses';
 
 - **`'ses'`** - Secure EcmaScript (only mode): Maximum security through compartmentalized execution
 
+**Note**: AgentLoop v2.0.0 removes all unsafe execution modes. SES provides maximum security with zero configuration required.
+
 ## AI Providers
 
 ### DefaultAIProvider
@@ -240,7 +242,7 @@ class LiteralJSFormatHandler implements FormatHandler {
 
 ### JSExecutionEngine
 
-Handles secure JavaScript execution with multiple modes.
+Handles secure JavaScript execution using SES (Secure EcmaScript) - the only execution mode for maximum security.
 
 ```typescript
 class JSExecutionEngine {
@@ -252,7 +254,7 @@ class JSExecutionEngine {
 }
 
 interface JSExecutionOptions {
-  mode: JsExecutionMode;
+  mode?: JsExecutionMode; // Always 'ses' - maximum security guaranteed
   timeoutMs?: number;
 }
 ```
@@ -408,9 +410,10 @@ interface InteractionHistoryItem {
 }
 ```
 
-### AgentResponse
+### AgentResponse (Runtime)
 
 ```typescript
+// Runtime AgentResponse structure
 interface AgentResponse {
   content: string;
   context: string;
@@ -419,9 +422,10 @@ interface AgentResponse {
 }
 ```
 
-### ToolCall
+### ToolCall (Runtime)
 
 ```typescript
+// Runtime ToolCall structure used during execution
 interface ToolCall {
   type: 'tool_call';
   toolName: string;
@@ -527,8 +531,10 @@ class CustomAIProvider implements AIProvider {
 class SecureAgent extends AgentLoop {
   constructor() {
     super(aiProvider, {
-      // Configure secure execution via options
-      jsExecutionMode: process.env.NODE_ENV === 'production' ? 'ses' : 'eval'
+      // No security configuration needed - SES is always used
+      // Maximum security is guaranteed by default
+      maxIterations: 10,
+      globalToolTimeoutMs: 30000
     });
   }
 }

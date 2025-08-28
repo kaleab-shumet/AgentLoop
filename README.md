@@ -9,6 +9,14 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-yellow.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/agentloop.svg)](https://www.npmjs.com/package/agentloop)
+
+## What's New in v2.0.0
+
+- **Enhanced Security**: Completely removed eval execution mode - SES is now the only execution mode for maximum security
+- **Linearized Data Structures**: Simplified and flattened data types for better performance and developer experience
+- **XML References for Large Content**: Uses XML literal blocks to avoid string escaping issues when LLMs work with large content
+- **Architecture Cleanup**: Removed outdated execution modes and streamlined the codebase
 
 ## 🚀 Key Features
 
@@ -18,15 +26,32 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 - **Provider-Specific Optimizations**: Automatic handling of rate limits, context windows, and capabilities
 
 ### Secure Code Execution
-- **🔒 Maximum Security**: SES (Secure EcmaScript) is the only execution mode - no unsafe alternatives
-- **🛡️ Compartmentalized**: All AI-generated code runs in isolated SES compartments
-- **🌐 Cross-Platform**: Works in Node.js and browsers with zero configuration
-- **📦 Zero Dependencies**: SES included out of the box, no additional installation needed
+- **Maximum Security**: SES (Secure EcmaScript) is the only execution mode - no unsafe alternatives
+- **Compartmentalized**: All AI-generated code runs in isolated SES compartments
+- **Cross-Platform**: Works in Node.js and browsers with zero configuration
+- **Zero Dependencies**: SES included out of the box, no additional installation needed
 
 ### Innovative Tool Calling
 - **JavaScript-Based Tools**: AI writes JavaScript functions for tool execution
 - **Type-Safe Validation**: Zod schemas ensure runtime type safety
-- **Additional Features**: Literal blocks for large content, dependency management, parallel/sequential execution
+- **XML Literal Blocks**: Reference large content without string escaping issues
+
+```javascript
+// Clean JavaScript without escaping:
+writeFile("path", LiteralLoader.load("file_content_123"));
+```
+
+```xml
+<literals>
+  <literal id="file_content_123">
+const data = "hello
+world";
+console.log(data);
+  </literal>
+</literals>
+```
+
+- **Additional Features**: Dependency management, parallel/sequential execution
 
 ### Error Handling & Monitoring
 - **Stateless Architecture**: Horizontally scalable, no internal state storage
@@ -40,7 +65,7 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 - **Configurable**: Fine-tune behavior for different use cases
 - **Error Recovery**: Built-in error handling and retry mechanisms
 
-## 📦 Installation
+## Installation
 
 ```bash
 npm install agentloop
@@ -48,7 +73,7 @@ npm install agentloop
 
 **That's it!** SES (Secure EcmaScript) is included out of the box for secure JavaScript execution.
 
-## 🎯 Quick Start
+## Quick Start
 
 ### Basic Agent Setup
 
@@ -446,7 +471,7 @@ interface AgentLoopOptions {
   maxIterations?: number;                    // Max reasoning iterations (default: 100)
   parallelExecution?: boolean;              // Run tools in parallel (default: true)
   toolTimeoutMs?: number;                   // Tool execution timeout (default: 30s)
-  jsExecutionMode?: 'eval' | 'ses' | 'websandbox'; // JS execution security mode (default: 'eval')
+  // JavaScript execution is always secure with SES - no configuration needed
   stagnationTerminationThreshold?: number;  // Prevent infinite loops (default: 3)
   maxInteractionHistoryCharsLimit?: number; // Memory management (default: 100k)
   sleepBetweenIterationsMs?: number;        // Rate limiting (default: 2s)
@@ -479,76 +504,22 @@ new DefaultAIProvider({
 })
 ```
 
-## 🔒 Security Modes
+## Security
 
-AgentLoop offers three execution modes with different security trade-offs:
+AgentLoop uses **SES (Secure EcmaScript)** as the only execution mode for maximum security:
 
-### `eval` Mode (Default)
-- ✅ Always available, no dependencies
-- ✅ Fast execution, minimal overhead
-- ⚠️ No sandboxing or security isolation
-- 📦 Minimal bundle impact
+- **Compartmentalized Execution**: All AI-generated code runs in isolated SES compartments
+- **Zero Configuration**: SES is included and enabled by default
+- **Cross-Platform**: Works identically in Node.js and browsers
+- **No Unsafe Alternatives**: Removed eval and other insecure execution modes
 
 ```typescript
-// Configure in AgentLoop options (default mode)
+// Security is automatic - no configuration needed
 const agent = new MyAgent(aiProvider, {
-  jsExecutionMode: 'eval' // Default mode
+  maxIterations: 10,
+  parallelExecution: true
+  // SES security is always enabled
 });
-```
-
-### `ses` Mode (Node.js Secure)
-- 🔒 Secure compartment isolation with SES
-- 🛡️ Prototype pollution protection
-- 🚫 Import statement restrictions handled automatically
-- 📦 Requires `ses` package
-
-```typescript
-npm install ses@1.14.0
-
-// Configure in AgentLoop options
-const agent = new MyAgent(aiProvider, {
-  jsExecutionMode: 'ses'
-});
-```
-
-### `websandbox` Mode (Browser Secure)
-- 🌐 Browser-friendly lightweight sandboxing
-- ⚡ Isolated execution environment
-- 🔗 API communication between host and sandbox
-- 📦 Requires `@jetbrains/websandbox` package
-
-```typescript
-npm install @jetbrains/websandbox@1.1.2
-
-// Configure in AgentLoop options
-const agent = new MyAgent(aiProvider, {
-  jsExecutionMode: 'websandbox'
-});
-```
-
-### Security Engine Dependencies
-
-| Configuration | Dependencies |
-|---------------|--------------|
-| `eval` mode   | None (built-in) |
-| `ses` mode    | `npm install ses@1.14.0` |
-| `websandbox` mode | `npm install @jetbrains/websandbox@1.1.2` |
-
-### Security Mode Validation
-
-AgentLoop strictly validates execution modes with **no automatic fallbacks**:
-
-```typescript
-// ✅ Works - eval mode always available
-handler.executionMode = 'eval';
-
-// ❌ Throws error if SES not installed
-handler.executionMode = 'ses';
-// Error: "SES execution mode requested but SES is not installed"
-
-// ❌ Throws error if WebSandbox not available  
-handler.executionMode = 'websandbox';
-// Error: "WebSandbox execution mode requested but WebSandbox is not installed"
 ```
 
 ## 🔧 Additional Features

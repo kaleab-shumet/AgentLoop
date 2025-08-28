@@ -338,7 +338,7 @@ Always create a complete project structure with proper configuration files.`;
   private getProjectTemplate(type: string, name: string, description?: string): Record<string, string> {
     const packageJson = {
       name,
-      version: '1.0.0',
+      version: '2.0.0',
       description: description || `A ${type} project`,
       main: 'index.js',
       scripts: {},
@@ -820,6 +820,7 @@ Break down complex tasks into smaller steps and execute them systematically. Alw
     try {
       let result;
       if (type === 'math') {
+        // This executes in the secure host environment
         result = Function(`"use strict"; return (${expression})`)();
       } else if (type === 'statistical') {
         // Handle statistical calculations
@@ -953,5 +954,14 @@ class SecureAgent extends AgentLoop {
   }
 }
 ```
+
+## Security Notes
+
+AgentLoop v2.0.0 provides maximum security by default:
+
+- **Zero Configuration**: No security settings needed - SES is always used
+- **Maximum Protection**: All AI-generated code runs in isolated SES compartments
+- **Production Ready**: Same security in development and production environments
+- **Tool Safety**: Tool handlers run in the secure host environment
 
 These examples demonstrate the flexibility and power of AgentLoop for building various types of AI agents. Each example can be extended and customized based on your specific requirements.

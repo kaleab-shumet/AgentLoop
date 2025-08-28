@@ -1,6 +1,6 @@
 {
   "name": "agentloop",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "description": "",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -50,7 +50,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kaleab-shumet/AgentLoop.git"
+    "url": "git+https://github.com/kaleab-shumet/AgentLoop.git"
   },
   "bugs": {
     "url": "https://github.com/kaleab-shumet/AgentLoop/issues"
