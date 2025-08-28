@@ -63,7 +63,8 @@ Always use the available tools to help users with their requests.`;
       }),
       handler: async ({ args }) => {
         try {
-          // Safe evaluation of math expressions
+          // This handler runs in the secure host environment
+          // AI-generated code execution is handled separately by SES
           const result = Function(`"use strict"; return (${args.expression})`)();
           return { 
             result, 
@@ -309,30 +310,66 @@ npx ts-node console.ts
 
 ## JavaScript Execution Security
 
-AgentLoop provides maximum security through SES-only execution:
+AgentLoop v2.0.0 provides maximum security through SES-only execution:
 
 ```typescript
 class SecureAgent extends MyFirstAgent {
   constructor() {
     super(/* ... same ai provider config ... */);
-    // SES is automatically used - no configuration needed
+    // Zero configuration needed - SES is always used
     // Maximum security is guaranteed for all executions
   }
 }
 ```
 
 **Security Benefits**: 
-- **No Configuration Required**: SES is the only execution mode
-- **Maximum Security**: All AI-generated code runs in isolated compartments
-- **Zero Risk**: No unsafe execution modes available
-- **Included**: SES library bundled - no additional installation needed
+- **Zero Configuration**: No security settings needed - SES is the only mode
+- **Maximum Security**: All AI-generated code runs in isolated SES compartments
+- **Production Ready**: Same security in development and production
+- **Built-in**: SES library included - no additional dependencies
+
+## Advanced Features
+
+### XML Literal Blocks (New in v2.0.0)
+
+AgentLoop v2.0.0 includes XML parser integration for handling large content efficiently:
+
+```typescript
+// AI can reference large content using LiteralLoader
+// Example AI response:
+callTools([
+  {
+    name: "process_data",
+    args: {
+      data: LiteralLoader("data-123") // Reference to XML block below
+    }
+  }
+]);
+
+// XML literal block (parsed automatically)
+/*
+<literals>
+  <literal id="data-123">
+    Large content goes here...
+    This content is extracted and injected
+    automatically by the XML parser.
+  </literal>
+</literals>
+*/
+```
+
+**Benefits**:
+- **Performance**: Large content doesn't bloat the JavaScript execution
+- **Clean Code**: Separates large data from logic
+- **Cross-Platform**: Works in Node.js and browsers
+- **Automatic**: Zero configuration - parsing happens transparently
 
 ## Next Steps
 
-1. **Read the [Tool Development Guide](./tool-development.md)** to create additional tools
-2. **Explore [Security Modes](./security-modes.md)** to understand execution options
-3. **Check out [Examples](./examples.md)** for real-world use cases
-4. **Review [API Reference](./api-reference.md)** for additional configuration options
+1. **Check out [Examples](./examples.md)** for real-world use cases
+2. **Review [Security Modes](./security-modes.md)** to understand AgentLoop's SES-only security architecture
+3. **Read [API Reference](./api-reference.md)** for complete configuration options
+4. **Explore advanced patterns** with linearized data structures and XML literal blocks
 
 ## Common Issues
 

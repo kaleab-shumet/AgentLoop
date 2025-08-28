@@ -9,6 +9,14 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![License: ISC](https://img.shields.io/badge/License-ISC-yellow.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/agentloop.svg)](https://www.npmjs.com/package/agentloop)
+
+## What's New in v2.0.0
+
+- **Enhanced Security**: Completely removed eval execution mode - SES is now the only execution mode for maximum security
+- **Linearized Data Structures**: Simplified and flattened data types for better performance and developer experience
+- **XML References for Large Content**: Uses XML literal blocks to avoid string escaping issues when LLMs work with large content
+- **Architecture Cleanup**: Removed outdated execution modes and streamlined the codebase
 
 ## 🚀 Key Features
 
@@ -18,15 +26,32 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 - **Provider-Specific Optimizations**: Automatic handling of rate limits, context windows, and capabilities
 
 ### Secure Code Execution
-- **🔒 Maximum Security**: SES (Secure EcmaScript) is the only execution mode - no unsafe alternatives
-- **🛡️ Compartmentalized**: All AI-generated code runs in isolated SES compartments
-- **🌐 Cross-Platform**: Works in Node.js and browsers with zero configuration
-- **📦 Zero Dependencies**: SES included out of the box, no additional installation needed
+- **Maximum Security**: SES (Secure EcmaScript) is the only execution mode - no unsafe alternatives
+- **Compartmentalized**: All AI-generated code runs in isolated SES compartments
+- **Cross-Platform**: Works in Node.js and browsers with zero configuration
+- **Zero Dependencies**: SES included out of the box, no additional installation needed
 
 ### Innovative Tool Calling
 - **JavaScript-Based Tools**: AI writes JavaScript functions for tool execution
 - **Type-Safe Validation**: Zod schemas ensure runtime type safety
-- **Additional Features**: Literal blocks for large content, dependency management, parallel/sequential execution
+- **XML Literal Blocks**: Reference large content without string escaping issues
+
+```javascript
+// Clean JavaScript without escaping:
+writeFile("path", LiteralLoader.load("file_content_123"));
+```
+
+```xml
+<literals>
+  <literal id="file_content_123">
+const data = "hello
+world";
+console.log(data);
+  </literal>
+</literals>
+```
+
+- **Additional Features**: Dependency management, parallel/sequential execution
 
 ### Error Handling & Monitoring
 - **Stateless Architecture**: Horizontally scalable, no internal state storage
@@ -40,7 +65,7 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 - **Configurable**: Fine-tune behavior for different use cases
 - **Error Recovery**: Built-in error handling and retry mechanisms
 
-## 📦 Installation
+## Installation
 
 ```bash
 npm install agentloop
@@ -48,7 +73,7 @@ npm install agentloop
 
 **That's it!** SES (Secure EcmaScript) is included out of the box for secure JavaScript execution.
 
-## 🎯 Quick Start
+## Quick Start
 
 ### Basic Agent Setup
 

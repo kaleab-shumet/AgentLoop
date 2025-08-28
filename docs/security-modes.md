@@ -1,6 +1,6 @@
 # JavaScript Execution Security
 
-AgentLoop provides **SES (Secure EcmaScript)** as the only JavaScript execution mode, ensuring maximum security for all AI-generated code execution.
+AgentLoop v2.0.0 provides **SES (Secure EcmaScript)** as the only JavaScript execution mode, ensuring maximum security for all AI-generated code execution.
 
 ## Overview
 
