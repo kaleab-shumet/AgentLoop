@@ -202,7 +202,7 @@ export class JSExecutionEngine {
     context: JSExecutionContext,
     timeoutMs: number
   ): Promise<Record<string, unknown>[]> {
-    return this.withTimeout(async () => {
+    return this.withTimeout(() => Promise.resolve().then(() => {
       try {
         // Get SES engine (always available since it's imported)
         const sesEngine = this.getSESEngine();
@@ -249,7 +249,7 @@ export class JSExecutionEngine {
           AgentErrorType.INVALID_RESPONSE
         );
       }
-    }, timeoutMs);
+    }), timeoutMs);
   }
 
 
