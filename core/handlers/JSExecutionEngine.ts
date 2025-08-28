@@ -3,6 +3,7 @@ import { Tool, JsExecutionMode } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { parse } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
+import type { Node } from "acorn";
 import { generate } from "escodegen";
 import { nanoid } from "nanoid";
 import * as ses from 'ses';
@@ -85,10 +86,13 @@ export class JSExecutionEngine {
 
       // Traverse the AST to find the callTools function
       walkSimple(ast, {
-        FunctionDeclaration(node: any) {
-          if (node.id && node.id.type === "Identifier" && node.id.name === "callTools") {
+        FunctionDeclaration(node: Node) {
+          if (node.type === "FunctionDeclaration" &&
+              (node as any).id && 
+              (node as any).id.type === "Identifier" && 
+              (node as any).id.name === "callTools") {
             // Extract the function body as source code
-            const body = node.body;
+            const body = (node as any).body;
             if (body && body.type === "BlockStatement") {
               // Get the source location of the function body
               const start = body.start;
@@ -324,18 +328,18 @@ export class JSExecutionEngine {
       const stringMap: Record<string, string> = {};
 
       walkSimple(ast, {
-        Literal(node: any) {
-          if (typeof node.value === "string") {
+        Literal(node: Node) {
+          if (typeof (node as any).value === "string") {
             const id = `__STRING_ID_${nanoid()}__`;
-            stringMap[id] = node.value;
-            node.value = id;
-            node.raw = `"${id}"`;
+            stringMap[id] = (node as any).value;
+            (node as any).value = id;
+            (node as any).raw = `"${id}"`;
           }
         },
-        TemplateLiteral(node: any) {
+        TemplateLiteral(node: Node) {
           // Handle template literals too
-          if (node.quasis) {
-            node.quasis.forEach((quasi: any) => {
+          if ((node as any).quasis) {
+            ((node as any).quasis as any[]).forEach((quasi: any) => {
               if (quasi.value?.raw?.trim()) {
                 const id = `__STRING_ID_${nanoid()}__`;
                 stringMap[id] = quasi.value.raw;

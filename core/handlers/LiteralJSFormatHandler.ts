@@ -8,6 +8,7 @@ import * as beautify from 'js-beautify';
 import { JSExecutionEngine } from './JSExecutionEngine';
 import { parse } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
+import type { Node } from "acorn";
 
 /**
  * Handles Literal+JavaScript response format for tool calls
@@ -213,11 +214,13 @@ ${beautifiedSchema}`;
 
       // Traverse the AST to find the callTools function
       walkSimple(ast, {
-        FunctionDeclaration(node: any): void {
-          if (node.id && node.id.name === "callTools") {
+        FunctionDeclaration(node: Node): void {
+          if (node.type === "FunctionDeclaration" && 
+              (node as any).id && 
+              (node as any).id.name === "callTools") {
             // Extract the entire function as source code
-            const start = node.start;
-            const end = node.end;
+            const start = (node as any).start;
+            const end = (node as any).end;
             if (start !== null && start !== undefined && end !== null && end !== undefined) {
               callToolsFunction = text.substring(start, end);
             }
