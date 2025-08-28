@@ -17,7 +17,7 @@ export class FormatHandlerFactory {
       const key = `${mode}-${jsExecutionMode}`;
       
       if (!this.handlers.has(key)) {
-        this.handlers.set(key, new LiteralJSFormatHandler(jsExecutionMode));
+        this.handlers.set(key, new LiteralJSFormatHandler());
       }
       const handler = this.handlers.get(key);
       if (!handler) {

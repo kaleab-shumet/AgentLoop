@@ -21,7 +21,7 @@ export class LiteralJSFormatHandler implements FormatHandler {
   // SES-only secure execution (only supported mode)
   public executionMode: JsExecutionMode = 'ses';
 
-  constructor(jsExecutionMode: JsExecutionMode = 'ses') {
+  constructor() {
     this.executionMode = 'ses'; // SES is the only supported mode for maximum security
   }
 
