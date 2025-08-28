@@ -215,7 +215,7 @@ export abstract class AgentLoop {
 
     if (reportResults.length > 0) {
       const latestReport = reportResults[reportResults.length - 1];
-      const args = latestReport.args as any;
+      const args = latestReport.args as Record<string, unknown>;
       const nextTasks = typeof args?.nextTasks === 'string' ? args.nextTasks : null;
       const report = typeof args?.report === 'string' ? args.report : null;
       const goal = typeof args?.goal === 'string' ? args.goal : null;
@@ -492,7 +492,7 @@ export abstract class AgentLoop {
 
           if (reportResult?.success) {
             // Regular tool execution with report tool
-            const args = reportResult.args as any;
+            const args = reportResult.args as Record<string, unknown>;
             const reportText: string = typeof args?.report === "string"
               ? args.report
               : JSON.stringify(args?.report ?? "");
@@ -1034,8 +1034,8 @@ export abstract class AgentLoop {
       }
 
       // Extract metadata and args from toolCallContext
-      const contextData = toolCallContext as any;
-      const { toolName, success, error, ...args } = contextData || {};
+      const contextData = toolCallContext as Record<string, unknown>;
+      const { toolName, success, error, ...args } = contextData ?? {};
       result = {
         type: "tool_call",
         taskId,

@@ -1,8 +1,9 @@
 import { z, ZodTypeAny } from "zod";
 import { Tool, JsExecutionMode } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
-import { parse } from "acorn";
+import { parse, type Node } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
+import type { FunctionDeclarationNode, LiteralNode, TemplateLiteralNode } from "../types/acorn-extensions";
 import { generate } from "escodegen";
 import { nanoid } from "nanoid";
 import * as ses from 'ses';
@@ -85,18 +86,23 @@ export class JSExecutionEngine {
 
       // Traverse the AST to find the callTools function
       walkSimple(ast, {
-        FunctionDeclaration(node: any) {
-          if (node.id && node.id.type === "Identifier" && node.id.name === "callTools") {
-            // Extract the function body as source code
-            const body = node.body;
-            if (body && body.type === "BlockStatement") {
-              // Get the source location of the function body
-              const start = body.start;
-              const end = body.end;
-              if (start !== null && start !== undefined && end !== null && end !== undefined) {
-                // Extract body content (without the braces)
-                const bodyWithBraces = jsCode.substring(start, end);
-                callToolsFunctionBody = bodyWithBraces.slice(1, -1).trim(); // Remove { and }
+        FunctionDeclaration(node: Node) {
+          if (node.type === "FunctionDeclaration") {
+            const funcNode = node as FunctionDeclarationNode;
+            if (funcNode.id && 
+                funcNode.id.type === "Identifier" && 
+                funcNode.id.name === "callTools") {
+              // Extract the function body as source code
+              const body = funcNode.body;
+              if (body && body.type === "BlockStatement") {
+                // Get the source location of the function body
+                const start = body.start;
+                const end = body.end;
+                if (start !== null && start !== undefined && end !== null && end !== undefined) {
+                  // Extract body content (without the braces)
+                  const bodyWithBraces = jsCode.substring(start, end);
+                  callToolsFunctionBody = bodyWithBraces.slice(1, -1).trim(); // Remove { and }
+                }
               }
             }
           }
@@ -324,18 +330,22 @@ export class JSExecutionEngine {
       const stringMap: Record<string, string> = {};
 
       walkSimple(ast, {
-        Literal(node: any) {
-          if (typeof node.value === "string") {
-            const id = `__STRING_ID_${nanoid()}__`;
-            stringMap[id] = node.value;
-            node.value = id;
-            node.raw = `"${id}"`;
+        Literal(node: Node) {
+          if (node.type === "Literal") {
+            const literalNode = node as LiteralNode;
+            if (typeof literalNode.value === "string") {
+              const id = `__STRING_ID_${nanoid()}__`;
+              stringMap[id] = literalNode.value;
+              literalNode.value = id;
+              literalNode.raw = `"${id}"`;
+            }
           }
         },
-        TemplateLiteral(node: any) {
+        TemplateLiteral(node: Node) {
           // Handle template literals too
-          if (node.quasis) {
-            node.quasis.forEach((quasi: any) => {
+          if (node.type === "TemplateLiteral") {
+            const templateNode = node as TemplateLiteralNode;
+            templateNode.quasis.forEach((quasi) => {
               if (quasi.value?.raw?.trim()) {
                 const id = `__STRING_ID_${nanoid()}__`;
                 stringMap[id] = quasi.value.raw;

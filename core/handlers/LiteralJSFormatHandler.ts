@@ -6,8 +6,9 @@ import zodToJsonSchema from "zod-to-json-schema";
 import { jsonSchemaToZod } from "json-schema-to-zod";
 import * as beautify from 'js-beautify';
 import { JSExecutionEngine } from './JSExecutionEngine';
-import { parse } from "acorn";
+import { parse, type Node } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
+import type { FunctionDeclarationNode } from "../types/acorn-extensions";
 
 /**
  * Handles Literal+JavaScript response format for tool calls
@@ -213,13 +214,16 @@ ${beautifiedSchema}`;
 
       // Traverse the AST to find the callTools function
       walkSimple(ast, {
-        FunctionDeclaration(node: any): void {
-          if (node.id && node.id.name === "callTools") {
-            // Extract the entire function as source code
-            const start = node.start;
-            const end = node.end;
-            if (start !== null && start !== undefined && end !== null && end !== undefined) {
-              callToolsFunction = text.substring(start, end);
+        FunctionDeclaration(node: Node): void {
+          if (node.type === "FunctionDeclaration") {
+            const funcNode = node as FunctionDeclarationNode;
+            if (funcNode.id && funcNode.id.name === "callTools") {
+              // Extract the entire function as source code
+              const start = funcNode.start;
+              const end = funcNode.end;
+              if (start !== null && start !== undefined && end !== null && end !== undefined) {
+                callToolsFunction = text.substring(start, end);
+              }
             }
           }
         }
