@@ -117,8 +117,8 @@ interface AgentLoopOptions {
   parallelExecution?: boolean;
   /** Global timeout in ms for all tools (default: -1, disabled) */
   globalToolTimeoutMs?: number;
-  /** JavaScript execution mode for tool calling (default: 'eval') */
-  jsExecutionMode?: 'eval' | 'ses' | 'websandbox';
+  /** JavaScript execution mode for tool calling (SES is the only supported mode) */
+  jsExecutionMode?: 'ses';
   /** Retry attempts for tool execution errors */
   toolExecutionRetryAttempts?: number;
   /** Retry attempts for connection/parsing errors */
@@ -148,11 +148,13 @@ enum FormatMode {
 }
 ```
 
-### JavaScript Execution Modes
+### JavaScript Execution Mode
 
 ```typescript
-type JsExecutionMode = 'eval' | 'ses' | 'websandbox';
+type JsExecutionMode = 'ses';
 ```
+
+- **`'ses'`** - Secure EcmaScript (only mode): Maximum security through compartmentalized execution
 
 ## AI Providers
 
@@ -334,6 +336,63 @@ interface TurnState {
   /** Custom user data */
   userData?: Record<string, unknown>;
 }
+```
+
+## Data Types
+
+### Interaction Types
+
+AgentLoop uses linearized data structures for better type safety and clarity:
+
+#### UserPrompt
+```typescript
+interface UserPrompt {
+  taskId: string;
+  type: "user_prompt";
+  timestamp: string;
+  message: string;  // Direct message field (linearized from context)
+}
+```
+
+#### ToolCall  
+```typescript
+interface ToolCall {
+  taskId: string;
+  type: "tool_call";
+  timestamp: string;
+  toolName: string;  // Direct field (linearized from context.toolName)
+  success: boolean;  // Direct field (linearized from context.success)
+  error?: string;    // Direct field (linearized from context.error)
+  args: unknown;     // All tool result data (linearized from context.*)
+}
+```
+
+#### AgentResponse
+```typescript
+interface AgentResponse {
+  taskId: string;
+  type: "agent_response";
+  timestamp: string;
+  args: unknown;     // Response data (linearized from context)
+  error?: string;
+  tokenUsage?: TokenUsage;
+}
+```
+
+#### ToolCallReport
+```typescript
+interface ToolCallReport {
+  report: string;
+  overallSuccess: boolean;
+  toolCalls: ToolCall[];  // Array of linearized ToolCall objects
+  error?: string;
+}
+```
+
+### Union Types
+
+```typescript
+type Interaction = UserPrompt | ToolCallReport | AgentResponse;
 ```
 
 ## Utility Types

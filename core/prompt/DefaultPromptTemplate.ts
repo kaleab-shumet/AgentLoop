@@ -241,7 +241,7 @@ ${entries}
 
     const reports = toolCallReports.map((report, i) => {
       const toolsUsed = report.toolCalls.map(tc =>
-        `  - ${tc.context.toolName}: ${tc.context.success ? '✅ SUCCESS' : '❌ FAILED'}`
+        `  - ${tc.toolName}: ${tc.success ? '✅ SUCCESS' : '❌ FAILED'}`
       ).join('\n');
 
       return `### Action #${i + 1}
@@ -250,9 +250,9 @@ ${toolsUsed}
 **Tool Result**:
 \`\`\`json
 ${JSON.stringify(report.toolCalls.map(tc => ({
-        name: tc.context.toolName,
-        success: tc.context.success,
-        context: tc.context
+        name: tc.toolName,
+        success: tc.success,
+        args: tc.args
       })), null, 2)}
 \`\`\``;
     }).join('\n\n');

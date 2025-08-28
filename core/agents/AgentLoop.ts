@@ -13,7 +13,6 @@ import {
   ToolCallReport,
   Interaction,
   AgentResponse,
-  ToolCallContext,
   HandlerParams,
   UserPrompt,
   BuildPromptParams,
@@ -69,7 +68,7 @@ export interface AgentLoopOptions {
   retryDelay?: number;
   hooks?: AgentLifecycleHooks;
   formatMode?: FormatMode;
-  jsExecutionMode?: JsExecutionMode;   // JavaScript execution mode for tool calling (default: 'eval')
+  jsExecutionMode?: JsExecutionMode;   // JavaScript execution mode for tool calling (SES is the only mode)
   promptManager?: PromptManager;
   promptManagerConfig?: PromptManagerConfig;
   sleepBetweenIterationsMs?: number;
@@ -190,12 +189,12 @@ export abstract class AgentLoop {
       if ('type' in interaction) {
         if (interaction.type === 'user_prompt') {
           const userPrompt = interaction;
-          conversationEntries.push({ user: userPrompt.context });
+          conversationEntries.push({ user: userPrompt.message });
         } else if (interaction.type === 'agent_response') {
           const agentResponse = interaction;
-          const aiContent = typeof agentResponse.context === 'string'
-            ? agentResponse.context
-            : JSON.stringify(agentResponse.context);
+          const aiContent = typeof agentResponse.args === 'string'
+            ? agentResponse.args
+            : JSON.stringify(agentResponse.args);
           conversationEntries.push({ ai: aiContent });
         }
       }
@@ -211,14 +210,15 @@ export abstract class AgentLoop {
   private processToolResults(toolResults: ToolCall[]): { nextTasks: string | null, goal: string | null, report: string | null } | null {
     // Find report tool results
     const reportResults = toolResults.filter(result =>
-      result.context.toolName === this.SELF_REASONING_TOOL && result.context.success
+      result.toolName === this.SELF_REASONING_TOOL && result.success
     );
 
     if (reportResults.length > 0) {
       const latestReport = reportResults[reportResults.length - 1];
-      const nextTasks = typeof latestReport.context.nextTasks === 'string' ? latestReport.context.nextTasks : null;
-      const report = typeof latestReport.context.report === 'string' ? latestReport.context.report : null;
-      const goal = typeof latestReport.context.goal === 'string' ? latestReport.context.goal : null;
+      const args = latestReport.args as any;
+      const nextTasks = typeof args?.nextTasks === 'string' ? args.nextTasks : null;
+      const report = typeof args?.report === 'string' ? args.report : null;
+      const goal = typeof args?.goal === 'string' ? args.goal : null;
       console.log("---------------------------------------");
       console.log("goal: ", goal);
       console.log("report: ", report);
@@ -411,7 +411,7 @@ export abstract class AgentLoop {
       taskId,
       timestamp: Date.now().toString(),
       type: "user_prompt",
-      context: userPrompt
+      message: userPrompt
     }
 
     currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, userPromptInteraction);
@@ -488,18 +488,19 @@ export abstract class AgentLoop {
           }
 
           // Handle report creation for both regular tools and final tool
-          const reportResult = iterationResults.find(r => r.context.toolName === this.SELF_REASONING_TOOL);
+          const reportResult = iterationResults.find(r => r.toolName === this.SELF_REASONING_TOOL);
 
-          if (reportResult?.context.success) {
+          if (reportResult?.success) {
             // Regular tool execution with report tool
-            const reportText: string = typeof reportResult.context.report === "string"
-              ? reportResult.context.report
-              : JSON.stringify(reportResult.context.report ?? "");
+            const args = reportResult.args as any;
+            const reportText: string = typeof args?.report === "string"
+              ? args.report
+              : JSON.stringify(args?.report ?? "");
 
             // Get other tool calls executed in this iteration (excluding report and final)
             const otherToolResults = iterationResults.filter(r =>
-              r.context.toolName !== this.SELF_REASONING_TOOL &&
-              r.context.toolName !== this.FINAL_TOOL_NAME
+              r.toolName !== this.SELF_REASONING_TOOL &&
+              r.toolName !== this.FINAL_TOOL_NAME
             );
 
             // Check for stagnation using stateless method
@@ -520,8 +521,8 @@ export abstract class AgentLoop {
 
 
             // Determine overall success and error
-            const overallSuccess = otherToolResults.every(r => r.context.success);
-            const errors = otherToolResults.filter(r => !r.context.success).map(r => r.context.error).filter(Boolean);
+            const overallSuccess = otherToolResults.every(r => r.success);
+            const errors = otherToolResults.filter(r => !r.success).map(r => r.error).filter(Boolean);
             const error = errors.length > 0 ? errors.join('; ') : undefined;
 
             // Create ToolCallReport and add to interaction history
@@ -540,20 +541,20 @@ export abstract class AgentLoop {
 
 
           // Apply failure handling mode
-          const failedTools = iterationResults.filter(r => !r.context.success);
+          const failedTools = iterationResults.filter(r => !r.success);
 
           if (failedTools.length > 0) {
             // IMPORTANT: Add ALL tool calls (both successful and failed) to interaction history 
             // so AI can see what failed and what succeeded in this iteration
             const allToolCallReport: ToolCallReport = {
-              report: `Tool execution with failures: ${failedTools.map(f => f.context.toolName).join(', ')} failed`,
+              report: `Tool execution with failures: ${failedTools.map(f => f.toolName).join(', ')} failed`,
               overallSuccess: false,
               toolCalls: iterationResults, // Include both successful and failed tools
               error: undefined
             };
             currentInteractionHistory = this.pushInteractionAndLimit(currentInteractionHistory, allToolCallReport);
 
-            const errorMessage = failedTools.map(f => `Tool: ${f.context.toolName}\n  Error: ${f.context?.error ?? 'Unknown error'}`).join('\n');
+            const errorMessage = failedTools.map(f => `Tool: ${f.toolName}\n  Error: ${f.error ?? 'Unknown error'}`).join('\n');
             const failedToolsError = new AgentError(errorMessage, AgentErrorType.TOOL_EXECUTION_ERROR, { userPrompt, failedTools });
 
             throw failedToolsError;
@@ -562,8 +563,8 @@ export abstract class AgentLoop {
             toolExecutionRetryCount = 0
             lastError = null;
 
-            const finalResult: ToolCall | undefined = iterationResults.find(r => r.context.toolName === this.FINAL_TOOL_NAME);
-            if (finalResult?.context.success) {
+            const finalResult: ToolCall | undefined = iterationResults.find(r => r.toolName === this.FINAL_TOOL_NAME);
+            if (finalResult?.success) {
               // Final tool execution - manually set "Task completed" report
               const toolCallReport: ToolCallReport = {
                 report: "Task completed",
@@ -582,7 +583,7 @@ export abstract class AgentLoop {
                 taskId,
                 timestamp: finalResult.timestamp,
                 type: "agent_response",
-                context: finalResult.context,
+                args: finalResult.args,
                 tokenUsage: runTokenUsage
               }
 
@@ -624,7 +625,7 @@ export abstract class AgentLoop {
               taskId,
               timestamp: Date.now().toString(),
               type: "agent_response",
-              context: undefined,
+              args: {},
               error: `I apologize, but I've encountered a stagnation loop and cannot make further progress. After ${errorResult.actualError.context?.occurrenceCount} similar attempts with tool "${errorResult.actualError.context?.toolInfo}", I must terminate to prevent infinite loops. The task could not be completed due to repeated unsuccessful reasoning patterns.`,
               tokenUsage: runTokenUsage
             };
@@ -682,7 +683,7 @@ export abstract class AgentLoop {
         taskId,
         timestamp: Date.now().toString(),
         type: "agent_response",
-        context: undefined,
+        args: {},
         error: finalError.getMessage(),
         tokenUsage: runTokenUsage
       };
@@ -713,11 +714,15 @@ export abstract class AgentLoop {
         if (!tool) {
           const err = new AgentError(`Tool '${call.toolName}' not found.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.toolName });
           const result = this.createFailureToolCallContext(call.toolName, err);
+          const { toolName, success, error, ...args } = result;
           const resultToolCall: ToolCall = {
             type: "tool_call",
             taskId,
             timestamp: Date.now().toString(),
-            context: result
+            toolName: String(toolName),
+            success: Boolean(success),
+            error: error ? String(error) : undefined,
+            args
           }
 
           iterationResults.push(resultToolCall);
@@ -728,7 +733,7 @@ export abstract class AgentLoop {
         iterationResults.push(result);
 
         // Apply failure handling mode for sequential execution
-        if (!result.context.success && this.failureHandlingMode === FailureHandlingMode.FAIL_FAST) {
+        if (!result.success && this.failureHandlingMode === FailureHandlingMode.FAIL_FAST) {
           break; // Stop on first failure only in FAIL_FAST mode
         }
       }
@@ -746,11 +751,15 @@ export abstract class AgentLoop {
       if (!this.tools.some(t => t.name === call.toolName)) {
         const error = new AgentError(`Tool '${call.toolName}' not found.`, AgentErrorType.TOOL_NOT_FOUND, { toolName: call.toolName });
         const result = this.createFailureToolCallContext(call.toolName, error);
+        const { toolName, success, error: errorMsg, ...args } = result;
         iterationResults.push({
           timestamp: Date.now().toString(),
           taskId,
           type: "tool_call",
-          context: result
+          toolName: String(toolName),
+          success: Boolean(success),
+          error: errorMsg ? String(errorMsg) : undefined,
+          args
         });
         return false;
       }
@@ -765,12 +774,16 @@ export abstract class AgentLoop {
     const propagateFailure = (failedToolName: string, chain: string[]) => {
       const directDependents = dependents.get(failedToolName) ?? [];
       for (const dependentName of directDependents) {
-        if (chain.includes(dependentName) || iterationResults.some(r => r.context.toolName === dependentName)) continue;
+        if (chain.includes(dependentName) || iterationResults.some(r => r.toolName === dependentName)) continue;
         const result = this.createFailureToolCallContext(failedToolName, new AgentError(`Skipped due to failure in dependency: '${failedToolName}'`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolName: dependentName, failedDependency: failedToolName }));
+        const { toolName, success, error: errorMsg, ...args } = result;
         iterationResults.push({
           taskId,
           timestamp: Date.now().toString(),
-          context: result,
+          toolName: String(toolName),
+          success: Boolean(success),
+          error: errorMsg ? String(errorMsg) : undefined,
+          args,
           type: "tool_call"
         });
         propagateFailure(dependentName, [...chain, dependentName]);
@@ -805,18 +818,22 @@ export abstract class AgentLoop {
           iterationResults.push(result);
         }
 
-        if (results.some(r => !r.context.success)) throw new Error(`One or more executions of tool '${toolName}' failed.`);
+        if (results.some(r => !r.success)) throw new Error(`One or more executions of tool '${toolName}' failed.`);
       } catch (error) {
         const agentError = error instanceof AgentError ? error : new AgentError(String(error), AgentErrorType.UNKNOWN, { toolName });
 
         // Check if any results were already added before the error
-        const existingResults = iterationResults.filter(r => r.context.toolName === toolName);
+        const existingResults = iterationResults.filter(r => r.toolName === toolName);
         if (existingResults.length === 0) {
           const failureResult = this.createFailureToolCallContext(toolName, agentError);
+          const { toolName: fToolName, success, error: errorMsg, ...args } = failureResult;
           iterationResults.push({
             taskId,
             timestamp: Date.now().toString(),
-            context: failureResult,
+            toolName: String(fToolName),
+            success: Boolean(success),
+            error: errorMsg ? String(errorMsg) : undefined,
+            args,
             type: 'tool_call'
           });
         }
@@ -1016,21 +1033,31 @@ export abstract class AgentLoop {
         }
       }
 
+      // Extract metadata and args from toolCallContext
+      const contextData = toolCallContext as any;
+      const { toolName, success, error, ...args } = contextData || {};
       result = {
         type: "tool_call",
         taskId,
         timestamp: Date.now().toString(),
-        context: toolCallContext
+        toolName: String(toolName),
+        success: Boolean(success),
+        error: error ? String(error) : undefined,
+        args
       }
 
     } catch (error) {
       const agentError = error instanceof AgentError ? error : new AgentError(`An unexpected error occurred in tool '${tool.name}': ${String(error)}`, AgentErrorType.TOOL_EXECUTION_ERROR, { toolName: tool.name, originalError: error, call });
       const errCtx = this.createFailureToolCallContext(tool.name, agentError);
+      const { toolName, success, error: errorMsg, ...args } = errCtx;
       result = {
         type: "tool_call",
         taskId,
         timestamp: Date.now().toString(),
-        context: errCtx
+        toolName: String(toolName),
+        success: Boolean(success),
+        error: errorMsg ? String(errorMsg) : undefined,
+        args
       }
     }
 
@@ -1139,7 +1166,7 @@ export abstract class AgentLoop {
     argsSchema: z.object({
       value: z.string().describe("The final reply to the user, summarizing the result or explanation.")
     }),
-    handler: ({ name, args }: HandlerParams<ZodTypeAny>): ToolCallContext => {
+    handler: ({ name, args }: HandlerParams<ZodTypeAny>): { [key: string]: unknown; } => {
       return {
         toolName: name,
         success: true,
@@ -1167,7 +1194,7 @@ export abstract class AgentLoop {
           `)
 
         }),
-        handler: ({ name, args }: HandlerParams<ZodTypeAny>): ToolCallContext => {
+        handler: ({ name, args }: HandlerParams<ZodTypeAny>): { [key: string]: unknown; } => {
           return {
             toolName: name,
             success: true,
@@ -1190,7 +1217,7 @@ export abstract class AgentLoop {
    * @param error The AgentError that occurred.
    * @returns A ToolResult object representing the failure.
    */
-  private createFailureToolCallContext(toolName: string, error: AgentError): ToolCallContext {
+  private createFailureToolCallContext(toolName: string, error: AgentError): { [key: string]: unknown; } {
     this.logger.error(`[AgentLoop] Tool '${toolName}' failed: ${error.getMessage()}`);
     return {
       toolName: toolName,

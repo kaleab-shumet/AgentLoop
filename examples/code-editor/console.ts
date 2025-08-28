@@ -78,15 +78,15 @@ class CodeEditorConsole {
         console.log('✅ Task completed successfully!\n');
         
         // Display the final response from final_tool
-        if (result.agentResponse.context && typeof result.agentResponse.context === 'object' && 'value' in result.agentResponse.context) {
+        if (result.agentResponse.args && typeof result.agentResponse.args === 'object' && 'value' in result.agentResponse.args) {
           console.log('📋 Summary:');
-          console.log(result.agentResponse.context.value);
+          console.log(result.agentResponse.args.value);
           console.log();
-        } else if (result.agentResponse.context) {
+        } else if (result.agentResponse.args) {
           console.log('📋 Summary:');
-          const context = typeof result.agentResponse.context === 'string' 
-            ? result.agentResponse.context 
-            : JSON.stringify(result.agentResponse.context);
+          const context = typeof result.agentResponse.args === 'string' 
+            ? result.agentResponse.args 
+            : JSON.stringify(result.agentResponse.args);
           console.log(context);
           console.log();
         }
@@ -115,13 +115,13 @@ class CodeEditorConsole {
   }
 
   private displayToolResults(toolCalls: any[]): void {
-    const successfulCalls = toolCalls.filter(tc => tc.context.success);
-    const failedCalls = toolCalls.filter(tc => !tc.context.success);
+    const successfulCalls = toolCalls.filter(tc => tc.success);
+    const failedCalls = toolCalls.filter(tc => !tc.success);
 
     if (successfulCalls.length > 0) {
       console.log(`🔧 Tools executed (${successfulCalls.length} successful):`);
       successfulCalls.forEach(tc => {
-        console.log(`  ✅ ${tc.context.toolName}`);
+        console.log(`  ✅ ${tc.toolName}`);
         
         // File operation results
         if (tc.result.filepath) {
@@ -132,7 +132,7 @@ class CodeEditorConsole {
         }
         
         // Command execution results
-        if (tc.context.toolName === 'execute_command') {
+        if (tc.toolName === 'execute_command') {
           console.log(`     💻 ${tc.result.command}`);
           if (tc.result.exitCode !== undefined) {
             console.log(`     🔢 Exit code: ${tc.result.exitCode}`);
@@ -151,10 +151,10 @@ class CodeEditorConsole {
     if (failedCalls.length > 0) {
       console.log(`❌ Failed tools (${failedCalls.length}):`);
       failedCalls.forEach(tc => {
-        console.log(`  ❌ ${tc.context.toolName}: ${tc.context.error || 'Unknown error'}`);
+        console.log(`  ❌ ${tc.toolName}: ${tc.error || 'Unknown error'}`);
         
         // Show command execution errors with more detail
-        if (tc.context.toolName === 'execute_command' && tc.result.stderr) {
+        if (tc.toolName === 'execute_command' && tc.args.stderr) {
           const stderr = tc.result.stderr.length > 200 
             ? tc.result.stderr.substring(0, 200) + '...' 
             : tc.result.stderr;

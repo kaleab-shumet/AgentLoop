@@ -72,14 +72,14 @@ async function runDemo() {
       console.log('✅ Build and test completed!\n');
       
       // Display final summary
-      if (result5.agentResponse.context && typeof result5.agentResponse.context === 'object' && 'value' in result5.agentResponse.context) {
+      if (result5.agentResponse.args && typeof result5.agentResponse.args === 'object' && 'value' in result5.agentResponse.args) {
         console.log('📋 Final Summary:');
-        console.log(result5.agentResponse.context.value);
-      } else if (result5.agentResponse.context) {
+        console.log(result5.agentResponse.args.value);
+      } else if (result5.agentResponse.args) {
         console.log('📋 Final Summary:');
-        const context = typeof result5.agentResponse.context === 'string' 
-          ? result5.agentResponse.context 
-          : JSON.stringify(result5.agentResponse.context);
+        const context = typeof result5.agentResponse.args === 'string' 
+          ? result5.agentResponse.args 
+          : JSON.stringify(result5.agentResponse.args);
         console.log(context);
       }
     } else {

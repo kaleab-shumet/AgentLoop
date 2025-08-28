@@ -7,7 +7,7 @@ import { generate } from "escodegen";
 import { nanoid } from "nanoid";
 import * as ses from 'ses';
 
-// Support both eval and SES execution modes
+// SES execution interface
 interface SESCompartment {
   evaluate: (code: string) => unknown;
 }
@@ -29,8 +29,8 @@ export interface JSExecutionContext {
 }
 
 /**
- * JavaScript execution engine with pluggable security modes
- * Supports both direct eval and SES execution
+ * JavaScript execution engine with SES (Secure EcmaScript) for maximum security
+ * All code execution is isolated in secure compartments
  */
 // Global SES initialization state - shared across all instances
 let globalSESInitialized = false;
@@ -40,9 +40,6 @@ const originalDateNow = Date.now;
 
 export class JSExecutionEngine {
 
-  /**
-   * Detect available security engines
-   */
   /**
    * Get SES engine (always available since it's directly imported)
    */
@@ -57,7 +54,7 @@ export class JSExecutionEngine {
   }
 
   /**
-   * Execute JavaScript code with specified execution mode (defaults to SES for security)
+   * Execute JavaScript code with SES secure execution (only supported mode)
    */
   async execute(
     jsCode: string,
@@ -65,22 +62,9 @@ export class JSExecutionEngine {
     options: JSExecutionOptions = { mode: 'ses', timeoutMs: 5000 }
   ): Promise<Record<string, unknown>[]> {
     const context = this.createExecutionContext(tools);
-    const mode = options.mode ?? 'ses'; // Default to SES for security
     
-    let rawResults: Record<string, unknown>[];
-    
-    if (mode === 'ses') {
-      // Use secure SES execution (default and recommended)
-      rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs ?? 5000);
-    } else if (mode === 'eval') {
-      // Use eval only if explicitly requested by developer
-      rawResults = await this.executeWithEval(jsCode, context, options.timeoutMs ?? 5000);
-    } else {
-      throw new AgentError(
-        `Unsupported execution mode: ${mode}. Use 'ses' (recommended) or 'eval'.`,
-        AgentErrorType.CONFIGURATION_ERROR
-      );
-    }
+    // SES is the only supported execution mode for maximum security
+    const rawResults = await this.executeWithSES(jsCode, context, options.timeoutMs ?? 5000);
 
     // Parse results with actual Zod schemas outside the execution environment
     return this.parseToolCallsWithZod(rawResults, tools);
@@ -139,7 +123,7 @@ export class JSExecutionEngine {
   }
 
   /**
-   * Parse raw tool call data with actual Zod schemas (outside eval environment)
+   * Parse raw tool call data with actual Zod schemas (outside execution environment)
    */
   private parseToolCallsWithZod(rawResults: Record<string, unknown>[], tools: Tool<ZodTypeAny>[]): Record<string, unknown>[] {
     
@@ -188,13 +172,13 @@ export class JSExecutionEngine {
    */
   private createExecutionContext(tools: Tool<ZodTypeAny>[]): JSExecutionContext {
     
-    // Create wrapper objects that capture raw data instead of doing Zod parsing in eval
+    // Create wrapper objects that capture raw data instead of doing Zod parsing in SES compartment
     const toolSchemas: Record<string, { parse: (data: unknown) => Record<string, unknown> }> = {};
     for (const tool of tools) {
       toolSchemas[tool.name] = {
         parse: (data: unknown): Record<string, unknown> => {
           // Just return the raw data with toolName added
-          // Actual Zod parsing will happen outside eval
+          // Actual Zod parsing will happen outside SES compartment
           return {
             ...(data as Record<string, unknown>),
             toolName: tool.name
@@ -211,86 +195,7 @@ export class JSExecutionEngine {
   }
 
   /**
-   * Execute with eval (less secure, use only when explicitly requested)
-   */
-  private async executeWithEval(
-    jsCode: string,
-    context: JSExecutionContext,
-    timeoutMs: number
-  ): Promise<Record<string, unknown>[]> {
-    return this.withTimeout(() => Promise.resolve().then(() => {
-      try {
-        // Prepare variables for eval context
-        const { toolSchemas, toolCalls, z } = context;
-
-        // Extract only the callTools function body
-        const functionBody = this.extractCallToolsFunctionBody(jsCode);
-        
-        // Make context available globally for eval
-        // Use cross-platform global object detection
-        const globalObj = (typeof globalThis !== 'undefined' ? globalThis : typeof global !== 'undefined' ? global : {}) as Record<string, unknown>;
-        
-        // Store previous values to restore later
-        const prevToolSchemas = globalObj.toolSchemas;
-        const prevToolCalls = globalObj.toolCalls;
-        const prevZ = globalObj.z;
-        
-        try {
-          // Set global variables for eval execution
-          globalObj.toolSchemas = toolSchemas;
-          globalObj.toolCalls = toolCalls;
-          globalObj.z = z;
-          
-          // Execute the code with extracted function body
-          const executionCode = `
-            (function() {
-              function callTools() {
-                ${functionBody}
-              }
-              return callTools();
-            })();
-          `;
-
-          // Intentional use of eval for JavaScript execution
-          const result = eval(executionCode) as unknown;
-
-          if (!Array.isArray(result)) {
-            throw new AgentError(
-              "callTools must return array",
-              AgentErrorType.INVALID_RESPONSE
-            );
-          }
-
-          return result as Record<string, unknown>[];
-        } finally {
-          // Restore previous global state
-          if (prevToolSchemas !== undefined) {
-            globalObj.toolSchemas = prevToolSchemas;
-          } else {
-            delete globalObj.toolSchemas;
-          }
-          if (prevToolCalls !== undefined) {
-            globalObj.toolCalls = prevToolCalls;
-          } else {
-            delete globalObj.toolCalls;
-          }
-          if (prevZ !== undefined) {
-            globalObj.z = prevZ;
-          } else {
-            delete globalObj.z;
-          }
-        }
-      } catch (error) {
-        throw new AgentError(
-          `Eval execution error: ${error instanceof Error ? error.message : String(error)}`,
-          AgentErrorType.INVALID_RESPONSE
-        );
-      }
-    }), timeoutMs);
-  }
-
-  /**
-   * Execute with SES (secure)
+   * Execute with SES (Secure EcmaScript) - the only supported execution mode
    */
   private async executeWithSES(
     jsCode: string,
@@ -311,10 +216,10 @@ export class JSExecutionEngine {
         // Create compartment
         const compartment = new sesEngine.Compartment(endowments);
 
-        // Extract only the callTools function body using Babel (strips imports automatically)
+        // Extract only the callTools function body using Acorn (strips imports automatically)
         const functionBody = this.extractCallToolsFunctionBody(jsCode);
         
-        // Extract strings to avoid SES restrictions on import/eval/require in string literals
+        // Extract strings to avoid SES restrictions on import/require statements in string literals
         const { cleanCode: cleanFunctionBody, stringMap } = this.extractStringsToIds(functionBody);
 
         // Execute in compartment - wrap the clean function body
