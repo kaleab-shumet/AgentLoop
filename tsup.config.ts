@@ -20,7 +20,7 @@ const coreConfig: Options = {
     }
   },
   esbuildOptions(options: { logOverride?: Record<string, string> }) {
-    // Suppress eval warning - we intentionally use eval() in JSExecutionEngine for secure code execution
+    // Suppress eval warning - SES library may contain eval() internally for secure compartmentalization
     options.logOverride = {
       'direct-eval': 'silent'
     }
@@ -45,7 +45,7 @@ const examplesConfig: Options = {
     }
   },
   esbuildOptions(options: { logOverride?: Record<string, string> }) {
-    // Suppress eval warning - we intentionally use eval() in JSExecutionEngine for secure code execution
+    // Suppress eval warning - SES library may contain eval() internally for secure compartmentalization
     options.logOverride = {
       'direct-eval': 'silent'
     }

@@ -50,10 +50,10 @@ const agent = new CodeEditorAgent('/path/to/project');
 
 const result = await agent.run({
   userPrompt: 'Create a React component called Button with TypeScript',
-  previousInteractionHistory: []
+  prevInteractionHistory: []
 });
 
-console.log(result.agentResponse.output?.value);
+console.log(result.agentResponse?.args);
 ```
 
 ### Demo Script
@@ -118,7 +118,7 @@ const agent = new CodeEditorAgent(basePath, {
 
 Built on the AgentLoop framework with:
 
-- **JSExecutionEngine**: Secure JavaScript execution with Babel AST parsing
+- **JSExecutionEngine**: Secure JavaScript execution with SES compartments (secure by default)
 - **Tool System**: Robust file operation tools with error handling
 - **LLM Integration**: Support for multiple AI providers (OpenAI, Azure, Google, etc.)
 - **Memory Management**: Configurable interaction history limits for cost control

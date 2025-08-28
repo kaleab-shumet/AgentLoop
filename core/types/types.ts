@@ -35,7 +35,7 @@ export interface UserPrompt {
   taskId: string;
   type: "user_prompt";
   timestamp: string;
-  context: string;
+  message: string;
 }
 
 // Response message from the agent
@@ -43,25 +43,20 @@ export interface AgentResponse {
   taskId: string;
   type: "agent_response";
   timestamp: string;
-  context: unknown;
+  args: unknown;
   error?: string;
   tokenUsage?: TokenUsage;
 }
 
-// Context structure used inside tool_call events
-export interface ToolCallContext {
-  toolName: string;
-  success: boolean;
-  [key: string]: unknown;
-  error?: string;
-}
-
-// Tool call event (uses ToolCallContext)
+// Tool call event (linearized structure)
 export interface ToolCall {
   taskId: string;
   type: "tool_call";
   timestamp: string;
-  context: ToolCallContext;
+  toolName: string;
+  success: boolean;
+  error?: string;
+  args: unknown;
 }
 
 // Tool call report event (groups multiple tool calls with a report)
@@ -140,14 +135,14 @@ export interface Tool<T extends ZodTypeAny = ZodTypeAny> {
   argsSchema: T;
   /** The handler function that executes the tool's logic. */
   dependencies?: string[];
-  handler: (params: HandlerParams<ZodTypeAny>) => ToolCallContext | Promise<ToolCallContext>;
+  handler: (params: HandlerParams<ZodTypeAny>) => unknown | Promise<unknown>;
 }
 
 /**
- * JavaScript execution modes for tool calling
- * SES is the recommended secure default
+ * JavaScript execution mode for tool calling
+ * SES (Secure EcmaScript) is the only supported mode for maximum security
  */
-export type JsExecutionMode = 'eval' | 'ses';
+export type JsExecutionMode = 'ses';
 
 // Essential types only
 export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'groq' | 'perplexity' | 'azure';

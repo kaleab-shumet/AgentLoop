@@ -150,7 +150,7 @@ async function main() {
     userPrompt: "What's 15 * 23 + 7?",
     prevInteractionHistory: []
   });
-  console.log('Response:', calcResult.agentResponse?.context);
+  console.log('Response:', calcResult.agentResponse?.args);
 
   console.log('\n---\n');
 
@@ -160,7 +160,7 @@ async function main() {
     userPrompt: "Add 'Buy groceries' and 'Walk the dog' to my todo list, then show me all items",
     prevInteractionHistory: []
   });
-  console.log('Response:', todoResult.agentResponse?.context);
+  console.log('Response:', todoResult.agentResponse?.args);
 }
 
 main().catch(console.error);
@@ -282,10 +282,10 @@ function askUser(): void {
       });
 
       if (result.agentResponse) {
-        console.log('Agent:', result.agentResponse.context);
+        console.log('Agent:', result.agentResponse.args);
         history.push({
           userPrompt: input,
-          agentResponse: result.agentResponse.context
+          agentResponse: result.agentResponse.args
         });
       }
 
@@ -307,30 +307,25 @@ Run the interactive console:
 npx ts-node console.ts
 ```
 
-## Adding Security
+## JavaScript Execution Security
 
-For production environments, add secure code execution:
-
-```bash
-# For Node.js servers
-npm install ses@1.14.0
-
-# For browser applications  
-npm install @jetbrains/websandbox@1.1.2
-```
-
-Update your agent configuration:
+AgentLoop provides maximum security through SES-only execution:
 
 ```typescript
 class SecureAgent extends MyFirstAgent {
   constructor() {
-    super(/* ... same ai provider config ... */, {
-      // Enable secure execution via options
-      jsExecutionMode: 'ses' // or 'websandbox' for browsers
-    });
+    super(/* ... same ai provider config ... */);
+    // SES is automatically used - no configuration needed
+    // Maximum security is guaranteed for all executions
   }
 }
 ```
+
+**Security Benefits**: 
+- **No Configuration Required**: SES is the only execution mode
+- **Maximum Security**: All AI-generated code runs in isolated compartments
+- **Zero Risk**: No unsafe execution modes available
+- **Included**: SES library bundled - no additional installation needed
 
 ## Next Steps
 

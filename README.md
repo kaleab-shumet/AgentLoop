@@ -18,10 +18,10 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 - **Provider-Specific Optimizations**: Automatic handling of rate limits, context windows, and capabilities
 
 ### Secure Code Execution
-- **🔒 Secure by Default**: Uses SES (Secure EcmaScript) for safe JavaScript execution
-- **⚡ Performance Options**: Choose `ses` (secure, default) or `eval` (faster, explicit only)
+- **🔒 Maximum Security**: SES (Secure EcmaScript) is the only execution mode - no unsafe alternatives
+- **🛡️ Compartmentalized**: All AI-generated code runs in isolated SES compartments
 - **🌐 Cross-Platform**: Works in Node.js and browsers with zero configuration
-- **🛡️ Built-in Security**: SES included out of the box, no additional installation needed
+- **📦 Zero Dependencies**: SES included out of the box, no additional installation needed
 
 ### Innovative Tool Calling
 - **JavaScript-Based Tools**: AI writes JavaScript functions for tool execution
@@ -99,7 +99,7 @@ const result = await agent.run({
   prevInteractionHistory: []
 });
 
-console.log(result.agentResponse?.context);
+console.log(result.agentResponse?.args);
 ```
 
 ## 📖 API Reference
@@ -127,9 +127,44 @@ The main method to execute the agent. This is a stateless operation that process
 #### Interaction Types
 
 An `Interaction` can be one of:
-- **`UserPrompt`** - User's input message
-- **`ToolCallReport`** - Results from tool execution(s)
-- **`AgentResponse`** - Agent's final response
+- **`UserPrompt`** - User's input message with `message` field
+- **`ToolCallReport`** - Results from tool execution(s) with linearized `ToolCall[]` 
+- **`AgentResponse`** - Agent's final response with `args` field containing the response data
+
+#### Data Structure - Linearized & Simplified
+
+AgentLoop uses a **linearized data structure** for better type safety and easier access:
+
+```typescript
+// ✅ NEW: Direct field access
+interface ToolCall {
+  taskId: string;
+  type: "tool_call";
+  timestamp: string;
+  toolName: string;    // Direct access (was: result.context.toolName)
+  success: boolean;    // Direct access (was: result.context.success)  
+  error?: string;      // Direct access (was: result.context.error)
+  args: unknown;       // All tool data (was: result.context.*)
+}
+
+interface UserPrompt {
+  taskId: string;
+  type: "user_prompt";
+  timestamp: string;
+  message: string;     // Direct access (was: prompt.context)
+}
+
+interface AgentResponse {
+  taskId: string;
+  type: "agent_response";
+  timestamp: string;
+  args: unknown;       // Response data (was: response.context)
+  error?: string;
+  tokenUsage?: TokenUsage;
+}
+```
+
+**Benefits**: No more nested `.context` properties - everything is top-level and type-safe.
 
 #### Example Usage
 
@@ -155,7 +190,7 @@ const result2 = await agent.run({
 
 // Final response from agent (if any)
 if (result2.agentResponse) {
-  console.log("Agent says:", result2.agentResponse.context);
+  console.log("Agent says:", result2.agentResponse.args);
 }
 ```
 
@@ -169,33 +204,26 @@ AgentLoop is **completely stateless** - it doesn't store any conversation histor
 
 This design makes AgentLoop scalable and easy to integrate with databases, session storage, or distributed systems.
 
-### JavaScript Execution Modes
+### JavaScript Execution Security
 
-AgentLoop supports two execution modes for running AI-generated JavaScript code:
+AgentLoop uses **SES (Secure EcmaScript)** as the only execution mode for maximum security:
 
-#### SES (Secure EcmaScript) - Default & Recommended
 ```typescript
-const agent = new MyAgent(provider, {
-  jsExecutionMode: 'ses'  // Default - can be omitted
-});
+const agent = new MyAgent(provider); // SES is always used - no configuration needed
 ```
-- **✅ Secure by default**: Runs in isolated SES compartments
-- **✅ Memory safe**: No access to global objects or sensitive APIs
-- **✅ Zero configuration**: Included out of the box
-- **✅ Cross-platform**: Works in both Node.js and browsers
 
-#### Eval Mode - Explicit Only
-```typescript
-const agent = new MyAgent(provider, {
-  jsExecutionMode: 'eval'  // Must be explicitly set
-});
-```
-- **⚠️ Less secure**: Direct eval execution
-- **⚡ Faster performance**: No sandboxing overhead  
-- **🎯 Developer choice**: Only available when explicitly requested
-- **🚫 No fallback**: SES failures throw errors instead of falling back to eval
+#### SES (Secure EcmaScript) - Only Mode
+- **🔒 Maximum Security**: All code runs in isolated compartments
+- **🛡️ Memory Safe**: No access to global objects or sensitive APIs
+- **📦 Zero Configuration**: SES included out of the box
+- **🌐 Cross-Platform**: Works identically in Node.js and browsers
+- **🚫 No Unsafe Alternatives**: Eliminates any possibility of insecure execution
 
-**Recommendation**: Always use the default SES mode unless you have specific performance requirements and understand the security implications.
+**Why SES-Only?**
+- **Security First**: No compromise on security - every execution is safe
+- **Predictable**: Consistent security model across all environments
+- **Zero-Risk**: Eliminates entire class of security vulnerabilities
+- **Production Ready**: Battle-tested secure execution without complexity
 
 ## 🛠️ Core Concepts
 

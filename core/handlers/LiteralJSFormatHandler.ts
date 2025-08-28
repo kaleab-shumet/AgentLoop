@@ -18,11 +18,11 @@ export class LiteralJSFormatHandler implements FormatHandler {
   private readonly executionTimeoutMs = 5000; // 5 second timeout for code execution
   private readonly executionEngine = new JSExecutionEngine();
   
-  // SES-only secure execution 
+  // SES-only secure execution (only supported mode)
   public executionMode: JsExecutionMode = 'ses';
 
   constructor(jsExecutionMode: JsExecutionMode = 'ses') {
-    this.executionMode = 'ses'; // Always use SES for security
+    this.executionMode = 'ses'; // SES is the only supported mode for maximum security
   }
 
   // Timeout and execution methods moved to JSExecutionEngine
