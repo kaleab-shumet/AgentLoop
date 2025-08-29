@@ -65,23 +65,27 @@ class CodeEditorConsole {
     try {
       console.log(`\n🤖 Processing: "${userInput}"\n`);
       
+      // Push user message first
+      this.conversationHistory.push({ role: 'user', message: userInput });
+      
       const result = await this.agent.run({
         userPrompt: userInput,
-        ...(this.conversationHistory.length > 0 && {
+        ...(this.conversationHistory.length > 1 && {
           context: {
             "Conversation History": this.conversationHistory
+              .slice(0, -1) // Exclude current user message
               .map(entry => `${entry.role}: ${entry.message}`)
               .join('\n')
           }
         })
       });
 
-      // After getting response, update history
+      // Push agent response after receiving it
       if (result.agentResponse) {
-        this.conversationHistory.push(
-          { role: 'user', message: userInput },
-          { role: 'agent', message: result.agentResponse.args }
-        );
+        this.conversationHistory.push({
+          role: 'agent',
+          message: String((result.agentResponse.args as Record<string, unknown>)?.value) || ""
+        });
       }
 
       const endTime = Date.now();

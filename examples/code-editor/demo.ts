@@ -28,7 +28,7 @@ async function runDemo() {
     // After getting response, update history
     conversationHistory.push(
       { role: 'user', message: 'Create a React Button component in TypeScript with props for text, onClick, and optional disabled state. Include proper TypeScript types and export it.' },
-      { role: 'agent', message: result1.agentResponse?.args }
+      { role: 'agent', message: String((result1.agentResponse?.args as Record<string, unknown>)?.value) || "" }
     );
 
     if (result1.agentResponse && !result1.agentResponse.error) {
@@ -53,7 +53,7 @@ async function runDemo() {
     // After getting response, update history
     conversationHistory.push(
       { role: 'user', message: 'Create a utils.ts file with helper functions for formatting dates, validating emails, and generating random IDs. Include proper JSDoc comments.' },
-      { role: 'agent', message: result2.agentResponse?.args }
+      { role: 'agent', message: String((result2.agentResponse?.args as Record<string, unknown>)?.value) || "" }
     );
 
     if (result2.agentResponse && !result2.agentResponse.error) {
@@ -78,7 +78,7 @@ async function runDemo() {
     // After getting response, update history
     conversationHistory.push(
       { role: 'user', message: 'Create a proper Node.js project structure with src/, tests/, and docs/ folders. Add a package.json with common dependencies for a TypeScript Node.js project.' },
-      { role: 'agent', message: result3.agentResponse?.args }
+      { role: 'agent', message: String((result3.agentResponse?.args as Record<string, unknown>)?.value) || "" }
     );
 
     if (result3.agentResponse && !result3.agentResponse.error) {
@@ -103,7 +103,7 @@ async function runDemo() {
     // After getting response, update history
     conversationHistory.push(
       { role: 'user', message: 'Initialize a Git repository, install the dependencies from package.json, and make an initial commit with all the created files.' },
-      { role: 'agent', message: result4.agentResponse?.args }
+      { role: 'agent', message: String((result4.agentResponse?.args as Record<string, unknown>)?.value) || "" }
     );
 
     if (result4.agentResponse && !result4.agentResponse.error) {
@@ -128,7 +128,7 @@ async function runDemo() {
     // After getting response, update history
     conversationHistory.push(
       { role: 'user', message: 'Run the TypeScript compiler to check for any errors, then run any available tests. Provide a summary of the results.' },
-      { role: 'agent', message: result5.agentResponse?.args }
+      { role: 'agent', message: String((result5.agentResponse?.args as Record<string, unknown>)?.value) || "" }
     );
 
     if (result5.agentResponse && !result5.agentResponse.error) {
