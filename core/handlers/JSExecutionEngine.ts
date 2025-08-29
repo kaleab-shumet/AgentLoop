@@ -1,9 +1,8 @@
 import { z, ZodTypeAny } from "zod";
-import { Tool, JsExecutionMode } from "../types/types";
+import { Tool, JsExecutionMode, FunctionDeclarationNode, LiteralNode, TemplateLiteralNode } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import { parse, type Node } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
-import type { FunctionDeclarationNode, LiteralNode, TemplateLiteralNode } from "../types/acorn-extensions";
 import { generate } from "escodegen";
 import { nanoid } from "nanoid";
 import * as ses from 'ses';

@@ -1,6 +1,6 @@
 /// <reference path="../types/ses.d.ts" />
 import { ZodTypeAny } from "zod";
-import { Tool, PendingToolCall, FormatHandler, JsExecutionMode } from "../types/types";
+import { Tool, PendingToolCall, FormatHandler, JsExecutionMode, FunctionDeclarationNode } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 import zodToJsonSchema from "zod-to-json-schema";
 import { jsonSchemaToZod } from "json-schema-to-zod";
@@ -8,7 +8,6 @@ import * as beautify from 'js-beautify';
 import { JSExecutionEngine } from './JSExecutionEngine';
 import { parse, type Node } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
-import type { FunctionDeclarationNode } from "../types/acorn-extensions";
 
 /**
  * Handles Literal+JavaScript response format for tool calls
