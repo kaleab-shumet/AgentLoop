@@ -24,23 +24,82 @@ abstract class AgentLoop {
 
 #### Methods
 
-##### `run(params: AgentRunParams): Promise<AgentRunResult>`
+##### `run(input: AgentRunInput): Promise<AgentRunOutput>`
 
 Execute the agent with a user prompt.
 
 ```typescript
-interface AgentRunParams {
+interface AgentRunInput {
   userPrompt: string;
-  prevInteractionHistory: Interaction[]; // v2.0.0: Uses linearized Interaction types
-  turnState?: TurnState;
+  context?: Record<string, unknown>; // v2.0.0: Pass history as context["Conversation History"]
+  completionOptions?: Record<string, unknown>;
 }
 
-interface AgentRunResult {
+interface AgentRunOutput {
   agentResponse?: AgentResponse;
   error?: AgentError;
   tokenUsage?: TokenUsage;
   executionTime?: number;
 }
+```
+
+#### AgentRunInput Parameters
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `userPrompt` | `string` | ✅ | The user's message or instruction to the agent |
+| `context` | `Record<string, unknown>` | ❌ | Context data including conversation history (pass history as `context["Conversation History"]`) |
+| `completionOptions` | `Record<string, unknown>` | ❌ | Optional AI provider completion options (temperature, max_tokens, etc.) |
+
+#### Conversation History Management
+
+AgentLoop uses a **context-based approach** for conversation history, giving you full control over how history is formatted and structured:
+
+```typescript
+// Manage conversation history as array
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
+
+const result1 = await agent.run({
+  userPrompt: "What is 2 + 2?",
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
+});
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "What is 2 + 2?" },
+  { role: 'agent', message: result1.agentResponse?.args }
+);
+
+const result2 = await agent.run({
+  userPrompt: "Now multiply that by 3",
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
+});
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "Now multiply that by 3" },
+  { role: 'agent', message: result2.agentResponse?.args }
+);
+```
+
+**Benefits of Context-Based History:**
+- **Full Control**: You decide how to format and structure conversation history
+- **Flexible**: Can include additional context beyond just conversation
+- **Stateless**: AgentLoop remains completely stateless
+- **Scalable**: Easy to persist to databases or external storage
+- **Custom Formats**: Support any history format that works for your use case
 ```
 
 ##### `defineTool(definition: ToolDefinition): void`
@@ -373,7 +432,7 @@ interface ToolCall {
 ```typescript
 interface AgentResponse {
   taskId: string;
-  type: "agent_response";
+  type: "assistant";
   timestamp: string;
   args: unknown;     // Response data (linearized from context)
   error?: string;

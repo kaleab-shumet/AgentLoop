@@ -57,10 +57,25 @@ class CalculatorAgent extends AgentLoop {
 
 // Usage
 const agent = new CalculatorAgent();
+// Manage conversation history as array
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
+
 const result = await agent.run({
   userPrompt: "What's the square root of 144 plus 5 times 3?",
-  prevInteractionHistory: []
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
 });
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "What's the square root of 144 plus 5 times 3?" },
+  { role: 'agent', message: result.agentResponse?.args }
+);
 ```
 
 ### Todo List Agent
@@ -863,6 +878,9 @@ Break down complex tasks into smaller steps and execute them systematically. Alw
 
 // Usage example for complex workflow
 const agent = new WorkflowAgent();
+// Manage conversation history as array
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
+
 const result = await agent.run({
   userPrompt: `Create a project analysis workflow:
   1. Read all TypeScript files in the src directory
@@ -870,8 +888,25 @@ const result = await agent.run({
   3. Calculate overall project statistics
   4. Generate a summary report
   5. Save the report to analysis-report.md`,
-  prevInteractionHistory: []
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
 });
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: `Create a project analysis workflow:
+  1. Read all TypeScript files in the src directory
+  2. Analyze each file for complexity and patterns  
+  3. Calculate overall project statistics
+  4. Generate a summary report
+  5. Save the report to analysis-report.md` },
+  { role: 'agent', message: result.agentResponse?.args }
+);
 ```
 
 ## Security Examples

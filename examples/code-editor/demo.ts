@@ -11,10 +11,25 @@ async function runDemo() {
   try {
     // Demo 1: Create a simple React component
     console.log('📝 Demo 1: Creating a React Button component...');
+    // Manage conversation history as array
+    const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
+
     const result1 = await agent.run({
       userPrompt: 'Create a React Button component in TypeScript with props for text, onClick, and optional disabled state. Include proper TypeScript types and export it.',
-      prevInteractionHistory: []
+      ...(conversationHistory.length > 0 && {
+        context: {
+          "Conversation History": conversationHistory
+            .map(entry => `${entry.role}: ${entry.message}`)
+            .join('\n')
+        }
+      })
     });
+
+    // After getting response, update history
+    conversationHistory.push(
+      { role: 'user', message: 'Create a React Button component in TypeScript with props for text, onClick, and optional disabled state. Include proper TypeScript types and export it.' },
+      { role: 'agent', message: result1.agentResponse?.args }
+    );
 
     if (result1.agentResponse && !result1.agentResponse.error) {
       console.log('✅ React component created successfully!\n');
@@ -26,8 +41,20 @@ async function runDemo() {
     console.log('📝 Demo 2: Creating utility functions...');
     const result2 = await agent.run({
       userPrompt: 'Create a utils.ts file with helper functions for formatting dates, validating emails, and generating random IDs. Include proper JSDoc comments.',
-      prevInteractionHistory: result1.interactionHistory
+      ...(conversationHistory.length > 0 && {
+        context: {
+          "Conversation History": conversationHistory
+            .map(entry => `${entry.role}: ${entry.message}`)
+            .join('\n')
+        }
+      })
     });
+
+    // After getting response, update history
+    conversationHistory.push(
+      { role: 'user', message: 'Create a utils.ts file with helper functions for formatting dates, validating emails, and generating random IDs. Include proper JSDoc comments.' },
+      { role: 'agent', message: result2.agentResponse?.args }
+    );
 
     if (result2.agentResponse && !result2.agentResponse.error) {
       console.log('✅ Utility functions created successfully!\n');
@@ -39,8 +66,20 @@ async function runDemo() {
     console.log('📝 Demo 3: Setting up project structure...');
     const result3 = await agent.run({
       userPrompt: 'Create a proper Node.js project structure with src/, tests/, and docs/ folders. Add a package.json with common dependencies for a TypeScript Node.js project.',
-      prevInteractionHistory: result2.interactionHistory
+      ...(conversationHistory.length > 0 && {
+        context: {
+          "Conversation History": conversationHistory
+            .map(entry => `${entry.role}: ${entry.message}`)
+            .join('\n')
+        }
+      })
     });
+
+    // After getting response, update history
+    conversationHistory.push(
+      { role: 'user', message: 'Create a proper Node.js project structure with src/, tests/, and docs/ folders. Add a package.json with common dependencies for a TypeScript Node.js project.' },
+      { role: 'agent', message: result3.agentResponse?.args }
+    );
 
     if (result3.agentResponse && !result3.agentResponse.error) {
       console.log('✅ Project structure created successfully!\n');
@@ -52,8 +91,20 @@ async function runDemo() {
     console.log('📝 Demo 4: Setting up Git and dependencies...');
     const result4 = await agent.run({
       userPrompt: 'Initialize a Git repository, install the dependencies from package.json, and make an initial commit with all the created files.',
-      prevInteractionHistory: result3.interactionHistory
+      ...(conversationHistory.length > 0 && {
+        context: {
+          "Conversation History": conversationHistory
+            .map(entry => `${entry.role}: ${entry.message}`)
+            .join('\n')
+        }
+      })
     });
+
+    // After getting response, update history
+    conversationHistory.push(
+      { role: 'user', message: 'Initialize a Git repository, install the dependencies from package.json, and make an initial commit with all the created files.' },
+      { role: 'agent', message: result4.agentResponse?.args }
+    );
 
     if (result4.agentResponse && !result4.agentResponse.error) {
       console.log('✅ Git setup and dependencies installed!\n');
@@ -65,8 +116,20 @@ async function runDemo() {
     console.log('📝 Demo 5: Running build and tests...');
     const result5 = await agent.run({
       userPrompt: 'Run the TypeScript compiler to check for any errors, then run any available tests. Provide a summary of the results.',
-      prevInteractionHistory: result4.interactionHistory
+      ...(conversationHistory.length > 0 && {
+        context: {
+          "Conversation History": conversationHistory
+            .map(entry => `${entry.role}: ${entry.message}`)
+            .join('\n')
+        }
+      })
     });
+
+    // After getting response, update history
+    conversationHistory.push(
+      { role: 'user', message: 'Run the TypeScript compiler to check for any errors, then run any available tests. Provide a summary of the results.' },
+      { role: 'agent', message: result5.agentResponse?.args }
+    );
 
     if (result5.agentResponse && !result5.agentResponse.error) {
       console.log('✅ Build and test completed!\n');

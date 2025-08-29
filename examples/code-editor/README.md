@@ -48,10 +48,25 @@ import { CodeEditorAgent } from './CodeEditorAgent';
 
 const agent = new CodeEditorAgent('/path/to/project');
 
+// Manage conversation history as array
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
+
 const result = await agent.run({
   userPrompt: 'Create a React component called Button with TypeScript',
-  prevInteractionHistory: []
+  ...(conversationHistory.length > 0 && {
+    context: {
+      'Conversation History': conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
 });
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: 'Create a React component called Button with TypeScript' },
+  { role: 'agent', message: result.agentResponse?.args }
+);
 
 console.log(result.agentResponse?.args);
 ```

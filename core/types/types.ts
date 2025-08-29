@@ -42,7 +42,7 @@ export interface UserPrompt {
 // Response message from the agent
 export interface AgentResponse {
   taskId: string;
-  type: "agent_response";
+  type: "assistant";
   timestamp: string;
   args: unknown;
   error?: string;
@@ -88,7 +88,6 @@ export interface PendingToolCall {
 
 export interface AgentRunInput {
   userPrompt: string;
-  prevInteractionHistory: Interaction[];
   context?: Record<string, unknown>;
   completionOptions?: Record<string, unknown>;  
 }
@@ -193,17 +192,12 @@ export interface PromptOptions {
   batchMode?: boolean;
 }
 
-export interface ConversationEntry {
-  user?: string;
-  ai?: string;
-}
 
 export interface BuildPromptParams {
   systemPrompt: string;
   userPrompt: string;
   context: Record<string, string>;
   currentInteractionHistory: Interaction[];
-  prevInteractionHistory: Interaction[];
   lastError: AgentError | null;
   keepRetry: boolean;
   finalToolName: string;
@@ -212,8 +206,6 @@ export interface BuildPromptParams {
   nextTasks?: string | null;
   goal?: string | null;
   report?: string | null;
-  conversationEntries?: ConversationEntry[];
-  conversationLimitNote?: string;
   errorRecoveryInstructions?: string;
 }
 

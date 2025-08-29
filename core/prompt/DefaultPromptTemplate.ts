@@ -1,4 +1,4 @@
-import { ToolCallReport, BuildPromptParams, ConversationEntry, FormatMode, PromptOptions } from '../types/types';
+import { ToolCallReport, BuildPromptParams, FormatMode, PromptOptions } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { BasePromptTemplate } from './BasePromptTemplate';
 
@@ -214,23 +214,6 @@ function callTools() {
 ${toolDefinitions}`;
   }
 
-  private buildConversationHistorySection(conversationEntries: ConversationEntry[], limitNote: string): string {
-    if (!conversationEntries.length) return '';
-
-    const entries = conversationEntries.map((e, i) => {
-      let s = `## Turn ${i + 1}`;
-      if (e.user) s += `\n**User**: ${e.user}`;
-      if (e.ai) s += `\n**Assistant**: ${e.ai}`;
-      return s;
-    }).join('\n\n');
-
-    return `# CONVERSATION HISTORY(OLD ENTRIES)
-${limitNote}
-${entries}
-
-**Note:** Maintain conversation flow and context.
-`;
-  }
 
   private buildNotesSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
     if (!toolCallReports.length) {
@@ -371,8 +354,6 @@ Note: NEVER call ${selfReasoningTool} alone.`;
       nextTasks,
       goal,
       report,
-      conversationEntries,
-      conversationLimitNote,
       context
     } = params;
 
@@ -383,10 +364,6 @@ Note: NEVER call ${selfReasoningTool} alone.`;
     sections.push(this.buildCoreDirectiveSection(finalToolName, selfReasoningTool));
     sections.push(this.buildResponseFormatSection(selfReasoningTool, finalToolName));
     sections.push(this.buildToolsSection(toolDefinitions));
-
-    if (options.includePreviousTaskHistory && conversationEntries?.length) {
-      sections.push(this.buildConversationHistorySection(conversationEntries, conversationLimitNote ?? ''));
-    }
 
     const reports = currentInteractionHistory.filter(i => 'toolCalls' in i);
     sections.push(this.buildNotesSection(reports, selfReasoningTool));

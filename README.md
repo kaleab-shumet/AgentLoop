@@ -119,10 +119,25 @@ class MyAgent extends AgentLoop {
 ```typescript
 const agent = new MyAgent();
 
+// Manage conversation history as array
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
+
 const result = await agent.run({
   userPrompt: "Read the package.json file and tell me about the project",
-  prevInteractionHistory: []
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
 });
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "Read the package.json file and tell me about the project" },
+  { role: 'agent', message: result.agentResponse?.args }
+);
 
 console.log(result.agentResponse?.args);
 ```
@@ -138,8 +153,7 @@ The main method to execute the agent. This is a stateless operation that process
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `userPrompt` | `string` | ✅ | The user's message or instruction to the agent |
-| `prevInteractionHistory` | `Interaction[]` | ✅ | Array of previous interactions (can be empty `[]` for first turn) |
-| `context` | `Record<string, unknown>` | ❌ | Optional context data to pass to the agent |
+| `context` | `Record<string, unknown>` | ❌ | Context data including conversation history (pass history as `context["Conversation History"]`) |
 | `completionOptions` | `Record<string, unknown>` | ❌ | Optional AI provider completion options (temperature, max_tokens, etc.) |
 
 #### Return Value (`AgentRunOutput`)
@@ -181,7 +195,7 @@ interface UserPrompt {
 
 interface AgentResponse {
   taskId: string;
-  type: "agent_response";
+  type: "assistant";
   timestamp: string;
   args: unknown;       // Response data (was: response.context)
   error?: string;
@@ -194,24 +208,45 @@ interface AgentResponse {
 #### Example Usage
 
 ```typescript
-// First conversation turn
-let conversationHistory: Interaction[] = [];
+// Manage conversation history as array
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
 const result1 = await agent.run({
   userPrompt: "Read the file config.json",
-  prevInteractionHistory: conversationHistory
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
 });
 
-// Update history for next turn
-conversationHistory = result1.interactionHistory;
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "Read the file config.json" },
+  { role: 'agent', message: result1.agentResponse?.args }
+);
 
 // Continue conversation
 const result2 = await agent.run({
   userPrompt: "Now analyze the configuration",
-  prevInteractionHistory: conversationHistory,
-  context: { priority: "high" },
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n'),
+      "priority": "high"
+    }
+  }),
   completionOptions: { temperature: 0.3 }
 });
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "Now analyze the configuration" },
+  { role: 'agent', message: result2.agentResponse?.args }
+);
 
 // Final response from agent (if any)
 if (result2.agentResponse) {
@@ -219,15 +254,71 @@ if (result2.agentResponse) {
 }
 ```
 
-#### Stateless Design
+#### Stateless Design & Conversation Management
 
-AgentLoop is **completely stateless** - it doesn't store any conversation history internally. You must:
+AgentLoop is **completely stateless** - it doesn't store any conversation history internally. The new context-based approach gives you complete control over conversation history:
 
-1. **Pass the complete `prevInteractionHistory`** from previous runs
-2. **Persist the returned `interactionHistory`** for the next turn
-3. **Handle conversation state** in your application
+**Key Changes in v2.0.0:**
+- ✅ **No more `prevInteractionHistory`**: Replaced with flexible context-based approach
+- ✅ **Full Control**: You decide how to format and structure conversation history
+- ✅ **Custom Formats**: Support any history format that works for your use case
+- ✅ **Scalable**: Easy to persist to databases, session storage, or distributed systems
 
-This design makes AgentLoop scalable and easy to integrate with databases, session storage, or distributed systems.
+**How it Works:**
+1. **Pass conversation history in `context["Conversation History"]`** as a formatted string
+2. **Build and maintain the history string** between turns using your preferred format
+3. **Handle conversation state** in your application with full control over structure
+
+**Example of Different History Formats:**
+
+```typescript
+// Array format (recommended)
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [
+  { role: 'user', message: 'Hello' },
+  { role: 'agent', message: 'Hi there!' },
+  { role: 'user', message: "What's 2+2?" },
+  { role: 'agent', message: 'The answer is 4' }
+];
+
+// Alternative: Simple string format
+let historyString = "User: Hello\nAgent: Hi there!\nUser: What's 2+2?\nAgent: The answer is 4\n";
+
+// Alternative: Custom structured format
+let structuredHistory = `
+=== Conversation Context ===
+Previous Questions: 2
+Last Topic: Mathematics
+User Preferences: Detailed explanations
+
+=== History ===
+[Turn 1] User: Hello
+[Turn 1] Agent: Hi there!
+[Turn 2] User: What's 2+2?
+[Turn 2] Agent: The answer is 4
+`;
+
+// Use the array format with conditional context
+const result = await agent.run({
+  userPrompt: "Continue our conversation",
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n'),
+      "User Preferences": "concise",
+      "Session ID": "abc-123"
+    }
+  })
+});
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "Continue our conversation" },
+  { role: 'agent', message: result.agentResponse?.args }
+);
+```
+
+This design makes AgentLoop incredibly flexible and easy to integrate with any storage or state management system.
 
 ### JavaScript Execution Security
 
@@ -446,7 +537,9 @@ class FileManagerAgent extends AgentLoop {
 const agent = new FileManagerAgent('/project/path');
 const result = await agent.run({
   userPrompt: "List all files in the src directory, read package.json, and create a project-info.md file with a summary of the project structure and dependencies",
-  prevInteractionHistory: []
+  context: {
+    "Conversation History": ""
+  }
 });
 ```
 

@@ -5,6 +5,7 @@ class CodeEditorConsole {
   private agent: CodeEditorAgent;
   private rl: readline.Interface;
   private basePath: string;
+  private conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
   constructor() {
     // Default to current working directory or allow override
@@ -66,8 +67,22 @@ class CodeEditorConsole {
       
       const result = await this.agent.run({
         userPrompt: userInput,
-        prevInteractionHistory: []
+        ...(this.conversationHistory.length > 0 && {
+          context: {
+            "Conversation History": this.conversationHistory
+              .map(entry => `${entry.role}: ${entry.message}`)
+              .join('\n')
+          }
+        })
       });
+
+      // After getting response, update history
+      if (result.agentResponse) {
+        this.conversationHistory.push(
+          { role: 'user', message: userInput },
+          { role: 'agent', message: result.agentResponse.args }
+        );
+      }
 
       const endTime = Date.now();
       console.log(`[DEBUG] End time: ${endTime}`);
