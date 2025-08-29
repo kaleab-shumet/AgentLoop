@@ -60,22 +60,28 @@ const agent = new CalculatorAgent();
 // Manage conversation history as array
 const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
+// Push user message first
+conversationHistory.push({ role: 'user', message: "What's the square root of 144 plus 5 times 3?" });
+
 const result = await agent.run({
   userPrompt: "What's the square root of 144 plus 5 times 3?",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
     }
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "What's the square root of 144 plus 5 times 3?" },
-  { role: 'agent', message: result.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 ```
 
 ### Todo List Agent
@@ -881,32 +887,35 @@ const agent = new WorkflowAgent();
 // Manage conversation history as array
 const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
-const result = await agent.run({
-  userPrompt: `Create a project analysis workflow:
+const userMessage = `Create a project analysis workflow:
   1. Read all TypeScript files in the src directory
   2. Analyze each file for complexity and patterns  
   3. Calculate overall project statistics
   4. Generate a summary report
-  5. Save the report to analysis-report.md`,
-  ...(conversationHistory.length > 0 && {
+  5. Save the report to analysis-report.md`;
+
+// Push user message first
+conversationHistory.push({ role: 'user', message: userMessage });
+
+const result = await agent.run({
+  userPrompt: userMessage,
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
     }
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: `Create a project analysis workflow:
-  1. Read all TypeScript files in the src directory
-  2. Analyze each file for complexity and patterns  
-  3. Calculate overall project statistics
-  4. Generate a summary report
-  5. Save the report to analysis-report.md` },
-  { role: 'agent', message: result.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 ```
 
 ## Security Examples
