@@ -122,22 +122,28 @@ const agent = new MyAgent();
 // Manage conversation history as array
 const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
+// Push user message first
+conversationHistory.push({ role: 'user', message: "Read the package.json file and tell me about the project" });
+
 const result = await agent.run({
   userPrompt: "Read the package.json file and tell me about the project",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
     }
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "Read the package.json file and tell me about the project" },
-  { role: 'agent', message: result.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 
 console.log(result.agentResponse?.args);
 ```
@@ -211,29 +217,39 @@ interface AgentResponse {
 // Manage conversation history as array
 const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
+// Push user message first
+conversationHistory.push({ role: 'user', message: "Read the file config.json" });
+
 const result1 = await agent.run({
   userPrompt: "Read the file config.json",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
     }
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "Read the file config.json" },
-  { role: 'agent', message: result1.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result1.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result1.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 
 // Continue conversation
+// Push user message first
+conversationHistory.push({ role: 'user', message: "Now analyze the configuration" });
+
 const result2 = await agent.run({
   userPrompt: "Now analyze the configuration",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n'),
       "priority": "high"
@@ -242,11 +258,13 @@ const result2 = await agent.run({
   completionOptions: { temperature: 0.3 }
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "Now analyze the configuration" },
-  { role: 'agent', message: result2.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result2.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result2.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 
 // Final response from agent (if any)
 if (result2.agentResponse) {
@@ -298,11 +316,15 @@ User Preferences: Detailed explanations
 `;
 
 // Use the array format with conditional context
+// Push user message first
+conversationHistory.push({ role: 'user', message: "Continue our conversation" });
+
 const result = await agent.run({
   userPrompt: "Continue our conversation",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n'),
       "User Preferences": "concise",
@@ -311,11 +333,13 @@ const result = await agent.run({
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "Continue our conversation" },
-  { role: 'agent', message: result.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 ```
 
 This design makes AgentLoop incredibly flexible and easy to integrate with any storage or state management system.

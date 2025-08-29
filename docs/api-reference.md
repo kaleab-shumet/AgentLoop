@@ -59,39 +59,51 @@ AgentLoop uses a **context-based approach** for conversation history, giving you
 // Manage conversation history as array
 const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
+// Push user message first
+conversationHistory.push({ role: 'user', message: "What is 2 + 2?" });
+
 const result1 = await agent.run({
   userPrompt: "What is 2 + 2?",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
     }
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "What is 2 + 2?" },
-  { role: 'agent', message: result1.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result1.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result1.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
+
+// Push user message first
+conversationHistory.push({ role: 'user', message: "Now multiply that by 3" });
 
 const result2 = await agent.run({
   userPrompt: "Now multiply that by 3",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
     }
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "Now multiply that by 3" },
-  { role: 'agent', message: result2.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result2.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result2.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 ```
 
 **Benefits of Context-Based History:**

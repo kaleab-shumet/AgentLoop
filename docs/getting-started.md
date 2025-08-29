@@ -150,44 +150,56 @@ async function main() {
   // Manage conversation history as array
   const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
+  // Push user message first
+  conversationHistory.push({ role: 'user', message: "What's 15 * 23 + 7?" });
+
   const calcResult = await agent.run({
     userPrompt: "What's 15 * 23 + 7?",
-    ...(conversationHistory.length > 0 && {
+    ...(conversationHistory.length > 1 && {
       context: {
         "Conversation History": conversationHistory
+          .slice(0, -1) // Exclude current user message
           .map(entry => `${entry.role}: ${entry.message}`)
           .join('\n')
       }
     })
   });
 
-  // After getting response, update history
-  conversationHistory.push(
-    { role: 'user', message: "What's 15 * 23 + 7?" },
-    { role: 'agent', message: calcResult.agentResponse?.args }
-  );
+  // Push agent response after receiving it
+  if (calcResult.agentResponse) {
+    conversationHistory.push({
+      role: 'agent',
+      message: String((calcResult.agentResponse.args as Record<string, unknown>)?.value) || ""
+    });
+  }
   console.log('Response:', calcResult.agentResponse?.args);
 
   console.log('\n---\n');
 
   // Test todo management
   console.log('Testing todo management...');
+  // Push user message first
+  conversationHistory.push({ role: 'user', message: "Add 'Buy groceries' and 'Walk the dog' to my todo list, then show me all items" });
+
   const todoResult = await agent.run({
     userPrompt: "Add 'Buy groceries' and 'Walk the dog' to my todo list, then show me all items",
-    ...(conversationHistory.length > 0 && {
+    ...(conversationHistory.length > 1 && {
       context: {
         "Conversation History": conversationHistory
+          .slice(0, -1) // Exclude current user message
           .map(entry => `${entry.role}: ${entry.message}`)
           .join('\n')
       }
     })
   });
 
-  // After getting response, update history
-  conversationHistory.push(
-    { role: 'user', message: "Add 'Buy groceries' and 'Walk the dog' to my todo list, then show me all items" },
-    { role: 'agent', message: todoResult.agentResponse?.args }
-  );
+  // Push agent response after receiving it
+  if (todoResult.agentResponse) {
+    conversationHistory.push({
+      role: 'agent',
+      message: String((todoResult.agentResponse.args as Record<string, unknown>)?.value) || ""
+    });
+  }
   console.log('Response:', todoResult.agentResponse?.args);
 }
 
@@ -305,11 +317,15 @@ function askUser(): void {
     try {
       console.log('\n🤖 Processing...\n');
       
+      // Push user message first
+      conversationHistory.push({ role: 'user', message: input });
+      
       const result = await agent.run({
         userPrompt: input,
-        ...(conversationHistory.length > 0 && {
+        ...(conversationHistory.length > 1 && {
           context: {
             "Conversation History": conversationHistory
+              .slice(0, -1) // Exclude current user message
               .map(entry => `${entry.role}: ${entry.message}`)
               .join('\n')
           }
@@ -318,11 +334,11 @@ function askUser(): void {
 
       if (result.agentResponse) {
         console.log('Agent:', result.agentResponse.args);
-        // After getting response, update history
-        conversationHistory.push(
-          { role: 'user', message: input },
-          { role: 'agent', message: result.agentResponse.args }
-        );
+        // Push agent response after receiving it
+        conversationHistory.push({
+          role: 'agent',
+          message: String((result.agentResponse.args as Record<string, unknown>)?.value) || ""
+        });
       }
 
       console.log('\n---\n');
@@ -374,29 +390,39 @@ AgentLoop v2.0.0 introduces a new context-based approach for conversation histor
 const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
 // First turn
+// Push user message first
+conversationHistory.push({ role: 'user', message: "Calculate 10 + 5" });
+
 const result1 = await agent.run({
   userPrompt: "Calculate 10 + 5",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
     }
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "Calculate 10 + 5" },
-  { role: 'agent', message: result1.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result1.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result1.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 
 // Continue conversation
+// Push user message first
+conversationHistory.push({ role: 'user', message: "Now multiply that by 2" });
+
 const result2 = await agent.run({
   userPrompt: "Now multiply that by 2",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n'),
       "User Preferences": "show steps" // Add any additional context
@@ -404,11 +430,13 @@ const result2 = await agent.run({
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "Now multiply that by 2" },
-  { role: 'agent', message: result2.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result2.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result2.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 ```
 
 ### Benefits of Context-Based History
@@ -437,22 +465,28 @@ const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [
   { role: 'agent', message: 'Hello there!' }
 ];
 
+// Push user message first
+conversationHistory.push({ role: 'user', message: "Hello" });
+
 const result = await agent.run({
   userPrompt: "Hello",
-  ...(conversationHistory.length > 0 && {
+  ...(conversationHistory.length > 1 && {
     context: {
       "Conversation History": conversationHistory
+        .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
     }
   })
 });
 
-// After getting response, update history
-conversationHistory.push(
-  { role: 'user', message: "Hello" },
-  { role: 'agent', message: result.agentResponse?.args }
-);
+// Push agent response after receiving it
+if (result.agentResponse) {
+  conversationHistory.push({
+    role: 'agent',
+    message: String((result.agentResponse.args as Record<string, unknown>)?.value) || ""
+  });
+}
 ```
 
 ## Advanced Features
