@@ -16,7 +16,6 @@ import {
   HandlerParams,
   UserPrompt,
   BuildPromptParams,
-  ConversationEntry,
   TokenUsage,
   JsExecutionMode
 } from '../types/types';
@@ -118,7 +117,7 @@ export abstract class AgentLoop {
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
     this.aiDataHandler = new AIDataHandler(
-      options.formatMode ?? FormatMode.LITERAL_JS, 
+      options.formatMode ?? FormatMode.LITERAL_JS,
       options.jsExecutionMode ?? 'ses'
     );
     // Use the setter to initialize all options and defaults
@@ -149,7 +148,7 @@ export abstract class AgentLoop {
     // Update AIDataHandler when format mode or execution mode changes
     if (options.formatMode || options.jsExecutionMode) {
       this.aiDataHandler = new AIDataHandler(
-        this.formatMode, 
+        this.formatMode,
         options.jsExecutionMode ?? 'ses'
       );
     }
@@ -170,38 +169,6 @@ export abstract class AgentLoop {
 
   }
 
-
-  /**
-   * Process conversation history into clean conversation entries
-   */
-  private processConversationHistory(prevInteractionHistory: Interaction[]): { entries: ConversationEntry[], limitNote: string } {
-    const maxEntries = 50; // Could be configurable
-    const safeHistory = prevInteractionHistory ?? [];
-    const entries = maxEntries ? safeHistory.slice(-maxEntries) : safeHistory;
-
-    const limitNote = maxEntries && safeHistory.length > maxEntries
-      ? ` (showing last ${entries.length} of ${safeHistory.length} total)`
-      : '';
-
-    const conversationEntries: ConversationEntry[] = [];
-
-    for (const interaction of entries) {
-      if ('type' in interaction) {
-        if (interaction.type === 'user_prompt') {
-          const userPrompt = interaction;
-          conversationEntries.push({ user: userPrompt.message });
-        } else if (interaction.type === 'agent_response') {
-          const agentResponse = interaction;
-          const aiContent = typeof agentResponse.args === 'string'
-            ? agentResponse.args
-            : JSON.stringify(agentResponse.args);
-          conversationEntries.push({ ai: aiContent });
-        }
-      }
-    }
-
-    return { entries: conversationEntries, limitNote };
-  }
 
   /**
    * Process tool results and extract nextTasks, goal, and report from report tool
@@ -430,7 +397,7 @@ export abstract class AgentLoop {
 
         try {
 
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, input.prevInteractionHistory, lastError, keepRetry, nextTasks, goal, report);
+          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, lastError, keepRetry, nextTasks, goal, report);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponse(prompt, input.completionOptions, runTokenUsage);
           const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
@@ -582,7 +549,7 @@ export abstract class AgentLoop {
               const agentResponse: AgentResponse = {
                 taskId,
                 timestamp: finalResult.timestamp,
-                type: "agent_response",
+                type: "assistant",
                 args: finalResult.args,
                 tokenUsage: runTokenUsage
               }
@@ -624,7 +591,7 @@ export abstract class AgentLoop {
             const agentResponse: AgentResponse = {
               taskId,
               timestamp: Date.now().toString(),
-              type: "agent_response",
+              type: "assistant",
               args: {},
               error: `I apologize, but I've encountered a stagnation loop and cannot make further progress. After ${errorResult.actualError.context?.occurrenceCount} similar attempts with tool "${errorResult.actualError.context?.toolInfo}", I must terminate to prevent infinite loops. The task could not be completed due to repeated unsuccessful reasoning patterns.`,
               tokenUsage: runTokenUsage
@@ -682,7 +649,7 @@ export abstract class AgentLoop {
       const agentResponse: AgentResponse = {
         taskId,
         timestamp: Date.now().toString(),
-        type: "agent_response",
+        type: "assistant",
         args: {},
         error: finalError.getMessage(),
         tokenUsage: runTokenUsage
@@ -960,13 +927,11 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], previousTaskHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, goal: string | null = null, report: string | null = null): string {
+  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, goal: string | null = null, report: string | null = null): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
 
-    // Process conversation history into clean format
-    const conversationData = this.processConversationHistory(previousTaskHistory);
 
     // Build the prompt using the clean PromptManager API
     const promptParams: BuildPromptParams = {
@@ -974,7 +939,6 @@ export abstract class AgentLoop {
       userPrompt,
       context: Object.fromEntries(Object.entries(context).map(([k, v]) => [k, String(v)])),
       currentInteractionHistory,
-      prevInteractionHistory: previousTaskHistory,
       lastError,
       keepRetry,
       finalToolName: this.FINAL_TOOL_NAME,
@@ -982,9 +946,7 @@ export abstract class AgentLoop {
       toolDefinitions: toolDef,
       nextTasks: nextTasks,
       goal: goal,
-      report: report,
-      conversationEntries: conversationData.entries,
-      conversationLimitNote: conversationData.limitNote,
+      report: report
     };
 
     const prompt = this.promptManager.buildPrompt(promptParams);
@@ -1007,7 +969,7 @@ export abstract class AgentLoop {
     let result: ToolCall;
     try {
       let toolCallContext;
-      
+
       // If timeout is negative, disable timeout by running without Promise.race
       if (toolTimeout < 0) {
         toolCallContext = await tool.handler({ name: tool.name, args: call, turnState });
@@ -1026,7 +988,7 @@ export abstract class AgentLoop {
           tool.handler({ name: tool.name, args: call, turnState }),
           timeoutPromise,
         ]);
-        
+
         // Clean up timeout to prevent memory leaks
         if (timeoutId) {
           clearTimeout(timeoutId);
@@ -1159,22 +1121,22 @@ export abstract class AgentLoop {
   }
 
   private initializeFinalTool(): void {
-   if (!this.tools.some(t => t.name === this.FINAL_TOOL_NAME)) {
-  this.defineTool((z) => ({
-    name: this.FINAL_TOOL_NAME,
-    description: `Use this tool to talk with the user and give your final answer. Use when: (1) You want to reply to the user, (2) The task is complete, (3) All steps are done, or (4) You need to explain why the task cannot be completed. Calling this tool finalizes the task or conversation.`,
-    argsSchema: z.object({
-      value: z.string().describe("The final reply to the user, summarizing the result or explanation.")
-    }),
-    handler: ({ name, args }: HandlerParams<ZodTypeAny>): { [key: string]: unknown; } => {
-      return {
-        toolName: name,
-        success: true,
-        ...args,
-      };
-    },
-  }));
-}
+    if (!this.tools.some(t => t.name === this.FINAL_TOOL_NAME)) {
+      this.defineTool((z) => ({
+        name: this.FINAL_TOOL_NAME,
+        description: `Use this tool to talk with the user and give your final answer. Use when: (1) You want to reply to the user, (2) The task is complete, (3) All steps are done, or (4) You need to explain why the task cannot be completed. Calling this tool finalizes the task or conversation.`,
+        argsSchema: z.object({
+          value: z.string().describe("The final reply to the user, summarizing the result or explanation.")
+        }),
+        handler: ({ name, args }: HandlerParams<ZodTypeAny>): { [key: string]: unknown; } => {
+          return {
+            toolName: name,
+            success: true,
+            ...args,
+          };
+        },
+      }));
+    }
 
   }
 

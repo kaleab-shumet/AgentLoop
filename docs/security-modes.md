@@ -43,7 +43,9 @@ const agent = new MyAgent(provider);
 // All executions are automatically secure - no configuration needed
 const result = await agent.run({
   userPrompt: "Process this data securely",
-  prevInteractionHistory: []
+  context: {
+    "Conversation History": ""
+  }
 });
 ```
 
@@ -127,13 +129,22 @@ const agent = new AgentLoop(provider); // ✅ Always secure
 const agent = new MyAgent(provider);
 
 // Development - secure
-await agent.run({ userPrompt: "test", prevInteractionHistory: [] });
+await agent.run({ 
+  userPrompt: "test", 
+  context: { "Conversation History": "" } 
+});
 
 // Production - same security level
-await agent.run({ userPrompt: "process", prevInteractionHistory: [] });
+await agent.run({ 
+  userPrompt: "process", 
+  context: { "Conversation History": "" } 
+});
 
 // Browser - identical security
-await agent.run({ userPrompt: "client-side", prevInteractionHistory: [] });
+await agent.run({ 
+  userPrompt: "client-side", 
+  context: { "Conversation History": "" } 
+});
 ```
 
 ## Migration from Multi-Mode Systems
@@ -163,7 +174,9 @@ try {
   // This will always be secure - no unsafe code paths exist
   const result = await agent.run({
     userPrompt: "Execute this task",
-    prevInteractionHistory: []
+    context: {
+      "Conversation History": ""
+    }
   });
 } catch (error) {
   // Clear errors - no silent security downgrades

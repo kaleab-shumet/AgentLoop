@@ -147,10 +147,25 @@ async function main() {
 
   // Test calculation
   console.log('Testing calculation...');
+  // Manage conversation history as array
+  const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
+
   const calcResult = await agent.run({
     userPrompt: "What's 15 * 23 + 7?",
-    prevInteractionHistory: []
+    ...(conversationHistory.length > 0 && {
+      context: {
+        "Conversation History": conversationHistory
+          .map(entry => `${entry.role}: ${entry.message}`)
+          .join('\n')
+      }
+    })
   });
+
+  // After getting response, update history
+  conversationHistory.push(
+    { role: 'user', message: "What's 15 * 23 + 7?" },
+    { role: 'agent', message: calcResult.agentResponse?.args }
+  );
   console.log('Response:', calcResult.agentResponse?.args);
 
   console.log('\n---\n');
@@ -159,8 +174,20 @@ async function main() {
   console.log('Testing todo management...');
   const todoResult = await agent.run({
     userPrompt: "Add 'Buy groceries' and 'Walk the dog' to my todo list, then show me all items",
-    prevInteractionHistory: []
+    ...(conversationHistory.length > 0 && {
+      context: {
+        "Conversation History": conversationHistory
+          .map(entry => `${entry.role}: ${entry.message}`)
+          .join('\n')
+      }
+    })
   });
+
+  // After getting response, update history
+  conversationHistory.push(
+    { role: 'user', message: "Add 'Buy groceries' and 'Walk the dog' to my todo list, then show me all items" },
+    { role: 'agent', message: todoResult.agentResponse?.args }
+  );
   console.log('Response:', todoResult.agentResponse?.args);
 }
 
@@ -261,7 +288,8 @@ const rl = readline.createInterface({
 });
 
 const agent = new MyFirstAgent();
-const history: any[] = [];
+// Manage conversation history as array
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
 
 console.log('🤖 Interactive Agent Console');
 console.log('Type your requests or "exit" to quit\n');
@@ -279,15 +307,22 @@ function askUser(): void {
       
       const result = await agent.run({
         userPrompt: input,
-        prevInteractionHistory: history
+        ...(conversationHistory.length > 0 && {
+          context: {
+            "Conversation History": conversationHistory
+              .map(entry => `${entry.role}: ${entry.message}`)
+              .join('\n')
+          }
+        })
       });
 
       if (result.agentResponse) {
         console.log('Agent:', result.agentResponse.args);
-        history.push({
-          userPrompt: input,
-          agentResponse: result.agentResponse.args
-        });
+        // After getting response, update history
+        conversationHistory.push(
+          { role: 'user', message: input },
+          { role: 'agent', message: result.agentResponse.args }
+        );
       }
 
       console.log('\n---\n');
@@ -327,6 +362,98 @@ class SecureAgent extends MyFirstAgent {
 - **Maximum Security**: All AI-generated code runs in isolated SES compartments
 - **Production Ready**: Same security in development and production
 - **Built-in**: SES library included - no additional dependencies
+
+## Conversation History Management
+
+### Context-Based History (New in v2.0.0)
+
+AgentLoop v2.0.0 introduces a new context-based approach for conversation history that gives you complete control:
+
+```typescript
+// Manage conversation history as array
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [];
+
+// First turn
+const result1 = await agent.run({
+  userPrompt: "Calculate 10 + 5",
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
+});
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "Calculate 10 + 5" },
+  { role: 'agent', message: result1.agentResponse?.args }
+);
+
+// Continue conversation
+const result2 = await agent.run({
+  userPrompt: "Now multiply that by 2",
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n'),
+      "User Preferences": "show steps" // Add any additional context
+    }
+  })
+});
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "Now multiply that by 2" },
+  { role: 'agent', message: result2.agentResponse?.args }
+);
+```
+
+### Benefits of Context-Based History
+
+✅ **Full Control**: Format history exactly how you want  
+✅ **Flexible**: Include any additional context data  
+✅ **Stateless**: AgentLoop doesn't store anything internally  
+✅ **Scalable**: Easy to persist and manage conversation state  
+✅ **Custom**: Support any format (plain text, JSON, structured, etc.)  
+
+### Migration from `prevInteractionHistory`
+
+**Before (v1.x):**
+```typescript
+const result = await agent.run({
+  userPrompt: "Hello",
+  prevInteractionHistory: interactions // Complex object array
+});
+```
+
+**After (v2.0.0):**
+```typescript
+// Using array pattern (recommended)
+const conversationHistory: Array<{role: 'user' | 'agent', message: string}> = [
+  { role: 'user', message: 'Hi' },
+  { role: 'agent', message: 'Hello there!' }
+];
+
+const result = await agent.run({
+  userPrompt: "Hello",
+  ...(conversationHistory.length > 0 && {
+    context: {
+      "Conversation History": conversationHistory
+        .map(entry => `${entry.role}: ${entry.message}`)
+        .join('\n')
+    }
+  })
+});
+
+// After getting response, update history
+conversationHistory.push(
+  { role: 'user', message: "Hello" },
+  { role: 'agent', message: result.agentResponse?.args }
+);
+```
 
 ## Advanced Features
 
