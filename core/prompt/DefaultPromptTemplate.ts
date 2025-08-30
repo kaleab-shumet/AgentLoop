@@ -308,10 +308,10 @@ ${userRequestSection}
       
 # IMMEDIATE TASK
 ${report ? `## PREVIOUS ATTEMPT
-- You said: "${report}"(completed task)
-- Filter out completed tasks and execute remaining tasks, do not repeat completed task.
+- ✅ Task completed: ${report}
 
 ` : ''}## TASKS TO EXECUTE
+- Filter out completed tasks and execute remaining tasks, do not repeat completed task.(note: we are testing your ability to filter out completed tasks from the following and proceed to next ones)
 ${nextTasks}`;
 
 
