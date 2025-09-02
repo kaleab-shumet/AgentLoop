@@ -365,6 +365,7 @@ export abstract class AgentLoop {
     let nextTasks: string | null = null; // Track next tasks from previous iteration
     let goal: string | null = null; // Track goal from previous iteration
     let report: string | null = null; // Track report from previous iteration
+    let progressReports: string[] = []; // Collect all reports for progress tracking
 
     // Stagnation tracking for this run only
     const reportHashes = new Map<string, { text: string, count: number }>();
@@ -397,7 +398,7 @@ export abstract class AgentLoop {
 
         try {
 
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, lastError, keepRetry, nextTasks, goal, report);
+          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, lastError, keepRetry, nextTasks, goal, report, progressReports);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponse(prompt, input.completionOptions, runTokenUsage);
           const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
@@ -443,6 +444,9 @@ export abstract class AgentLoop {
             nextTasks = toolResultData.nextTasks;
             goal = toolResultData.goal;
             report = toolResultData.report;
+            if (report) {
+              progressReports.push(`${report} (done)`);
+            }
           } else {
             nextTasks = null;
             goal = null;
@@ -574,6 +578,11 @@ export abstract class AgentLoop {
             toolExecutionRetryLimit: this.toolExecutionRetryAttempts
           };
           const errorResult = this.errorHandler.handleError(error, retryContext);
+
+          // Add error to progress reports
+          if (report) {
+            progressReports.push(`${report} (error)`);
+          }
 
           // Set appropriate lastError and nextTasks based on feedback type
           if (errorResult.feedbackToLLM) {
@@ -927,7 +936,7 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, goal: string | null = null, report: string | null = null): string {
+  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, goal: string | null = null, report: string | null = null, progressReports: string[] = []): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
@@ -946,7 +955,8 @@ export abstract class AgentLoop {
       toolDefinitions: toolDef,
       nextTasks: nextTasks,
       goal: goal,
-      report: report
+      report: report,
+      progressReports: progressReports
     };
 
     const prompt = this.promptManager.buildPrompt(promptParams);
@@ -1144,16 +1154,11 @@ export abstract class AgentLoop {
     if (!this.tools.some(t => t.name === this.SELF_REASONING_TOOL)) {
       const reportTool = {
         name: this.SELF_REASONING_TOOL,
-        description: `Self-reasoning tool to analyze and reflect on your progress. Format: "I have called tools [tool1], [tool2], and [tool3] because I need to [reason]". Always explicitly list the tool names you executed alongside this reasoning.`,
+        description: `Self-reasoning tool to analyze and reflect on your progress. Write clearly what you've done and what comes next - this will be used in the next iteration for reference.`,
         argsSchema: z.object({
-          goal: z.string().describe("Summary of user's primary goal or intent that this iteration is working towards achieving."),
-          report: z.string().describe("Self-analyze which specific tools you called in this iteration and the reasoning behind it. Format: 'I have called tools X, Y, and Z because I need to [accomplish this goal]'."),
-          nextTasks: z.string().describe(
-            `
-          1. I will process the retrieved content to prepare the data.  
-2. Then I will call the [tool_name] to deliver the full result to the user.
-
-          `)
+          goal: z.string().describe("What you're trying to achieve - write clearly for next iteration reference."),
+          report: z.string().describe("What you've accomplished this iteration - write clearly for next iteration reference."),
+          nextTasks: z.string().describe("What needs to be done next - write clearly for next iteration reference.")
 
         }),
         handler: ({ name, args }: HandlerParams<ZodTypeAny>): { [key: string]: unknown; } => {

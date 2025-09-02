@@ -117,9 +117,9 @@ function callTools() {
 
   toolCalls.push(
     toolSchemas.${selfReasoningTool}.parse({
-      goal: "User's objective",
-      report: "Action performed. Expected outcome.",
-      nextTasks: "Next tool call..."
+      goal: "[what you're trying to achieve]",
+      report: "[what you've accomplished]",
+      nextTasks: "[what comes next]"
     })
   );
 
@@ -154,9 +154,9 @@ function callTools() {
   // Always pair with self reasoning tool, I will never forget to use ${selfReasoningTool} tool
   toolCalls.push(
     toolSchemas.${selfReasoningTool}.parse({
-      goal: "User's objective",
-      report: "Task complete. Final answer.",
-      nextTasks: "Task complete."
+      goal: "[what you're trying to achieve]",
+      report: "[what you've accomplished]",
+      nextTasks: "[what comes next]"
     })
   );
 
@@ -185,7 +185,7 @@ function callTools() {
 2. Write clean, functional code **without defining any variables**.
 3. Correctly reference XML using 'LiteralLoader' in the appropriate places.
 4. Strictly adhere to tool schemas and parameters, ensuring all created data passes schema validation.
-5. Demonstrate reasoning skills through the use of '${selfReasoningTool}'.
+5. Use '${selfReasoningTool}' to clearly track progress for next iteration.
 
 - No plain text outside \`<literals>\`.
 - Provide real values that satisfy the imported schema constraints.
@@ -215,32 +215,28 @@ ${toolDefinitions}`;
   }
 
 
-  private buildNotesSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
+  private buildToolExecutionResultsSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
     if (!toolCallReports.length) {
-      return `# NOTES(Tool Call results)
+      return `# TOOL EXECUTION RESULTS
 
 **Status**: No results yet. Your tool output will appear here once available, please call appropriate tool with ${selfReasoningTool}.`;
     }
 
-    const reports = toolCallReports.map((report, i) => {
-      const toolsUsed = report.toolCalls.map(tc =>
-        `  - ${tc.toolName}: ${tc.success ? '✅ SUCCESS' : '❌ FAILED'}`
-      ).join('\n');
+    const reports = toolCallReports.map((toolCallReport, i) => {
+      const toolCalls = toolCallReport.toolCalls.map(tc =>
+        `### ${tc.toolName}
+Success: ${tc.success}
+Args: ${JSON.stringify(tc.args, null, 2)}`
+      ).join('\n\n');
 
-      return `### Action #${i + 1}
-**Tool Used**:
-${toolsUsed}
-**Tool Result**:
-\`\`\`json
-${JSON.stringify(report.toolCalls.map(tc => ({
-        name: tc.toolName,
-        success: tc.success,
-        args: tc.args
-      })), null, 2)}
-\`\`\``;
-    }).join('\n\n');
+      return `## Report
+Success: ${toolCallReport.overallSuccess}
+${toolCallReport.report}
 
-    return `# NOTES FOR CURRENT TASK
+${toolCalls}`;
+    }).join('\n\n---\n\n');
+
+    return `# TOOL EXECUTION RESULTS
 
 ## IMPORTANT
 - Use ONLY this data for responses.
@@ -289,12 +285,15 @@ ${userRequestSection}
 - **Error Message**: ${error.message}
 
 ## REQUIRED ACTION
-1. Analyze the error cause
-2. Create a corrected approach
-3. Execute the fix using appropriate tools
-${nextTasks ? `4. After fixing the error, continue with: ${nextTasks}` : ''}
+1. Ask yourself: Why did this failure happen? What was the root cause?
+2. Think deeply about the cause - analyze what went wrong and why
+3. Based on your understanding of the cause, create a better solution
+4. Execute the improved fix using appropriate tools
+${nextTasks ? `5. After fixing the error, continue with: ${nextTasks}` : ''}
 
 ## INSTRUCTIONS
+- Do NOT attempt quick fixes - first understand WHY the error occurred
+- Use self-reasoning to analyze the root cause before taking action
 - Resolve the error before proceeding with other tasks
 ${nextTasks ? '- After error is fixed, continue with remaining tasks' : ''}
 - REMEMBER: Always pair tools with ${selfReasoningTool}`;
@@ -336,6 +335,19 @@ ${userRequestSection}
 Note: NEVER call ${selfReasoningTool} alone.`;
   }
 
+  private buildProgressSection(reports: string[]): string {
+    if (!reports.length) {
+      return `# WHAT IS ALREADY DONE SO FAR
+
+**Status**: No progress yet. This is the first iteration.`;
+    }
+
+    return `# WHAT IS ALREADY DONE SO FAR
+
+${reports.map((report, i) => `## Iteration ${i + 1}
+${report}`).join('\n\n')}`;
+  }
+
   private buildContextContent(context: Record<string, string>): string {
     return Object.entries(context)
       .map(([title, content]) => `# ${title.toUpperCase()}\n${content}`)
@@ -354,6 +366,7 @@ Note: NEVER call ${selfReasoningTool} alone.`;
       nextTasks,
       goal,
       report,
+      progressReports,
       context
     } = params;
 
@@ -366,8 +379,9 @@ Note: NEVER call ${selfReasoningTool} alone.`;
     sections.push(this.buildToolsSection(toolDefinitions));
 
     const reports = currentInteractionHistory.filter(i => 'toolCalls' in i);
-    sections.push(this.buildNotesSection(reports, selfReasoningTool));
+    sections.push(this.buildToolExecutionResultsSection(reports, selfReasoningTool));
 
+    sections.push(this.buildProgressSection(progressReports || []));
 
     if (context && options.includeContext) {
       sections.push(this.buildContextContent(context));

@@ -206,6 +206,7 @@ export interface BuildPromptParams {
   nextTasks?: string | null;
   goal?: string | null;
   report?: string | null;
+  progressReports?: string[];
   errorRecoveryInstructions?: string;
 }
 
