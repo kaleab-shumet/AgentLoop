@@ -1,4 +1,4 @@
-import { ToolCallReport, BuildPromptParams, FormatMode, PromptOptions } from '../types/types';
+import { ToolCallReport, BuildPromptParams, FormatMode, PromptOptions, Interaction } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { BasePromptTemplate } from './BasePromptTemplate';
 
@@ -207,20 +207,21 @@ ${toolDefinitions}`;
   }
 
 
-  private buildCurrentTaskProgressSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
+  private buildCurrentTaskProgressSection(toolCallReports: Interaction[], selfReasoningTool: string): string {
     if (!toolCallReports.length) {
       return `# CURRENT TASK PROGRESS
 **Status**: No actions taken yet for this task.`;
     }
 
-    const historyLog = toolCallReports.map((report, i) => {
-      const selfReasoningCall = report.toolCalls.find(tc => tc.toolName === selfReasoningTool);
-      const actionCall = report.toolCalls.find(tc => tc.toolName !== selfReasoningTool);
+    const historyLog = toolCallReports
+      .filter((report): report is ToolCallReport => 'toolCalls' in report)
+      .map((report, i) => {
+        const selfReasoningCall = report.toolCalls.find(tc => tc.toolName === selfReasoningTool);
 
-      const pendingAction = (selfReasoningCall?.args as any)?.pending_action || 'Current action';
-      const progressSummary = (selfReasoningCall?.args as any)?.progress_summary || 'No progress summary provided.';
+        const pendingAction = (selfReasoningCall?.args as Record<string, unknown>)?.pending_action ?? 'Current action';
+        const progressSummary = (selfReasoningCall?.args as Record<string, unknown>)?.progress_summary ?? 'No progress summary provided.';
 
-      const toolOutputs = report.toolCalls.filter(tc => tc.toolName !== selfReasoningTool).map(tc => {
+        const toolOutputs = report.toolCalls.filter(tc => tc.toolName !== selfReasoningTool).map(tc => {
         const result = tc.success ? 'SUCCESS' : 'FAILED';
         const error = tc.error ? `: Error: ${tc.error}` : '';
         const output = tc.success && tc.args && typeof tc.args === 'object'
@@ -229,8 +230,9 @@ ${toolDefinitions}`;
         return `  - Tool \`${tc.toolName}\` -> ${result}${error}${output}`;
       }).join('\n');
 
-      return `### Step ${i + 1}: ${pendingAction}
+      return `### Step ${i + 1}
 **Progress Summary**: ${progressSummary}
+**Current Action**: ${pendingAction}
 **Result**:
 ${toolOutputs || '  - No tool actions taken'}`;
     }).join('\n\n');
@@ -246,12 +248,11 @@ ${historyLog}
 - Look at the actual tool outputs - do they contain enough information to answer the user?`;
   }
 
-  private buildTaskSection(userPrompt: string, finalToolName: string, selfReasoningTool: string, goal?: string | null, lastError?: AgentError | null, currentTask?: string | null): string {
+  private buildTaskSection(userPrompt: string, finalToolName: string, _selfReasoningTool: string, goal?: string | null, lastError?: AgentError | null): string {
     const goalSection = goal ? `\n## CURRENT GOAL\n> ${goal}` : `\n## USER REQUEST\n> ${userPrompt}`;
-    const taskSection = currentTask ? `\n## CURRENT TASK\n> ${currentTask}` : '';
 
     if (lastError) {
-      return `${goalSection}${taskSection}
+      return `${goalSection}
 
 # PREVIOUS ACTION FAILED
 An error occurred during the last action.
@@ -265,7 +266,7 @@ An error occurred during the last action.
 3. Execute the single best next action.`;
     }
 
-    return `${goalSection}${taskSection}
+    return `${goalSection}
 
 # FOCUS ON CURRENT TASK
 1. **Review Progress**: Check what you've accomplished for THIS specific task.
@@ -303,19 +304,14 @@ An error occurred during the last action.
     sections.push(this.buildResponseFormatSection(selfReasoningTool, finalToolName));
     sections.push(this.buildToolsSection(toolDefinitions));
 
-    const reports = currentInteractionHistory.filter(i => 'toolCalls' in i) as ToolCallReport[];
+    const reports = currentInteractionHistory.filter(i => 'toolCalls' in i);
     sections.push(this.buildCurrentTaskProgressSection(reports, selfReasoningTool));
-
-    // Extract current task from latest next_action plan
-    const latestReport = reports[reports.length - 1];
-    const latestSelfReasoning = latestReport?.toolCalls.find(tc => tc.toolName === selfReasoningTool);
-    const currentTask = (latestSelfReasoning?.args as any)?.next_action || null;
 
     if (context && options.includeContext) {
       sections.push(this.buildContextContent(context));
     }
 
-    sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, goal, lastError, currentTask));
+    sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, goal, lastError));
 
     return sections.join('\n\n---\n\n');
   }
