@@ -1130,7 +1130,7 @@ export abstract class AgentLoop {
           goal: z.string().describe("A brief, one-sentence summary of the user's ultimate goal. This should remain consistent across turns."),
           goal_status: z.enum(["pending", "success", "failed"]).default("pending").describe("Status of the goal: pending (still working), success (goal achieved - use final_tool to respond to user, no further action needed), failed (goal cannot be achieved - use final_tool to explain why, no further action needed)"),
           pending_action: z.string().describe("What action is currently being executed and waiting for result. Describe exactly what you are doing right now."),
-          progress_summary: z.string().describe("Write a very detailed summary as a numbered list ONLY of what has been successfully completed and confirmed. Format as: 1. [completed action] - [actual result/data discovered]. Use PAST TENSE for all descriptions since these are finished actions. Include all key data discovered, file contents, results, and findings from finished actions. Be comprehensive and thorough - this is critical for decision making. NEVER include pending actions, current actions, or future plans - ONLY completed past actions with confirmed results.")
+          progress_summary: z.string().describe("Numbered list of completed actions in past tense with results. DO NOT include any future plans, pending actions, or what you will do next - ONLY what has been finished.")
         }),
         handler: ({ name, args }: HandlerParams<ZodTypeAny>): { [key: string]: unknown; } => {
           return {

@@ -210,39 +210,50 @@ ${toolDefinitions}`;
   private buildCurrentTaskProgressSection(toolCallReports: Interaction[], selfReasoningTool: string): string {
     if (!toolCallReports.length) {
       return `# CURRENT TASK PROGRESS
-**Status**: No actions taken yet for this task.`;
+No actions taken yet for this task.`;
     }
 
-    const historyLog = toolCallReports
+    // Show each turn with pending_action first, then tool results
+    const turnLogs = toolCallReports
       .filter((report): report is ToolCallReport => 'toolCalls' in report)
       .map((report, i) => {
         const selfReasoningCall = report.toolCalls.find(tc => tc.toolName === selfReasoningTool);
+        const pendingAction = (selfReasoningCall?.args as Record<string, unknown>)?.pending_action ?? 'Action not specified';
+        
+        const toolOutputs = report.toolCalls
+          .filter(tc => tc.toolName !== selfReasoningTool)
+          .map(tc => {
+            const result = tc.success ? 'SUCCESS' : 'FAILED';
+            const error = tc.error ? `: Error: ${tc.error}` : '';
+            const output = tc.success && tc.args && typeof tc.args === 'object'
+              ? `\nOutput: ${JSON.stringify(tc.args, null, 2)}`
+              : '';
+            return `    - Tool \`${tc.toolName}\` -> ${result}${error}${output}`;
+          }).join('\n');
+        
+        return `### Turn ${i + 1}: ${pendingAction}
+${toolOutputs || '    - No tool actions taken'}`;
+      }).join('\n\n');
 
-        const pendingAction = (selfReasoningCall?.args as Record<string, unknown>)?.pending_action ?? 'Current action';
-        const progressSummary = (selfReasoningCall?.args as Record<string, unknown>)?.progress_summary ?? 'No progress summary provided.';
-
-        const toolOutputs = report.toolCalls.filter(tc => tc.toolName !== selfReasoningTool).map(tc => {
-        const result = tc.success ? 'SUCCESS' : 'FAILED';
-        const error = tc.error ? `: Error: ${tc.error}` : '';
-        const output = tc.success && tc.args && typeof tc.args === 'object'
-          ? `\nOutput: ${JSON.stringify(tc.args, null, 2)}`
-          : '';
-        return `  - Tool \`${tc.toolName}\` -> ${result}${error}${output}`;
-      }).join('\n');
-
-      return `### Step ${i + 1}
-**Progress Summary**: ${progressSummary}
-**Current Action**: ${pendingAction}
-**Result**:
-${toolOutputs || '  - No tool actions taken'}`;
-    }).join('\n\n');
+    // Get latest progress summary and pending action with status
+    const latestReport = toolCallReports
+      .filter((report): report is ToolCallReport => 'toolCalls' in report)
+      .reverse()[0];
+    const latestSelfReasoning = latestReport?.toolCalls.find(tc => tc.toolName === selfReasoningTool);
+    const latestProgressSummary = (latestSelfReasoning?.args as Record<string, unknown>)?.progress_summary ?? '';
+    const latestPendingAction = (latestSelfReasoning?.args as Record<string, unknown>)?.pending_action ?? '';
+    
+    // Check if all tool calls in latest turn were successful
+    const latestTurnSuccess = latestReport ? latestReport.toolCalls.filter(tc => tc.toolName !== selfReasoningTool).every(tc => tc.success) : true;
+    const status = latestTurnSuccess ? '(success)' : '(error)';
 
     return `# CURRENT TASK PROGRESS
-${historyLog}
 
-## CRITICAL - ONLY SOURCE OF TRUTH
+## EXECUTION HISTORY
+${turnLogs || 'No actions taken yet'}
+
+${latestProgressSummary ? `## PROGRESS SUMMARY\n${latestProgressSummary}${latestPendingAction ? `\n${latestPendingAction} ${status}` : ''}\n\n` : ''}## CRITICAL - ONLY SOURCE OF TRUTH
 - This CURRENT TASK PROGRESS section is the ONLY reliable source of truth for making decisions.
-- Steps are ordered chronologically - higher step numbers contain the LATEST and most recent data.
 - Analyze DEEPLY what has been accomplished and what data you have gathered in the tool outputs.
 - Focus ONLY on the current task the user requested.
 - Look at the actual tool outputs - do they contain enough information to answer the user?`;
