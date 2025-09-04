@@ -170,47 +170,21 @@ export abstract class AgentLoop {
   }
 
 
-  /**
-   * Process tool results and extract nextTasks, goal, and report from report tool
-   * Returns object with nextTasks, goal, and report or null if no report tool found
-   */
-  private processToolResults(toolResults: ToolCall[]): { nextTasks: string | null, goal: string | null, report: string | null } | null {
-    // Find report tool results
-    const reportResults = toolResults.filter(result =>
-      result.toolName === this.SELF_REASONING_TOOL && result.success
-    );
-
-    if (reportResults.length > 0) {
-      const latestReport = reportResults[reportResults.length - 1];
-      const args = latestReport.args as Record<string, unknown>;
-      const nextTasks = typeof args?.nextTasks === 'string' ? args.nextTasks : null;
-      const report = typeof args?.report === 'string' ? args.report : null;
-      const goal = typeof args?.goal === 'string' ? args.goal : null;
-      console.log("---------------------------------------");
-      console.log("goal: ", goal);
-      console.log("report: ", report);
-      console.log("nextTasks: ", nextTasks);
-      console.log("---------------------------------------");
-      return { nextTasks, goal, report };
-    }
-
-    return null;
-  }
 
   /**
-   * Track stagnation in a stateless way by checking self_reasoning_tool report similarity
+   * Track stagnation in a stateless way by checking self_reasoning_tool progress summary similarity
    * Returns null if no stagnation, or AgentError if stagnation detected
    */
   private trackStagnation(
-    reportText: string,
-    reportHashes: Map<string, { text: string, count: number }>,
+    progressText: string,
+    progressHashes: Map<string, { text: string, count: number }>,
     terminationThreshold: number
   ): AgentError | null {
-    // Hash only the self-reasoning report text
-    const currentHash = SparkMD5.hash(reportText);
+    // Hash only the self-reasoning progress summary text
+    const currentHash = SparkMD5.hash(progressText);
 
     // Check for stagnation (exact hash matches)
-    for (const [existingHash, existingData] of reportHashes) {
+    for (const [existingHash, existingData] of progressHashes) {
       // If exact hash match, consider it stagnation
       if (currentHash === existingHash) {
         // Increment counter for existing hash
@@ -225,19 +199,19 @@ export abstract class AgentLoop {
           {
             currentHash: currentHash,
             matchingHash: existingHash,
-            currentText: reportText,
+            currentText: progressText,
             similarText: existingData.text,
             occurrenceCount: existingData.count,
             isLastChance: isLastChance,
             terminationThreshold: terminationThreshold,
-            previousHashes: Array.from(reportHashes.keys())
+            previousHashes: Array.from(progressHashes.keys())
           }
         );
       }
     }
 
-    // Track this report hash with initial count of 1
-    reportHashes.set(currentHash, { text: reportText, count: 1 });
+    // Track this progress summary hash with initial count of 1
+    progressHashes.set(currentHash, { text: progressText, count: 1 });
 
     return null; // No stagnation detected
   }
@@ -362,13 +336,10 @@ export abstract class AgentLoop {
     const turnState = new TurnState();
     let lastError: AgentError | null = null;
     const keepRetry = true;
-    let nextTasks: string | null = null; // Track next tasks from previous iteration
-    let goal: string | null = null; // Track goal from previous iteration
-    let report: string | null = null; // Track report from previous iteration
-    let progressReports: string[] = []; // Collect all reports for progress tracking
+    let goal: string | null = null; // Track goal from self_reasoning_tool for continuity
 
     // Stagnation tracking for this run only
-    const reportHashes = new Map<string, { text: string, count: number }>();
+    const progressHashes = new Map<string, { text: string, count: number }>();
 
     let connectionRetryCount = 0;
     let toolExecutionRetryCount = 0;
@@ -398,7 +369,7 @@ export abstract class AgentLoop {
 
         try {
 
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, lastError, keepRetry, nextTasks, goal, report, progressReports);
+          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, lastError, keepRetry, goal);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponse(prompt, input.completionOptions, runTokenUsage);
           const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
@@ -438,53 +409,56 @@ export abstract class AgentLoop {
           // executeToolCalls now directly adds results to toolCallHistory
           iterationResults = await this.executeToolCalls(taskId, parsedToolCalls, turnState);
 
-          // Process tool results and extract NEXT commands from reports
-          const toolResultData = this.processToolResults(iterationResults);
-          if (toolResultData) {
-            nextTasks = toolResultData.nextTasks;
-            goal = toolResultData.goal;
-            report = toolResultData.report;
-            if (report) {
-              progressReports.push(`${report} (done)`);
-            }
-          } else {
-            nextTasks = null;
-            goal = null;
-            report = null;
+          // Extract goal from latest self_reasoning_tool call for continuity
+          const reportResults = iterationResults.filter(result =>
+            result.toolName === this.SELF_REASONING_TOOL && result.success
+          );
+          if (reportResults.length > 0) {
+            const latestReport = reportResults[reportResults.length - 1];
+            const args = latestReport.args as Record<string, unknown>;
+            goal = typeof args?.goal === 'string' ? args.goal : null;
+            const pending_action = typeof args?.pending_action === 'string' ? args.pending_action : null;
+            const progress_summary = typeof args?.progress_summary === 'string' ? args.progress_summary : null;
+            
+            console.log("---------------------------------------");
+            console.log("goal: ", goal);
+            console.log("pending_action: ", pending_action);
+            console.log("progress_summary: ", progress_summary);
+            console.log("---------------------------------------");
           }
 
-          // Call hook with report data
+          // Call hook with goal data
           if (this.hooks.onReportData) {
-            await this.hooks.onReportData(report, nextTasks, goal, i + 1);
+            await this.hooks.onReportData(null, null, goal, i + 1);
           }
 
           // Handle report creation for both regular tools and final tool
           const reportResult = iterationResults.find(r => r.toolName === this.SELF_REASONING_TOOL);
 
           if (reportResult?.success) {
-            // Regular tool execution with report tool
+            // Regular tool execution with self_reasoning_tool
             const args = reportResult.args as Record<string, unknown>;
-            const reportText: string = typeof args?.report === "string"
-              ? args.report
-              : JSON.stringify(args?.report ?? "");
+            const progressText: string = typeof args?.progress_summary === "string"
+              ? args.progress_summary
+              : JSON.stringify(args?.progress_summary ?? "");
 
-            // Get other tool calls executed in this iteration (excluding report and final)
+            // Get other tool calls executed in this iteration (excluding self_reasoning and final)
             const otherToolResults = iterationResults.filter(r =>
               r.toolName !== this.SELF_REASONING_TOOL &&
               r.toolName !== this.FINAL_TOOL_NAME
             );
 
-            // Check for stagnation using stateless method
+            // Check for stagnation using progress summary text
             const stagnationError = this.trackStagnation(
-              reportText,
-              reportHashes,
+              progressText,
+              progressHashes,
               this.stagnationTerminationThreshold
             );
 
             if (stagnationError) {
               // Call stagnation hook before throwing
               if (this.hooks.onStagnationDetected) {
-                await this.hooks.onStagnationDetected(reportText, i + 1);
+                await this.hooks.onStagnationDetected(progressText, i + 1);
               }
               // Throw stagnation error to be handled by catch block
               throw stagnationError;
@@ -498,9 +472,9 @@ export abstract class AgentLoop {
 
             // Create ToolCallReport and add to interaction history
             const toolCallReport: ToolCallReport = {
-              report: typeof reportText === "string" ? reportText : JSON.stringify(reportText ?? ""),
+              report: typeof progressText === "string" ? progressText : JSON.stringify(progressText ?? ""),
               overallSuccess,
-              toolCalls: otherToolResults,
+              toolCalls: iterationResults, // Include ALL tool calls including self_reasoning_tool
               error
             };
 
@@ -579,10 +553,6 @@ export abstract class AgentLoop {
           };
           const errorResult = this.errorHandler.handleError(error, retryContext);
 
-          // Add error to progress reports
-          if (report) {
-            progressReports.push(`${report} (error)`);
-          }
 
           // Set appropriate lastError and nextTasks based on feedback type
           if (errorResult.feedbackToLLM) {
@@ -591,8 +561,7 @@ export abstract class AgentLoop {
             // Error will be handled by buildTaskSection in DefaultPromptTemplate
             // Keep nextTasks as is - error takes priority in immediate task section
           } else {
-            // For system errors (feedbackToLLM = false), clear nextTasks and don't set lastError
-            nextTasks = null;
+            // For system errors (feedbackToLLM = false), don't set lastError - will use history-based recovery
           }
 
           // Handle stagnation termination specially
@@ -679,12 +648,17 @@ export abstract class AgentLoop {
   private async executeToolCalls(taskId: string, toolCalls: PendingToolCall[], turnState: TurnState): Promise<ToolCall[]> {
     const iterationResults: ToolCall[] = []; // Collect results for this iteration to return
 
+    // Reorder tools to ensure self_reasoning_tool executes first
+    const selfReasoningCall = toolCalls.find(call => call.toolName === this.SELF_REASONING_TOOL);
+    const otherCalls = toolCalls.filter(call => call.toolName !== this.SELF_REASONING_TOOL);
+    const orderedCalls = selfReasoningCall ? [selfReasoningCall, ...otherCalls] : toolCalls;
+
     if (this.parallelExecution) {
-      const results = await this.executeToolCallsWithDependencies(taskId, toolCalls, turnState);
+      const results = await this.executeToolCallsWithDependencies(taskId, orderedCalls, turnState);
       iterationResults.push(...results);
     } else {
       // Sequential execution
-      for (const call of toolCalls) {
+      for (const call of orderedCalls) {
         //this.logger.info(`[AgentLoop] Executing tool: ${call.name}`);
         const tool = this.tools.find(t => t.name === call.toolName);
         if (!tool) {
@@ -936,7 +910,7 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, nextTasks: string | null = null, goal: string | null = null, report: string | null = null, progressReports: string[] = []): string {
+  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, goal: string | null = null): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
@@ -953,10 +927,7 @@ export abstract class AgentLoop {
       finalToolName: this.FINAL_TOOL_NAME,
       reportToolName: this.SELF_REASONING_TOOL,
       toolDefinitions: toolDef,
-      nextTasks: nextTasks,
-      goal: goal,
-      report: report,
-      progressReports: progressReports
+      goal: goal
     };
 
     const prompt = this.promptManager.buildPrompt(promptParams);
@@ -1154,20 +1125,21 @@ export abstract class AgentLoop {
     if (!this.tools.some(t => t.name === this.SELF_REASONING_TOOL)) {
       const reportTool = {
         name: this.SELF_REASONING_TOOL,
-        description: `Self-reasoning tool to analyze and reflect on your progress. Write clearly what you've done and what comes next - this will be used in the next iteration for reference.`,
+        description: `Self-reasoning tool for immediate thought process and next action planning.`,
         argsSchema: z.object({
-          goal: z.string().describe("What you're trying to achieve - write clearly for next iteration reference."),
-          report: z.string().describe("What you've accomplished this iteration - write clearly for next iteration reference."),
-          nextTasks: z.string().describe("What needs to be done next - write clearly for next iteration reference.")
-
+          goal: z.string().describe("A brief, one-sentence summary of the user's ultimate goal. This should remain consistent across turns."),
+          goal_status: z.enum(["pending", "success", "failed"]).default("pending").describe("Status of the goal: pending (still working), success (goal achieved - use final_tool to respond to user, no further action needed), failed (goal cannot be achieved - use final_tool to explain why, no further action needed)"),
+          pending_action: z.string().describe("What action is currently being executed and waiting for result. Describe exactly what you are doing right now."),
+          progress_summary: z.string().describe("Write a very detailed summary as a numbered list ONLY of what has been successfully completed and confirmed. Format as: 1. [completed action] - [actual result/data discovered]. Use PAST TENSE for all descriptions since these are finished actions. Include all key data discovered, file contents, results, and findings from finished actions. Be comprehensive and thorough - this is critical for decision making. NEVER include pending actions, current actions, or future plans - ONLY completed past actions with confirmed results.")
         }),
         handler: ({ name, args }: HandlerParams<ZodTypeAny>): { [key: string]: unknown; } => {
           return {
             toolName: name,
             success: true,
             goal: args.goal,
-            report: args.report,
-            nextTasks: args.nextTasks,
+            goal_status: args.goal_status,
+            pending_action: args.pending_action,
+            progress_summary: args.progress_summary,
           };
         },
       };

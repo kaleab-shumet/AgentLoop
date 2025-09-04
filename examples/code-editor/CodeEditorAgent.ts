@@ -191,7 +191,7 @@ You approach every task with the mindset of a professional software engineer, co
       argsSchema: z.object({
         file_path: z.string().describe('Path to the file to edit'),
         old_string: z.string().min(1).describe('COMPLETE LINES of text to find - target entire lines or multiple consecutive lines. LITERAL STRING ONLY, NO REGEX PATTERNS'),
-        new_string: z.string().min(1).describe('Text to replace with'),
+        new_string: z.string().describe('Text to replace with'),
         expected_match: z.number().min(1).describe('How many matches of string you want to replace.')
       }),
       handler: async ({ args }: any) => {

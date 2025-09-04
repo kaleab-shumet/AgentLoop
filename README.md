@@ -129,7 +129,7 @@ const result = await agent.run({
   userPrompt: "Read the package.json file and tell me about the project",
   ...(conversationHistory.length > 1 && {
     context: {
-      "Conversation History": conversationHistory
+      "Old Conversation History": conversationHistory
         .slice(0, -1) // Exclude current user message
         .map(entry => `${entry.role}: ${entry.message}`)
         .join('\n')
