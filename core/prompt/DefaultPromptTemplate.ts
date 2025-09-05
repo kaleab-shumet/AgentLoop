@@ -1,4 +1,4 @@
-import { ToolCallReport, BuildPromptParams, FormatMode, PromptOptions } from '../types/types';
+import { ToolCallReport, BuildPromptParams, FormatMode, PromptOptions, Interaction } from '../types/types';
 import { AgentError, AgentErrorType } from '../utils/AgentError';
 import { BasePromptTemplate } from './BasePromptTemplate';
 
@@ -21,32 +21,25 @@ export class DefaultPromptTemplate implements BasePromptTemplate {
     return `# CORE DIRECTIVE
 
 ## MISSION
-Complete user requests via a structured 2-phase process.
-
-## PHASE 1: DATA GATHERING
-- Use tools to collect ALL needed info.
-- Track all data in Notes.
-- ALWAYS pair each tool call with \`${selfReasoningTool}\`.
-
-## PHASE 2: FINAL RESPONSE
-- Deliver final answer with '${finalToolName}'.
-- Always call '${finalToolName}' and '${selfReasoningTool}' together.
+Do exactly what the user asks, then provide the response.
 
 ## WORKFLOW
-1. Understand user request and history.
-2. If 'nextTasks' exists: execute immediately.
-3. Else:
-   - If data incomplete: call best tool + ${selfReasoningTool}.
-   - If data complete: call ${finalToolName} + ${selfReasoningTool}.
+1. Read the user's request carefully.
+2. Analyze the CURRENT TASK PROGRESS section - this is your ONLY source of truth.
+3. Check what has been accomplished and what data you have gathered.
+4. Decide the goal status:
+   - If you have enough information to answer the user: goal_status="success" + use ${finalToolName}
+   - If the task cannot be completed: goal_status="failed" + use ${finalToolName} to explain why
+   - If you need more data: goal_status="pending" + take the specific next action needed
+5. Always use ${selfReasoningTool} with pending_action and detailed progress_summary.
 
 ## STRICT RULES
+- Do what the user asks, then immediately provide the response with ${finalToolName}.
+- If you have enough information to answer the user's question, set goal_status="success" and use ${finalToolName}.
 - ALWAYS pair tool calls with ${selfReasoningTool}.
-- For non-command inputs, respond using '${finalToolName}' + '${selfReasoningTool}'.
-- Use ONLY listed tools and data from Notes.
 - NEVER respond with plain text.
-- NEVER call ${finalToolName} until ready with complete answer.
-- NEVER end interaction without calling ${finalToolName}.
-- NEVER call ${selfReasoningTool} alone.`;
+- NEVER call ${selfReasoningTool} alone.
+- Complete the task efficiently - don't over-analyze or gather excessive data.`;
   }
 
   private buildResponseFormatSection(selfReasoningTool: string, finalToolName: string): string {
@@ -117,9 +110,9 @@ function callTools() {
 
   toolCalls.push(
     toolSchemas.${selfReasoningTool}.parse({
-      goal: "User's objective",
-      report: "Action performed. Expected outcome.",
-      nextTasks: "Next tool call..."
+      goal: "[user's ultimate goal - why they need this]",
+      pending_action: "[what you are currently doing and waiting for result]",
+      progress_summary: "[detailed summary of what has been accomplished so far]"
     })
   );
 
@@ -154,9 +147,9 @@ function callTools() {
   // Always pair with self reasoning tool, I will never forget to use ${selfReasoningTool} tool
   toolCalls.push(
     toolSchemas.${selfReasoningTool}.parse({
-      goal: "User's objective",
-      report: "Task complete. Final answer.",
-      nextTasks: "Task complete."
+      goal: "[user's ultimate goal - why they need this]",
+      pending_action: "[what you are currently doing and waiting for result]",
+      progress_summary: "[detailed summary of what has been accomplished so far]"
     })
   );
 
@@ -180,12 +173,11 @@ function callTools() {
 
 **TEST**
 - We are evaluating your ability to:
-
 1. Follow instructions precisely.
 2. Write clean, functional code **without defining any variables**.
-3. Correctly reference XML using 'LiteralLoader' in the appropriate places.
+3. Correctly reference XML using "LiteralLoader('id')" in the appropriate places.
 4. Strictly adhere to tool schemas and parameters, ensuring all created data passes schema validation.
-5. Demonstrate reasoning skills through the use of '${selfReasoningTool}'.
+5. Use '${selfReasoningTool}' to clearly track progress for next iteration.
 
 - No plain text outside \`<literals>\`.
 - Provide real values that satisfy the imported schema constraints.
@@ -215,125 +207,91 @@ ${toolDefinitions}`;
   }
 
 
-  private buildNotesSection(toolCallReports: ToolCallReport[], selfReasoningTool: string): string {
+  private buildCurrentTaskProgressSection(toolCallReports: Interaction[], selfReasoningTool: string): string {
     if (!toolCallReports.length) {
-      return `# NOTES(Tool Call results)
-
-**Status**: No results yet. Your tool output will appear here once available, please call appropriate tool with ${selfReasoningTool}.`;
+      return `# CURRENT TASK PROGRESS
+No actions taken yet for this task.`;
     }
 
-    const reports = toolCallReports.map((report, i) => {
-      const toolsUsed = report.toolCalls.map(tc =>
-        `  - ${tc.toolName}: ${tc.success ? '✅ SUCCESS' : '❌ FAILED'}`
-      ).join('\n');
+    // Show each turn with pending_action first, then tool results
+    const turnLogs = toolCallReports
+      .filter((report): report is ToolCallReport => 'toolCalls' in report)
+      .map((report, i) => {
+        const selfReasoningCall = report.toolCalls.find(tc => tc.toolName === selfReasoningTool);
+        const pendingAction = (selfReasoningCall?.args as Record<string, unknown>)?.pending_action ?? 'Action not specified';
+        
+        const toolOutputs = report.toolCalls
+          .filter(tc => tc.toolName !== selfReasoningTool)
+          .map(tc => {
+            const result = tc.success ? 'SUCCESS' : 'FAILED';
+            const error = tc.error ? `: Error: ${tc.error}` : '';
+            const output = tc.success && tc.args && typeof tc.args === 'object'
+              ? `\nOutput: ${JSON.stringify(tc.args, null, 2)}`
+              : '';
+            return `    - Tool \`${tc.toolName}\` -> ${result}${error}${output}`;
+          }).join('\n');
+        
+        return `### Turn ${i + 1}: ${pendingAction}
+${toolOutputs || '    - No tool actions taken'}`;
+      }).join('\n\n');
 
-      return `### Action #${i + 1}
-**Tool Used**:
-${toolsUsed}
-**Tool Result**:
-\`\`\`json
-${JSON.stringify(report.toolCalls.map(tc => ({
-        name: tc.toolName,
-        success: tc.success,
-        args: tc.args
-      })), null, 2)}
-\`\`\``;
-    }).join('\n\n');
+    // Get latest progress summary and pending action with status
+    const latestReport = toolCallReports
+      .filter((report): report is ToolCallReport => 'toolCalls' in report)
+      .reverse()[0];
+    const latestSelfReasoning = latestReport?.toolCalls.find(tc => tc.toolName === selfReasoningTool);
+    const latestProgressSummary = (latestSelfReasoning?.args as Record<string, unknown>)?.progress_summary ?? '';
+    const latestPendingAction = (latestSelfReasoning?.args as Record<string, unknown>)?.pending_action ?? '';
+    
+    // Check if all tool calls in latest turn were successful
+    const latestTurnSuccess = latestReport ? latestReport.toolCalls.filter(tc => tc.toolName !== selfReasoningTool).every(tc => tc.success) : true;
+    const status = latestTurnSuccess ? '(success)' : '(error)';
 
-    return `# NOTES FOR CURRENT TASK
+    return `# CURRENT TASK PROGRESS
 
-## IMPORTANT
-- Use ONLY this data for responses.
+## EXECUTION HISTORY
+${turnLogs || 'No actions taken yet'}
 
-## ACTION LOG
-${reports}`;
+${latestProgressSummary ? `## PROGRESS SUMMARY\n${latestProgressSummary}${latestPendingAction ? `\n${latestPendingAction} ${status}` : ''}\n\n` : ''}## NEXT TASK
+Analyze the progress above and determine the best action to achieve the user's goal. Review what has been accomplished, identify any gaps or missing information, and decide whether to:
+- Gather more data if information is incomplete
+- Take the next logical step toward the goal
+- Provide the final answer if all requirements are met
+
+## CRITICAL - ONLY SOURCE OF TRUTH
+- This CURRENT TASK PROGRESS section is the ONLY reliable source of truth for making decisions.
+- Analyze DEEPLY what has been accomplished and what data you have gathered in the tool outputs.
+- Focus ONLY on the current task the user requested.
+- Look at the actual tool outputs - do they contain enough information to answer the user?`;
   }
 
-  private buildErrorRecoverySection(finalToolName: string, selfReasoningTool: string, error: AgentError | null): string {
-    if (!error) return '';
+  private buildTaskSection(userPrompt: string, finalToolName: string, _selfReasoningTool: string, goal?: string | null, lastError?: AgentError | null): string {
+    const goalSection = goal ? `\n## CURRENT GOAL\n> ${goal}` : `\n## USER REQUEST\n> ${userPrompt}`;
 
-    return `# ERROR RECOVERY
+    if (lastError) {
+      return `${goalSection}
 
-## ERROR DETAILS
-- Type: ${error.type || 'Unknown'}
-- Message: ${error.message}
+# PREVIOUS ACTION FAILED
+An error occurred during the last action.
 
-## RECOVERY STEPS
-1. Analyze cause
-2. Create new plan avoiding error
-3. Execute corrected action + ${selfReasoningTool}
-4. Report what was attempted, why it failed, new approach
-
-## COMMON FIXES
-- Never call ${selfReasoningTool} alone.
-- Use ${finalToolName} + ${selfReasoningTool} to just report.
-- Check exact parameter names/types if parameter error.
-- Gather missing data first.`;
-  }
-
-  private buildTaskSection(userPrompt: string, finalToolName: string, selfReasoningTool: string, nextTasks?: string | null, goal?: string | null, report?: string | null, error?: AgentError | null): string {
-
-    const goalSection = goal ? `\n\n## GOAL\n> ${goal}` : '';
-    const userRequestSection = `## USER REQUEST> ${userPrompt}\n\n`
-
-    // If there's an error, prioritize error resolution
-    if (error) {
-      return `
-${goalSection}
-
-${userRequestSection}
-      
-# IMMEDIATE TASK
-## ERROR TO RESOLVE FIRST
-- **Error Type**: ${error.type}
-- **Error Message**: ${error.message}
+- **Error Type**: ${lastError.type}
+- **Error Message**: ${lastError.message}
 
 ## REQUIRED ACTION
-1. Analyze the error cause
-2. Create a corrected approach
-3. Execute the fix using appropriate tools
-${nextTasks ? `4. After fixing the error, continue with: ${nextTasks}` : ''}
-
-## INSTRUCTIONS
-- Resolve the error before proceeding with other tasks
-${nextTasks ? '- After error is fixed, continue with remaining tasks' : ''}
-- REMEMBER: Always pair tools with ${selfReasoningTool}`;
+1. **Analyze the History and the Error**: Understand why the last action failed.
+2. **Decide the Next Best Action**: This could be to fix the problem (e.g., create a missing directory) or to try an alternative approach.
+3. Execute the single best next action.`;
     }
 
-    if (nextTasks) {
-      let taskSection = `
-${goalSection}
+    return `${goalSection}
 
-${userRequestSection}
-      
-# IMMEDIATE TASK
-${report ? `## PREVIOUS ATTEMPT
-- ✅ Task completed: ${report}
-
-` : ''}## TASKS TO EXECUTE
-- Filter out completed tasks and execute remaining tasks, do not repeat completed task.(note: we are testing your ability to filter out completed tasks from the following and proceed to next ones)
-${nextTasks}`;
-
-
-
-      taskSection += `
-
-## INSTRUCTIONS
-- Execute immediately without re-evaluation.
-- REMEMBER: Always pair tools with ${selfReasoningTool}.`;
-
-      return taskSection;
-    }
-
-    return `# IMMEDIATE TASK
-
-${userRequestSection}
-
-## REMINDER
-1. Understand request and conversation history.
-2. If data needed: Use [action_tool] + ${selfReasoningTool}.
-3. If data complete: Use ${finalToolName} + ${selfReasoningTool}.
-Note: NEVER call ${selfReasoningTool} alone.`;
+# FOCUS ON CURRENT TASK
+1. **Review Progress**: Check what you've accomplished for THIS specific task.
+2. **Assess Task Completion**: Do you have enough information to complete the user's current request?
+3. **Take Action**:
+   - If TASK COMPLETE: Use goal_status="success" + ${finalToolName} to respond to user with the answer
+   - If TASK FAILED: Use goal_status="failed" + ${finalToolName} to explain why  
+   - If TASK INCOMPLETE: Use goal_status="pending" + take the next action needed for THIS task only`;
   }
 
   private buildContextContent(context: Record<string, string>): string {
@@ -351,10 +309,9 @@ Note: NEVER call ${selfReasoningTool} alone.`;
       finalToolName,
       reportToolName: selfReasoningTool,
       toolDefinitions,
-      nextTasks,
       goal,
-      report,
-      context
+      context,
+      stagnationWarning
     } = params;
 
     const sections: string[] = [];
@@ -366,14 +323,18 @@ Note: NEVER call ${selfReasoningTool} alone.`;
     sections.push(this.buildToolsSection(toolDefinitions));
 
     const reports = currentInteractionHistory.filter(i => 'toolCalls' in i);
-    sections.push(this.buildNotesSection(reports, selfReasoningTool));
-
+    sections.push(this.buildCurrentTaskProgressSection(reports, selfReasoningTool));
 
     if (context && options.includeContext) {
       sections.push(this.buildContextContent(context));
     }
 
-    sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, nextTasks, goal, report, lastError));
+    // Add stagnation warning if present
+    if (stagnationWarning) {
+      sections.push(`# ⚠️ CRITICAL WARNING\n\n${stagnationWarning}`);
+    }
+
+    sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, goal, lastError));
 
     return sections.join('\n\n---\n\n');
   }

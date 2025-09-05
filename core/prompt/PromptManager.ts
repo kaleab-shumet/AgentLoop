@@ -134,13 +134,7 @@ export class PromptManager {
    * Build the complete prompt for the agent
    */
   buildPrompt(params: BuildPromptParams): string {
-    // Merge options and error recovery instructions with provided params
-    const fullParams: BuildPromptParams = {
-      ...params,
-      errorRecoveryInstructions: this.errorRecoveryInstructions,
-    };
-    
-    return this.template.buildPrompt(fullParams, this.promptOptions);
+    return this.template.buildPrompt(params, this.promptOptions);
   }
 
 }

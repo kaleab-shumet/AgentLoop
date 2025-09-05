@@ -203,10 +203,8 @@ export interface BuildPromptParams {
   finalToolName: string;
   reportToolName: string;
   toolDefinitions: string;
-  nextTasks?: string | null;
   goal?: string | null;
-  report?: string | null;
-  errorRecoveryInstructions?: string;
+  stagnationWarning?: string | null;
 }
 
 /**

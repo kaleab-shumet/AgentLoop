@@ -72,7 +72,7 @@ class CodeEditorConsole {
         userPrompt: userInput,
         ...(this.conversationHistory.length > 1 && {
           context: {
-            "Conversation History": this.conversationHistory
+            "Old Conversation History": this.conversationHistory
               .slice(0, -1) // Exclude current user message
               .map(entry => `${entry.role}: ${entry.message}`)
               .join('\n')

@@ -42,24 +42,30 @@ You function as a senior software engineer who can understand, analyze, and modi
 - Maintain backwards compatibility when possible
 - Use proper error handling and logging
 
+**CRITICAL: VERIFICATION AFTER ACTIONS**
+- After completing any file operation (create, edit, delete), ALWAYS verify the change was successful
+- Use read_file tool to confirm file contents after creating or editing files
+- Use list_files tool to confirm file/directory existence after creating or deleting
+- Include verification results in your progress_summary to track what was actually accomplished
+
 You approach every task with the mindset of a professional software engineer, considering the broader impact of changes on the entire system.`;
 
   constructor(basePath: string = path.join(process.cwd(), 'testfolder')) {
     super(new DefaultAIProvider(
 
-      // {
-      //   service: 'azure',
-      //   apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
-      //   baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
-      //   model: 'gpt-4.1-mini',
-      //   temperature: 0
-      // }
-
       {
-        service: 'google',
-        apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-        model: 'gemini-2.0-flash'
+        service: 'azure',
+        apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
+        baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
+        model: 'gpt-4.1-mini',
+        temperature: 0
       }
+
+      // {
+      //   service: 'google',
+      //   apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+      //   model: 'gemini-2.0-flash'
+      // }
 
 
     ), {
@@ -191,7 +197,7 @@ You approach every task with the mindset of a professional software engineer, co
       argsSchema: z.object({
         file_path: z.string().describe('Path to the file to edit'),
         old_string: z.string().min(1).describe('COMPLETE LINES of text to find - target entire lines or multiple consecutive lines. LITERAL STRING ONLY, NO REGEX PATTERNS'),
-        new_string: z.string().min(1).describe('Text to replace with'),
+        new_string: z.string().describe('Text to replace with'),
         expected_match: z.number().min(1).describe('How many matches of string you want to replace.')
       }),
       handler: async ({ args }: any) => {
