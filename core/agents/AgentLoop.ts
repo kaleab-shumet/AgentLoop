@@ -337,6 +337,7 @@ export abstract class AgentLoop {
     let lastError: AgentError | null = null;
     const keepRetry = true;
     let goal: string | null = null; // Track goal from self_reasoning_tool for continuity
+    let stagnationWarning: string | null = null; // Track stagnation warning
 
     // Stagnation tracking for this run only
     const progressHashes = new Map<string, { text: string, count: number }>();
@@ -369,7 +370,7 @@ export abstract class AgentLoop {
 
         try {
 
-          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, lastError, keepRetry, goal);
+          let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, lastError, keepRetry, goal, stagnationWarning);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponse(prompt, input.completionOptions, runTokenUsage);
           const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
@@ -455,13 +456,17 @@ export abstract class AgentLoop {
               this.stagnationTerminationThreshold
             );
 
+            // Update stagnation warning for prompt template
             if (stagnationError) {
-              // Call stagnation hook before throwing
+              // Call stagnation hook 
               if (this.hooks.onStagnationDetected) {
                 await this.hooks.onStagnationDetected(progressText, i + 1);
               }
-              // Throw stagnation error to be handled by catch block
-              throw stagnationError;
+              // Create warning message instead of throwing immediately
+              stagnationWarning = `⚠️ STAGNATION DETECTED: You have already done this "${progressText}". You MUST proceed with the next step and cannot repeat this action again.`;
+            } else {
+              // Clear stagnation warning if no stagnation detected
+              stagnationWarning = null;
             }
 
 
@@ -910,7 +915,7 @@ export abstract class AgentLoop {
   }
 
 
-  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, goal: string | null = null): string {
+  private constructPrompt(userPrompt: string, context: Record<string, unknown>, currentInteractionHistory: Interaction[], lastError: AgentError | null, keepRetry: boolean, goal: string | null = null, stagnationWarning: string | null = null): string {
     const toolDefinitions = this.aiDataHandler.formatToolDefinitions(this.tools);
 
     const toolDef = typeof toolDefinitions === "string" ? toolDefinitions : this.tools.map(e => (`## ToolName: ${e.name}\n## ToolDescription: ${e.description}`)).join('\n\n')
@@ -927,7 +932,8 @@ export abstract class AgentLoop {
       finalToolName: this.FINAL_TOOL_NAME,
       reportToolName: this.SELF_REASONING_TOOL,
       toolDefinitions: toolDef,
-      goal: goal
+      goal: goal,
+      stagnationWarning: stagnationWarning
     };
 
     const prompt = this.promptManager.buildPrompt(promptParams);

@@ -204,6 +204,7 @@ export interface BuildPromptParams {
   reportToolName: string;
   toolDefinitions: string;
   goal?: string | null;
+  stagnationWarning?: string | null;
 }
 
 /**

@@ -310,7 +310,8 @@ An error occurred during the last action.
       reportToolName: selfReasoningTool,
       toolDefinitions,
       goal,
-      context
+      context,
+      stagnationWarning
     } = params;
 
     const sections: string[] = [];
@@ -326,6 +327,11 @@ An error occurred during the last action.
 
     if (context && options.includeContext) {
       sections.push(this.buildContextContent(context));
+    }
+
+    // Add stagnation warning if present
+    if (stagnationWarning) {
+      sections.push(`# ⚠️ CRITICAL WARNING\n\n${stagnationWarning}`);
     }
 
     sections.push(this.buildTaskSection(userPrompt, finalToolName, selfReasoningTool, goal, lastError));
