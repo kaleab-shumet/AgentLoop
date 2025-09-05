@@ -252,7 +252,13 @@ ${toolOutputs || '    - No tool actions taken'}`;
 ## EXECUTION HISTORY
 ${turnLogs || 'No actions taken yet'}
 
-${latestProgressSummary ? `## PROGRESS SUMMARY\n${latestProgressSummary}${latestPendingAction ? `\n${latestPendingAction} ${status}` : ''}\n\n` : ''}## CRITICAL - ONLY SOURCE OF TRUTH
+${latestProgressSummary ? `## PROGRESS SUMMARY\n${latestProgressSummary}${latestPendingAction ? `\n${latestPendingAction} ${status}` : ''}\n\n` : ''}## NEXT TASK
+Analyze the progress above and determine the best action to achieve the user's goal. Review what has been accomplished, identify any gaps or missing information, and decide whether to:
+- Gather more data if information is incomplete
+- Take the next logical step toward the goal
+- Provide the final answer if all requirements are met
+
+## CRITICAL - ONLY SOURCE OF TRUTH
 - This CURRENT TASK PROGRESS section is the ONLY reliable source of truth for making decisions.
 - Analyze DEEPLY what has been accomplished and what data you have gathered in the tool outputs.
 - Focus ONLY on the current task the user requested.
