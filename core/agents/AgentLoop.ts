@@ -438,9 +438,9 @@ export abstract class AgentLoop {
           if (reportResult?.success) {
             // Regular tool execution with self_reasoning_tool
             const args = reportResult.args as Record<string, unknown>;
-            const progressText: string = typeof args?.progress_summary === "string"
-              ? args.progress_summary
-              : JSON.stringify(args?.progress_summary ?? "");
+            const progressText: string = typeof args?.pending_action === "string"
+              ? args.pending_action
+              : JSON.stringify(args?.pending_action ?? "");
 
             // Get other tool calls executed in this iteration (excluding self_reasoning and final)
             const otherToolResults = iterationResults.filter(r =>
