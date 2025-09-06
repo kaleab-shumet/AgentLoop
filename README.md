@@ -13,7 +13,9 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 
 ## What's New in v2.0.0
 
+- **Dynamic Re-Planning System**: Replaced static task lists with dynamic progress analysis for better task completion
 - **Enhanced Security**: Completely removed eval execution mode - SES is now the only execution mode for maximum security
+- **Intelligent Stagnation Prevention**: Advanced detection and recovery from repetitive actions
 - **Linearized Data Structures**: Simplified and flattened data types for better performance and developer experience
 - **XML References for Large Content**: Uses XML literal blocks to avoid string escaping issues when LLMs work with large content
 - **Architecture Cleanup**: Removed outdated execution modes and streamlined the codebase
@@ -56,8 +58,9 @@ console.log(data);
 ### Error Handling & Monitoring
 - **Stateless Architecture**: Horizontally scalable, no internal state storage
 - **Error Handling**: Multiple error types with automatic retry logic
-- **Stagnation Detection**: Prevents infinite loops and repetitive behavior
-- **Lifecycle Hooks**: Monitor and customize agent execution
+- **Dynamic Re-Planning**: AI analyzes progress and adapts strategy instead of following rigid task lists
+- **Smart Stagnation Prevention**: Detects repetitive actions and guides AI toward task completion
+- **Lifecycle Hooks**: Monitor and customize agent execution with progress updates
 
 ### Developer Experience
 - **Full TypeScript Support**: Complete type safety from tools to responses
@@ -367,6 +370,45 @@ const agent = new MyAgent(provider); // SES is always used - no configuration ne
 
 ## 🛠️ Core Concepts
 
+### Dynamic Re-Planning System
+
+AgentLoop uses an advanced dynamic re-planning system that eliminates infinite loops and improves task completion:
+
+#### How It Works
+```typescript
+// The AI uses self-reasoning to track progress and plan actions
+{
+  goal: "List files in the directory",
+  goal_status: "pending",  // or "success"/"failed"
+  pending_action: "Executing list_files tool to get directory contents",
+  progress_summary: "1. Received user request to list directory files"
+}
+```
+
+#### Key Benefits
+- **No More Static Task Lists**: AI dynamically analyzes what's been accomplished
+- **Intelligent Decision Making**: AI decides next actions based on current progress
+- **Automatic Task Completion**: AI recognizes when enough data is gathered
+- **Stagnation Prevention**: Detects and prevents repetitive actions
+
+#### Progress Tracking
+The system displays progress in a structured format:
+```
+# CURRENT TASK PROGRESS
+
+## EXECUTION HISTORY  
+### Turn 1: Listing files in current directory
+  - Tool `list_files` -> SUCCESS
+    Output: {"files": ["package.json", "src/", "README.md"]}
+
+## PROGRESS SUMMARY
+1. Listed directory contents and found 3 items including package.json and src folder
+Currently executing list_files tool to get directory contents (success)
+
+## NEXT TASK
+Analyze the progress above and determine the best action to achieve the user's goal.
+```
+
 ### Tools with Dependencies
 ```typescript
 this.defineTool(z => ({
@@ -413,6 +455,14 @@ const agent = new MyAgent({
   hooks: {
     onToolCallStart: async (call) => {
       console.log(`Executing: ${call.toolName}`);
+    },
+    onProgressUpdate: async (progressSummary, pendingAction, goal, iteration) => {
+      console.log(`Turn ${iteration}: ${goal}`);
+      console.log(`Progress: ${progressSummary}`);
+      console.log(`Current: ${pendingAction}`);
+    },
+    onStagnationDetected: async (repeatedAction, iteration) => {
+      console.log(`Stagnation detected at turn ${iteration}: ${repeatedAction}`);
     },
     onError: async (error) => {
       logger.error('Agent error:', error);
@@ -592,7 +642,17 @@ interface AgentLoopOptions {
   stagnationTerminationThreshold?: number;  // Prevent infinite loops (default: 3)
   maxInteractionHistoryCharsLimit?: number; // Memory management (default: 100k)
   sleepBetweenIterationsMs?: number;        // Rate limiting (default: 2s)
-  hooks?: AgentLifecycleHooks;              // Event handlers
+  hooks?: AgentLifecycleHooks;              // Event handlers including progress updates
+}
+
+interface AgentLifecycleHooks {
+  onIterationStart?: (iteration: number) => Promise<void>;
+  onToolCallStart?: (call: PendingToolCall) => Promise<void>;
+  onToolCallEnd?: (result: ToolCall) => Promise<void>;
+  onProgressUpdate?: (progressSummary: string | null, pendingAction: string | null, goal: string | null, iteration: number) => Promise<void>;
+  onStagnationDetected?: (repeatedAction: string, iteration: number) => Promise<void>;
+  onAgentFinalResponse?: (result: AgentResponse) => Promise<void>;
+  onError?: (error: AgentError) => Promise<void>;
 }
 ```
 

@@ -420,7 +420,7 @@ export abstract class AgentLoop {
           if (reportResults.length > 0) {
             const latestReport = reportResults[reportResults.length - 1];
             const args = latestReport.args as Record<string, unknown>;
-            goal = typeof args?.goal === 'string' ? args.goal : null;
+            goal ??= typeof args?.goal === 'string' ? args.goal : null;
             pending_action = typeof args?.pending_action === 'string' ? args.pending_action : null;
             progress_summary = typeof args?.progress_summary === 'string' ? args.progress_summary : null;
             
