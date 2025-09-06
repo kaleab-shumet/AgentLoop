@@ -40,7 +40,7 @@ export interface AgentLifecycleHooks {
   onAIRequestEnd?: (response: string) => Promise<void>;
   onToolCallStart?: (call: PendingToolCall) => Promise<void>;
   onToolCallEnd?: (result: ToolCall) => Promise<void>; // Replaces onToolCallSuccess and onToolCallFail
-  onReportData?: (report: string | null, nextTasks: string | null, goal: string | null, iteration: number) => Promise<void>;
+  onProgressUpdate?: (progress_summary: string | null, pending_action: string | null, goal: string | null, iteration: number) => Promise<void>;
   onStagnationDetected?: (reportText: string, iteration: number) => Promise<void>;
   onAgentFinalResponse?: (result: AgentResponse) => Promise<void>;
   onError?: (error: AgentError) => Promise<void>;
@@ -414,12 +414,15 @@ export abstract class AgentLoop {
           const reportResults = iterationResults.filter(result =>
             result.toolName === this.SELF_REASONING_TOOL && result.success
           );
+          let pending_action: string | null = null;
+          let progress_summary: string | null = null;
+          
           if (reportResults.length > 0) {
             const latestReport = reportResults[reportResults.length - 1];
             const args = latestReport.args as Record<string, unknown>;
             goal = typeof args?.goal === 'string' ? args.goal : null;
-            const pending_action = typeof args?.pending_action === 'string' ? args.pending_action : null;
-            const progress_summary = typeof args?.progress_summary === 'string' ? args.progress_summary : null;
+            pending_action = typeof args?.pending_action === 'string' ? args.pending_action : null;
+            progress_summary = typeof args?.progress_summary === 'string' ? args.progress_summary : null;
             
             console.log("---------------------------------------");
             console.log("goal: ", goal);
@@ -428,9 +431,9 @@ export abstract class AgentLoop {
             console.log("---------------------------------------");
           }
 
-          // Call hook with goal data
-          if (this.hooks.onReportData) {
-            await this.hooks.onReportData(null, null, goal, i + 1);
+          // Call hook with progress update
+          if (this.hooks.onProgressUpdate) {
+            await this.hooks.onProgressUpdate(progress_summary, pending_action, goal, i + 1);
           }
 
           // Handle report creation for both regular tools and final tool
