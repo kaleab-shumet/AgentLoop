@@ -13,7 +13,7 @@ class TestAgentLoop extends AgentLoop {
       apiKey: 'test-key',
       model: 'gpt-4'
     }), {
-      formatMode: FormatMode.LITERAL_JS,
+      formatMode: FormatMode.MD_STRUCT,
       stagnationTerminationThreshold: 3
     });
   }

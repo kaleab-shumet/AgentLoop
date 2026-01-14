@@ -53,28 +53,28 @@ You approach every task with the mindset of a professional software engineer, co
   constructor(basePath: string = path.join(process.cwd(), 'testfolder')) {
     super(new DefaultAIProvider(
 
-//      {
-//        service: 'azure',
-//        apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
-//        baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
-//        model: 'gpt-4.1-mini',
-//        temperature: 0
-//      }
+      //      {
+      //        service: 'azure',
+      //        apiKey: process.env.AZURE_OPENAI_API_KEY || "azure-api-key",
+      //        baseURL: process.env.AZURE_OPENAI_RESOURCE_NAME,
+      //        model: 'gpt-4.1-mini',
+      //        temperature: 0
+      //      }
 
-       {
-         service: 'google',
-         apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
-         model: 'gemini-2.0-flash'
-       }
+      {
+        service: 'google',
+        apiKey: process.env.GEMINI_API_KEY || "gemin-api-key",
+        model: 'gemini-2.5-flash'
+      }
 
 
     ), {
-      formatMode: FormatMode.LITERAL_JS,
+      formatMode: FormatMode.MD_STRUCT,
       maxIterations: 15,
       stagnationTerminationThreshold: 5,
       parallelExecution: false,  // Ensure file operations run sequentially
       sleepBetweenIterationsMs: 5000
-      
+
     });
 
     this.basePath = basePath;
@@ -566,22 +566,22 @@ You approach every task with the mindset of a professional software engineer, co
         try {
           const { spawn } = require('child_process');
           const workingDir = args.workingDirectory ? path.resolve(this.basePath, args.workingDirectory) : path.join(this.basePath, 'testfolder');
-          
+
           return new Promise((resolve) => {
             let stdout = '';
             let stderr = '';
-            
+
             // Parse command and arguments
             const commandParts = args.command.split(' ');
             const cmd = commandParts[0];
             const cmdArgs = commandParts.slice(1);
-            
+
             const process = spawn(cmd, cmdArgs, {
               cwd: workingDir,
               stdio: ['pipe', 'pipe', 'pipe'],
               shell: true
             });
-            
+
             // Set timeout
             const timer = setTimeout(() => {
               process.kill();
@@ -594,18 +594,18 @@ You approach every task with the mindset of a professional software engineer, co
                 timeout: true
               });
             }, args.timeout);
-            
+
             process.stdout.on('data', (data: Buffer) => {
               stdout += data.toString();
             });
-            
+
             process.stderr.on('data', (data: Buffer) => {
               stderr += data.toString();
             });
-            
+
             process.on('close', (code: number | null) => {
               clearTimeout(timer);
-              
+
               const success = code === 0;
               resolve({
                 toolName: 'execute_command',
@@ -618,7 +618,7 @@ You approach every task with the mindset of a professional software engineer, co
                 output: success ? stdout.trim() : stderr.trim()
               });
             });
-            
+
             process.on('error', (error: Error) => {
               clearTimeout(timer);
               resolve({
@@ -630,7 +630,7 @@ You approach every task with the mindset of a professional software engineer, co
               });
             });
           });
-          
+
         } catch (error) {
           return {
             toolName: 'execute_command',
@@ -667,7 +667,7 @@ You approach every task with the mindset of a professional software engineer, co
     includeHidden: boolean = false
   ): Promise<string[]> {
     const files: string[] = [];
-    
+
     // Common directories to ignore in development projects
     const ignoredDirs = new Set([
       'node_modules',

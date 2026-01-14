@@ -2,9 +2,9 @@
 
 > **A TypeScript Framework for Building Tool-Using AI Agents**
 
-AgentLoop is a TypeScript framework that enables developers to build AI agents capable of executing complex tool chains. With support for 10+ AI providers, JavaScript-based tool calling, and error handling, AgentLoop abstracts away the complexity of multi-step AI workflows while maintaining full type safety and extensibility.
+AgentLoop is a TypeScript framework that enables developers to build AI agents capable of executing complex tool chains. With support for 10+ AI providers, Markdown-based structured tool calling (MD-Struct), and error handling, AgentLoop abstracts away the complexity of multi-step AI workflows while maintaining full type safety and extensibility.
 
-**Note:** AgentLoop uses JavaScript-based tool calling instead of traditional function calling APIs. AI models generate JavaScript code that calls tools, providing more flexibility and control over execution flow.
+**Note:** AgentLoop uses MD-Struct for tool calling. AI models generate Markdown-formatted structured data that is parsed into tool calls, providing a clean and robust way to interact with tools without the need for a JavaScript execution environment.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
@@ -13,12 +13,12 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 
 ## What's New in v2.0.0
 
-- **Dynamic Re-Planning System**: Replaced static task lists with dynamic progress analysis for better task completion
-- **Enhanced Security**: Completely removed eval execution mode - SES is now the only execution mode for maximum security
-- **Intelligent Stagnation Prevention**: Advanced detection and recovery from repetitive actions
-- **Linearized Data Structures**: Simplified and flattened data types for better performance and developer experience
-- **XML References for Large Content**: Uses XML literal blocks to avoid string escaping issues when LLMs work with large content
-- **Architecture Cleanup**: Removed outdated execution modes and streamlined the codebase
+- **MD-Struct Migration**: Completely replaced JavaScript-based tool calling with a robust Markdown-based structured data format.
+- **Removed JS Execution Engine**: Eliminated the need for SES/eval execution environments, reducing complexity and improving security.
+- **Dynamic Re-Planning System**: Replaced static task lists with dynamic progress analysis for better task completion.
+- **Intelligent Stagnation Prevention**: Advanced detection and recovery from repetitive actions.
+- **Linearized Data Structures**: Simplified and flattened data types for better performance and developer experience.
+- **Architecture Cleanup**: Streamlined the codebase by removing obsolete execution modes.
 
 ## 🚀 Key Features
 
@@ -27,33 +27,30 @@ AgentLoop is a TypeScript framework that enables developers to build AI agents c
 - **Unified Interface**: Switch between providers without code changes
 - **Provider-Specific Optimizations**: Automatic handling of rate limits, context windows, and capabilities
 
-### Secure Code Execution
-- **Maximum Security**: SES (Secure EcmaScript) is the only execution mode - no unsafe alternatives
-- **Compartmentalized**: All AI-generated code runs in isolated SES compartments
-- **Cross-Platform**: Works in Node.js and browsers with zero configuration
-- **Zero Dependencies**: SES included out of the box, no additional installation needed
+### Robust Tool Calling
+- **MD-Struct Format**: AI writes Markdown-formatted structured data for tool execution.
+- **No JS Execution Needed**: Eliminates security risks and overhead associated with executing AI-generated code.
+- **Type-Safe Validation**: Zod schemas ensure runtime type safety for all tool arguments.
+- **Cross-Platform**: Works in Node.js and browsers with zero configuration.
 
 ### Innovative Tool Calling
-- **JavaScript-Based Tools**: AI writes JavaScript functions for tool execution
-- **Type-Safe Validation**: Zod schemas ensure runtime type safety
-- **XML Literal Blocks**: Reference large content without string escaping issues
+- **MD-Struct Format**: AI uses Markdown headings and lists to define tool calls.
+- **Type-Safe Validation**: Zod schemas ensure runtime type safety.
+- **Clean Syntax**: No need for complex escaping or string concatenation.
 
-```javascript
-// Clean JavaScript without escaping:
-writeFile("path", LiteralLoader.load("file_content_123"));
+```markdown
+# write_file
+## filepath
+config.json
+## content
+```json
+{
+  "api_key": "12345"
+}
+```
 ```
 
-```xml
-<literals>
-  <literal id="file_content_123">
-const data = "hello
-world";
-console.log(data);
-  </literal>
-</literals>
-```
-
-- **Additional Features**: Dependency management, parallel/sequential execution
+- **Additional Features**: Dependency management, parallel/sequential execution.
 
 ### Error Handling & Monitoring
 - **Stateless Architecture**: Horizontally scalable, no internal state storage
@@ -74,7 +71,7 @@ console.log(data);
 npm install agentloop
 ```
 
-**That's it!** SES (Secure EcmaScript) is included out of the box for secure JavaScript execution.
+**That's it!** No additional dependencies or execution environments required.
 
 ## Quick Start
 
@@ -93,7 +90,7 @@ class MyAgent extends AgentLoop {
       apiKey: process.env.OPENAI_API_KEY,
       model: 'gpt-4'
     }), {
-      formatMode: FormatMode.LITERAL_JS,
+      formatMode: FormatMode.MD_STRUCT,
       maxIterations: 10
     });
     
@@ -347,26 +344,21 @@ if (result.agentResponse) {
 
 This design makes AgentLoop incredibly flexible and easy to integrate with any storage or state management system.
 
-### JavaScript Execution Security
+### Tool Calling Security
 
-AgentLoop uses **SES (Secure EcmaScript)** as the only execution mode for maximum security:
+AgentLoop uses **MD-Struct** as the primary tool calling format, which eliminates the need for executing AI-generated code:
 
-```typescript
-const agent = new MyAgent(provider); // SES is always used - no configuration needed
-```
+- **🔒 Maximum Security**: No JavaScript execution environment required.
+- **🛡️ Memory Safe**: AI responses are parsed into structured data, not executed.
+- **📦 Zero Configuration**: Works out of the box in any environment.
+- **🌐 Cross-Platform**: Works identically in Node.js and browsers.
+- **🚫 No Unsafe Alternatives**: Eliminates the possibility of insecure code execution.
 
-#### SES (Secure EcmaScript) - Only Mode
-- **🔒 Maximum Security**: All code runs in isolated compartments
-- **🛡️ Memory Safe**: No access to global objects or sensitive APIs
-- **📦 Zero Configuration**: SES included out of the box
-- **🌐 Cross-Platform**: Works identically in Node.js and browsers
-- **🚫 No Unsafe Alternatives**: Eliminates any possibility of insecure execution
-
-**Why SES-Only?**
-- **Security First**: No compromise on security - every execution is safe
-- **Predictable**: Consistent security model across all environments
-- **Zero-Risk**: Eliminates entire class of security vulnerabilities
-- **Production Ready**: Battle-tested secure execution without complexity
+**Why MD-Struct?**
+- **Security First**: No compromise on security - every interaction is safe by design.
+- **Predictable**: Consistent behavior across all AI providers and environments.
+- **Zero-Risk**: Eliminates entire classes of security vulnerabilities like code injection.
+- **Production Ready**: Battle-tested structured data parsing without the complexity of sandboxing.
 
 ## 🛠️ Core Concepts
 
@@ -425,28 +417,23 @@ this.defineTool(z => ({
 }));
 ```
 
-### JavaScript Tool Calling Format
-AI writes JavaScript functions for structured tool execution:
+### MD-Struct Tool Calling Format
+AI writes Markdown-formatted structured data for tool execution:
 
-```javascript
-import { LiteralLoader, toolCalls } from './utils';
-import { toolSchemas } from './toolSchemas';
+```markdown
+# report_tool
+## goal
+List files in the directory
+## goal_status
+pending
+## pending_action
+Executing list_files tool to get directory contents
+## progress_summary
+- Received user request to list directory files
 
-function callTools() {
-  toolCalls.push(
-    toolSchemas.read_file.parse({
-      filepath: "package.json"
-    })
-  );
-  
-  toolCalls.push(
-    toolSchemas.final_tool.parse({
-      value: LiteralLoader("analysis-result")
-    })
-  );
-  
-  return toolCalls;
-}
+# list_files
+## dirpath
+.
 ```
 
 ### Lifecycle Hooks
@@ -638,7 +625,6 @@ interface AgentLoopOptions {
   maxIterations?: number;                    // Max reasoning iterations (default: 100)
   parallelExecution?: boolean;              // Run tools in parallel (default: true)
   toolTimeoutMs?: number;                   // Tool execution timeout (default: 30s)
-  // JavaScript execution is always secure with SES - no configuration needed
   stagnationTerminationThreshold?: number;  // Prevent infinite loops (default: 3)
   maxInteractionHistoryCharsLimit?: number; // Memory management (default: 100k)
   sleepBetweenIterationsMs?: number;        // Rate limiting (default: 2s)
@@ -695,7 +681,6 @@ AgentLoop uses **SES (Secure EcmaScript)** as the only execution mode for maximu
 const agent = new MyAgent(aiProvider, {
   maxIterations: 10,
   parallelExecution: true
-  // SES security is always enabled
 });
 ```
 
@@ -793,7 +778,6 @@ This project is licensed under the ISC License - see the [LICENSE](LICENSE) file
 
 - Built with [AI-SDK](https://github.com/vercel/ai) for unified AI provider access
 - Powered by [Zod](https://github.com/colinhacks/zod) for runtime type safety
-- Secure execution via [SES](https://github.com/endojs/endo) (Secure ECMAScript)
 - Inspired by the agent frameworks community
 
 ---

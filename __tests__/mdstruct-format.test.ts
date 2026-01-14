@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import z from 'zod';
+import z, { ZodTypeAny } from 'zod';
 import { MDStructFormatHandler } from '../core/handlers/MDStructFormatHandler';
 import { Tool } from '../core/types/types';
 
@@ -36,10 +36,11 @@ describe('MDStructFormatHandler', () => {
         it('should format tool definitions in MD-Struct style', () => {
             const formatted = handler.formatToolDefinitions(testTools);
 
-            expect(formatted).toContain('## Tool Name: read_file');
-            expect(formatted).toContain('## Tool Name: write_file');
-            expect(formatted).toContain('## Tool Description:');
-            expect(formatted).toContain('## Tool Schema (Zod):');
+            expect(formatted).toContain('## TOOL: read_file');
+            expect(formatted).toContain('## TOOL: write_file');
+            expect(formatted).toContain('**Description**:');
+            expect(formatted).toContain('**Arguments**:');
+            expect(formatted).toContain('### filename (ZodString)');
         });
     });
 
@@ -185,6 +186,121 @@ value
             await expect(async () => {
                 await handler.parseResponse(response, testTools);
             }).rejects.toThrow('Tool not found: nonexistent_tool');
+        });
+
+        it('should parse inline heading values (robustness)', async () => {
+            const response = `
+# read_file
+## filename: /path/to/file.txt
+## encoding: utf8
+`;
+
+            const result = await handler.parseResponse(response, testTools);
+
+            expect(result).toHaveLength(1);
+            expect(result[0].toolName).toBe('read_file');
+            expect(result[0].filename).toBe('/path/to/file.txt');
+            expect(result[0].encoding).toBe('utf8');
+        });
+
+        it('should parse list-based arguments (robustness)', async () => {
+            const response = `
+# read_file
+- filename: /path/to/file.txt
+- encoding: utf8
+`;
+
+            const result = await handler.parseResponse(response, testTools);
+
+            expect(result).toHaveLength(1);
+            expect(result[0].toolName).toBe('read_file');
+            expect(result[0].filename).toBe('/path/to/file.txt');
+            expect(result[0].encoding).toBe('utf8');
+        });
+
+        it('should handle array-to-string conversion (smart conversion)', async () => {
+            const toolWithString: Tool = {
+                name: 'process_text',
+                description: 'Process some text',
+                argsSchema: z.object({
+                    text: z.string()
+                }),
+                handler: async () => ({ toolName: 'process_text', success: true })
+            };
+
+            const response = `
+# process_text
+## text
+- line 1
+- line 2
+- line 3
+`;
+
+            const result = await handler.parseResponse(response, [toolWithString]);
+
+            expect(result).toHaveLength(1);
+            expect(result[0].toolName).toBe('process_text');
+            expect(result[0].text).toBe('line 1\nline 2\nline 3');
+        });
+        it('should parse nested code blocks correctly', async () => {
+            const response = `
+# final_tool
+## value
+\`\`\`markdown
+Hello!
+\`\`\`json
+{
+  "key": "value"
+}
+\`\`\`
+Bye!
+\`\`\`
+`;
+            const tools: Tool<ZodTypeAny>[] = [
+                {
+                    name: 'final_tool',
+                    description: 'Final tool',
+                    argsSchema: z.object({
+                        value: z.string()
+                    }),
+                    handler: async () => ({})
+                }
+            ];
+
+            const result = await handler.parseResponse(response, tools);
+            expect(result).toHaveLength(1);
+            expect(result[0].toolName).toBe('final_tool');
+            expect(result[0].value).toContain('Hello!');
+            expect(result[0].value).toContain('\`\`\`json');
+            expect(result[0].value).toContain('Bye!');
+        });
+
+        it('should handle mixed content and not overwrite values', async () => {
+            const response = `
+# my_tool
+## arg1
+First part
+\`\`\`
+code part
+\`\`\`
+Last part
+`;
+            const tools: Tool<ZodTypeAny>[] = [
+                {
+                    name: 'my_tool',
+                    description: 'My tool',
+                    argsSchema: z.object({
+                        arg1: z.string()
+                    }),
+                    handler: async () => ({})
+                }
+            ];
+
+            const result = await handler.parseResponse(response, tools);
+            expect(result).toHaveLength(1);
+            expect(result[0].arg1).toContain('First part');
+            expect(result[0].arg1).toContain('code part');
+            expect(result[0].arg1).toContain('Last part');
         });
     });
 });

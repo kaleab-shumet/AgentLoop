@@ -46,7 +46,7 @@ Always use the available tools to help users with their requests.`;
       apiKey: process.env.OPENAI_API_KEY!,
       model: 'gpt-4'
     }), {
-      formatMode: 'LITERAL_JS', // Use JavaScript-based tool calling
+      formatMode: 'MD_STRUCT', // Use JavaScript-based tool calling
       maxIterations: 10
     });
 

@@ -21,25 +21,24 @@ export class DefaultPromptTemplate implements BasePromptTemplate {
     return `# CORE DIRECTIVE
 
 ## MISSION
-Do exactly what the user asks, then provide the response.
+Your mission is to fulfill the user's LATEST request with maximum accuracy and efficiency.
 
 ## WORKFLOW
-1. Read the user's request carefully.
-2. Analyze the CURRENT TASK PROGRESS section - this is your ONLY source of truth.
-3. Check what has been accomplished and what data you have gathered.
-4. Decide the goal status:
-   - If you have enough information to answer the user: goal_status="success" + use ${finalToolName}
-   - If the task cannot be completed: goal_status="failed" + use ${finalToolName} to explain why
-   - If you need more data: goal_status="pending" + take the specific next action needed
-5. Always use ${selfReasoningTool} with pending_action and detailed progress_summary.
+1. **Analyze the Latest USER REQUEST**: This is your primary objective. If it differs from previous requests, the new request takes precedence.
+2. **Review CURRENT TASK PROGRESS**: This is your ONLY source of truth for what has been done in the CURRENT task.
+3. **Evaluate Information**: Do you have everything needed to satisfy the LATEST request?
+4. **Determine Goal Status**:
+   - **success**: You have the answer/result. Use ${finalToolName} to provide it.
+   - **failed**: The request is impossible. Use ${finalToolName} to explain why.
+   - **pending**: You need more information. Take the next logical step.
+5. **Execute**: ALWAYS use ${selfReasoningTool} to document your reasoning and progress, paired with the next tool call.
 
 ## STRICT RULES
-- Do what the user asks, then immediately provide the response with ${finalToolName}.
-- If you have enough information to answer the user's question, set goal_status="success" and use ${finalToolName}.
-- ALWAYS pair tool calls with ${selfReasoningTool}.
-- NEVER respond with plain text.
-- NEVER call ${selfReasoningTool} alone.
-- Complete the task efficiently - don't over-analyze or gather excessive data.`;
+- **Focus on the LATEST request**: Do not get stuck on previous goals if the user has moved on.
+- **No "Lazy" Responses**: Never tell the user "I already did that" or "See above". If they ask for information you already gathered, provide it again in the ${finalToolName}.
+- **Complete Answers**: The ${finalToolName} must contain the actual result or answer, not just a summary of your actions.
+- **Always Pair Tools**: Every action (including the final answer) MUST be accompanied by ${selfReasoningTool}.
+- **Efficiency**: Take the shortest path to the goal. Don't perform redundant checks.`;
   }
 
   private buildResponseFormatSection(selfReasoningTool: string, finalToolName: string): string {
@@ -190,7 +189,7 @@ Analyze the progress above and determine the best action to achieve the user's g
 - This CURRENT TASK PROGRESS section is the ONLY reliable source of truth for making decisions.
 - Analyze DEEPLY what has been accomplished and what data you have gathered in the tool outputs.
 - Focus ONLY on the current task the user requested.
-- Look at the actual tool outputs - do they contain enough information to answer the user?`;
+- If the user asks for something you already found, LOOK AT THE OUTPUTS ABOVE and provide it. Do not ask them to look for it themselves.`;
   }
 
   private buildTaskSection(userPrompt: string, finalToolName: string, _selfReasoningTool: string, goal?: string | null, lastError?: AgentError | null): string {
@@ -215,7 +214,7 @@ An error occurred during the last action.
 
 # FOCUS ON CURRENT TASK
 1. **Review Progress**: Check what you've accomplished for THIS specific task.
-2. **Assess Task Completion**: Do you have enough information to complete the user's current request?
+2. **Assess Task Completion**: Do you have everything needed to complete the user's current request?
 3. **Take Action**:
    - If TASK COMPLETE: Use goal_status="success" + ${finalToolName} to respond to user with the answer
    - If TASK FAILED: Use goal_status="failed" + ${finalToolName} to explain why  

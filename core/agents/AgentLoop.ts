@@ -365,8 +365,12 @@ export abstract class AgentLoop {
           let prompt = this.constructPrompt(userPrompt, context, currentInteractionHistory, lastError, keepRetry, goal, stagnationWarning);
           prompt = await this.hooks.onPromptCreate?.(prompt) ?? prompt;
           const aiResponse = await this.getAIResponse(prompt, input.completionOptions, runTokenUsage);
+
+          console.log("AI Response: ", aiResponse.text);
+
           const parsedToolCalls = await this.aiDataHandler.parseAndValidate(aiResponse.text, this.tools);
 
+          console.log("Parsed Tool Calls: ", parsedToolCalls);
           // Validation: If final tool is not included, report tool is required
           const hasReportTool = parsedToolCalls.some(call => call.toolName === this.SELF_REASONING_TOOL);
 
@@ -1153,7 +1157,7 @@ export abstract class AgentLoop {
   }
 
   /**
-   * Creates a standardized failure result object from an AgentError.
+        * Creates a standardized failure result object from an AgentError.
    * @param error The AgentError that occurred.
    * @returns A ToolResult object representing the failure.
    */

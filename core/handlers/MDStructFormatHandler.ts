@@ -1,4 +1,4 @@
-import { ZodTypeAny } from "zod";
+import z, { ZodTypeAny } from "zod";
 import { FormatHandler, Tool, PendingToolCall } from "../types/types";
 import { AgentError, AgentErrorType } from "../utils/AgentError";
 
@@ -6,10 +6,20 @@ export class MDStructFormatHandler implements FormatHandler {
     /**
      * Formats tool definitions as Markdown headings and descriptions.
      */
+    /**
+     * Formats tool definitions in a clear, MD-Struct friendly way.
+     */
     formatToolDefinitions(tools: Tool<ZodTypeAny>[]): string {
         return tools
             .map((tool) => {
-                return `## Tool Name: ${tool.name}\n## Tool Description: ${tool.description}\n\n## Tool Schema (Zod):\n\`\`\`json\n${JSON.stringify(tool.argsSchema, null, 2)}\n\`\`\``;
+                const schema = (tool.argsSchema as any).shape || {};
+                const args = Object.entries(schema).map(([key, value]: [string, any]) => {
+                    const description = value.description || "";
+                    const type = value._def?.typeName || "any";
+                    return `### ${key} (${type})\n${description}`;
+                }).join("\n\n");
+
+                return `## TOOL: ${tool.name}\n**Description**: ${tool.description}\n\n**Arguments**:\n${args}`;
             })
             .join("\n\n---\n\n");
     }
@@ -32,15 +42,23 @@ export class MDStructFormatHandler implements FormatHandler {
             const headingMatch = line.match(/^(#+)\s*(.+)$/);
             if (headingMatch) {
                 const hashes = headingMatch[1];
-                const key = headingMatch[2].trim();
+                let content = headingMatch[2].trim();
                 const level = hashes.length;
+
+                // Check for inline value: ## key: value
+                let inlineValue: string | null = null;
+                const colonIndex = content.indexOf(":");
+                if (colonIndex !== -1 && level > 1) {
+                    inlineValue = content.substring(colonIndex + 1).trim();
+                    content = content.substring(0, colonIndex).trim();
+                }
 
                 if (level === 1) {
                     // New tool call (top-level heading)
                     if (currentToolCall) {
-                        toolCalls.push(this.validateAndCompleteToolCall(currentToolCall, tools));
+                        toolCalls.push(this.validateAndCompleteToolCall(currentToolCall, tools, response));
                     }
-                    currentToolCall = { toolName: key };
+                    currentToolCall = { toolName: content };
                     stack = [{ level: 1, obj: currentToolCall }];
                 } else {
                     // Nested key or argument
@@ -49,8 +67,12 @@ export class MDStructFormatHandler implements FormatHandler {
                     }
                     if (stack.length > 0) {
                         const parent = stack[stack.length - 1].obj;
-                        parent[key] = {}; // Placeholder
-                        stack.push({ level, obj: parent[key] });
+                        if (inlineValue !== null) {
+                            parent[content] = this._inferType(inlineValue);
+                        } else {
+                            parent[content] = {}; // Placeholder for potential nesting
+                            stack.push({ level, obj: parent[content] });
+                        }
                     }
                 }
                 continue;
@@ -59,7 +81,18 @@ export class MDStructFormatHandler implements FormatHandler {
             // List item
             const listMatch = line.match(/^-\s+(.+)$/);
             if (listMatch) {
-                const item = this._inferType(listMatch[1].trim());
+                const content = listMatch[1].trim();
+
+                // Check for key: value in list item (robustness for some LLM styles)
+                const colonIndex = content.indexOf(":");
+                if (colonIndex !== -1 && stack.length === 1) {
+                    const key = content.substring(0, colonIndex).trim();
+                    const value = content.substring(colonIndex + 1).trim();
+                    currentToolCall[key] = this._inferType(value);
+                    continue;
+                }
+
+                const item = this._inferType(content);
                 if (stack.length > 0) {
                     const parentObj = stack.length > 1 ? stack[stack.length - 2].obj : null;
                     if (parentObj) {
@@ -78,10 +111,23 @@ export class MDStructFormatHandler implements FormatHandler {
             // Code block
             if (line.trim().startsWith("```")) {
                 const codeLines: string[] = [];
+                let nestingLevel = 1;
                 i++;
                 while (i < lines.length) {
-                    if (lines[i].trim().startsWith("```")) {
-                        break;
+                    const currentLine = lines[i].trim();
+                    if (currentLine.startsWith("```")) {
+                        // Check if it's an opening or closing block
+                        // In MD-Struct, we assume the first ``` is opening, 
+                        // and we count nesting if we see more ``` before the closing one.
+                        // However, a simpler approach for nested blocks (like markdown in markdown)
+                        // is to look for the matching closing block.
+                        // For robustness, we'll just look for the next ``` that isn't followed by more content on the same line if it's a closing one.
+                        if (currentLine === "```") {
+                            nestingLevel--;
+                            if (nestingLevel === 0) break;
+                        } else {
+                            nestingLevel++;
+                        }
                     }
                     codeLines.push(lines[i]);
                     i++;
@@ -110,23 +156,33 @@ export class MDStructFormatHandler implements FormatHandler {
         }
 
         if (currentToolCall) {
-            toolCalls.push(this.validateAndCompleteToolCall(currentToolCall, tools));
+            toolCalls.push(this.validateAndCompleteToolCall(currentToolCall, tools, response));
         }
 
         return toolCalls;
     }
 
-    private validateAndCompleteToolCall(partialCall: any, tools: Tool<ZodTypeAny>[]): PendingToolCall {
+    private validateAndCompleteToolCall(partialCall: any, tools: Tool<ZodTypeAny>[], rawResponse: string): PendingToolCall {
         if (!partialCall.toolName) {
-            throw new AgentError('Missing toolName in MD-Struct', AgentErrorType.INVALID_RESPONSE);
+            throw new AgentError('Missing toolName in MD-Struct', AgentErrorType.INVALID_RESPONSE, { rawResponse });
         }
 
         const tool = tools.find(t => t.name === partialCall.toolName);
         if (!tool) {
-            throw new AgentError(`Tool not found: ${partialCall.toolName}`, AgentErrorType.TOOL_NOT_FOUND);
+            throw new AgentError(`Tool not found: ${partialCall.toolName}`, AgentErrorType.TOOL_NOT_FOUND, { rawResponse });
         }
 
         const { toolName, ...args } = partialCall;
+
+        // Smart conversion: if schema expects string but we got array, join it
+        if (tool.argsSchema instanceof z.ZodObject) {
+            const shape = tool.argsSchema.shape;
+            for (const key of Object.keys(args)) {
+                if (Array.isArray(args[key]) && shape[key] instanceof z.ZodString) {
+                    args[key] = args[key].join('\n');
+                }
+            }
+        }
 
         try {
             const validatedArgs = tool.argsSchema.parse(args);
@@ -138,7 +194,7 @@ export class MDStructFormatHandler implements FormatHandler {
             throw new AgentError(
                 `Invalid args for ${toolName}: ${error.message}`,
                 AgentErrorType.INVALID_RESPONSE,
-                { toolName, errors: error.errors }
+                { toolName, errors: error.errors, rawResponse }
             );
         }
     }
@@ -149,7 +205,11 @@ export class MDStructFormatHandler implements FormatHandler {
             const keys = Object.keys(parent);
             const lastKey = keys[keys.length - 1];
             if (lastKey) {
-                parent[lastKey] = value;
+                if (typeof parent[lastKey] === 'string' && typeof value === 'string') {
+                    parent[lastKey] = (parent[lastKey] ? parent[lastKey] + '\n' : '') + value;
+                } else if (parent[lastKey] === undefined || Object.keys(parent[lastKey]).length === 0) {
+                    parent[lastKey] = value;
+                }
             }
         }
     }

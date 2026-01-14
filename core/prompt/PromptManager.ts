@@ -51,7 +51,7 @@ export class PromptManager {
       this.isCustomTemplate = true;
     } else {
       // Use default template with specified response format
-      const responseFormat = config.responseFormat ?? FormatMode.LITERAL_JS;
+      const responseFormat = config.responseFormat ?? FormatMode.MD_STRUCT;
       this.template = new DefaultPromptTemplate(responseFormat);
       this.isCustomTemplate = false;
     }
@@ -101,7 +101,7 @@ export class PromptManager {
   /**
    * Switch back to default template with specified format
    */
-  setDefaultTemplate(format: FormatMode = FormatMode.LITERAL_JS): PromptManager {
+  setDefaultTemplate(format: FormatMode = FormatMode.MD_STRUCT): PromptManager {
     this.template = new DefaultPromptTemplate(format);
     this.isCustomTemplate = false;
     return this;

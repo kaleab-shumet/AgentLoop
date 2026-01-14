@@ -189,7 +189,6 @@ interface AgentLoopOptions {
   /** Global timeout in ms for all tools (default: -1, disabled) */
   globalToolTimeoutMs?: number;
   /** JavaScript execution mode for tool calling (SES is the only supported mode) */
-  jsExecutionMode?: 'ses';
   /** Retry attempts for tool execution errors */
   toolExecutionRetryAttempts?: number;
   /** Retry attempts for connection/parsing errors */
@@ -215,14 +214,13 @@ interface AgentLoopOptions {
 
 ```typescript
 enum FormatMode {
-  LITERAL_JS = 'literaljs'
+  MD_STRUCT = "md_struct"
 }
 ```
 
 ### JavaScript Execution Mode
 
 ```typescript
-type JsExecutionMode = 'ses';
 ```
 
 - **`'ses'`** - Secure EcmaScript (only mode): Maximum security through compartmentalized execution
@@ -292,12 +290,12 @@ interface AIProviderConfig {
 
 ## Format Handlers
 
-### LiteralJSFormatHandler
+### MDStructFormatHandler
 
 Handles JavaScript-based tool calling format.
 
 ```typescript
-class LiteralJSFormatHandler implements FormatHandler {
+class MDStructFormatHandler implements FormatHandler {
   /** JavaScript execution mode configured via constructor */
   public executionMode: JsExecutionMode;
   
