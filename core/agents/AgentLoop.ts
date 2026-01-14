@@ -16,8 +16,7 @@ import {
   HandlerParams,
   UserPrompt,
   BuildPromptParams,
-  TokenUsage,
-  JsExecutionMode
+  TokenUsage
 } from '../types/types';
 import { AIProvider } from '../providers/AIProvider';
 import { TurnState } from './TurnState';
@@ -67,7 +66,7 @@ export interface AgentLoopOptions {
   retryDelay?: number;
   hooks?: AgentLifecycleHooks;
   formatMode?: FormatMode;
-  jsExecutionMode?: JsExecutionMode;   // JavaScript execution mode for tool calling (SES is the only mode)
+
   promptManager?: PromptManager;
   promptManagerConfig?: PromptManagerConfig;
   sleepBetweenIterationsMs?: number;
@@ -117,8 +116,7 @@ export abstract class AgentLoop {
   constructor(provider: AIProvider, options: AgentLoopOptions = {}) {
     this.aiProvider = provider;
     this.aiDataHandler = new AIDataHandler(
-      options.formatMode ?? FormatMode.LITERAL_JS,
-      options.jsExecutionMode ?? 'ses'
+      options.formatMode ?? FormatMode.MD_STRUCT,
     );
     // Use the setter to initialize all options and defaults
     this.setAgentLoopOptions(options);
@@ -139,18 +137,15 @@ export abstract class AgentLoop {
     this.failureHandlingMode = options.failureHandlingMode ?? (this.parallelExecution ? FailureHandlingMode.FAIL_AT_END : FailureHandlingMode.FAIL_FAST);
     this.failureTolerance = options.failureTolerance ?? 0.0;
     this.hooks = options.hooks ?? {};
-    this.formatMode = options.formatMode ?? FormatMode.LITERAL_JS;
+    this.formatMode = options.formatMode ?? FormatMode.MD_STRUCT;
     this.sleepBetweenIterationsMs = options.sleepBetweenIterationsMs ?? 2000;
     this.batchMode = options.batchMode ?? false;
     this.stagnationTerminationThreshold = options.stagnationTerminationThreshold ?? 3;
     this.maxInteractionHistoryCharsLimit = options.maxInteractionHistoryCharsLimit ?? 100000;
 
-    // Update AIDataHandler when format mode or execution mode changes
-    if (options.formatMode || options.jsExecutionMode) {
-      this.aiDataHandler = new AIDataHandler(
-        this.formatMode,
-        options.jsExecutionMode ?? 'ses'
-      );
+    // Update AIDataHandler when format mode changes
+    if (options.formatMode) {
+      this.aiDataHandler = new AIDataHandler(this.formatMode);
     }
 
     // Initialize ErrorHandler
@@ -166,10 +161,7 @@ export abstract class AgentLoop {
       // If promptManager is still not set, set a default
       this.promptManager = new PromptManager(this.systemPrompt, this.getDefaultPromptManagerConfig());
     }
-
   }
-
-
 
   /**
    * Track stagnation in a stateless way by checking self_reasoning_tool progress summary similarity
@@ -252,8 +244,8 @@ export abstract class AgentLoop {
    * Get default prompt manager configuration based on execution mode
    */
   private getDefaultPromptManagerConfig(): PromptManagerConfig {
-    // Only LITERAL_JS format is supported
-    const responseFormat = FormatMode.LITERAL_JS;
+    // MD_STRUCT format is the default
+    const responseFormat = FormatMode.MD_STRUCT;
 
     return {
       responseFormat,
@@ -416,14 +408,14 @@ export abstract class AgentLoop {
           );
           let pending_action: string | null = null;
           let progress_summary: string | null = null;
-          
+
           if (reportResults.length > 0) {
             const latestReport = reportResults[reportResults.length - 1];
             const args = latestReport.args as Record<string, unknown>;
             goal ??= typeof args?.goal === 'string' ? args.goal : null;
             pending_action = typeof args?.pending_action === 'string' ? args.pending_action : null;
             progress_summary = typeof args?.progress_summary === 'string' ? args.progress_summary : null;
-            
+
             console.log("---------------------------------------");
             console.log("goal: ", goal);
             console.log("pending_action: ", pending_action);

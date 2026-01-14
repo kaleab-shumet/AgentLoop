@@ -4,10 +4,10 @@ import { AgentError } from "../utils/AgentError";
 import type { Node } from "acorn";
 
 /**
- * Format mode for the agent - only LITERAL_JS mode is supported
+ * Format mode for the agent - MD_STRUCT is the primary format
  */
 export enum FormatMode {
-  LITERAL_JS = "literal_js"
+  MD_STRUCT = "md_struct"
 }
 
 /**
@@ -89,7 +89,7 @@ export interface PendingToolCall {
 export interface AgentRunInput {
   userPrompt: string;
   context?: Record<string, unknown>;
-  completionOptions?: Record<string, unknown>;  
+  completionOptions?: Record<string, unknown>;
 }
 
 /**
@@ -138,11 +138,6 @@ export interface Tool<T extends ZodTypeAny = ZodTypeAny> {
   handler: (params: HandlerParams<ZodTypeAny>) => unknown | Promise<unknown>;
 }
 
-/**
- * JavaScript execution mode for tool calling
- * SES (Secure EcmaScript) is the only supported mode for maximum security
- */
-export type JsExecutionMode = 'ses';
 
 // Essential types only
 export type ServiceName = 'openai' | 'google' | 'anthropic' | 'mistral' | 'groq' | 'perplexity' | 'azure';
@@ -242,34 +237,3 @@ export interface AICompletionResponse {
   usage?: TokenUsage;
 }
 
-// Extended types for Acorn AST nodes with additional properties we need
-export interface FunctionDeclarationNode extends Node {
-  type: "FunctionDeclaration";
-  id: {
-    type: "Identifier";
-    name: string;
-  };
-  body: {
-    type: "BlockStatement";
-    start: number;
-    end: number;
-  };
-  start: number;
-  end: number;
-}
-
-export interface LiteralNode extends Node {
-  type: "Literal";
-  value: unknown;
-  raw: string;
-}
-
-export interface TemplateLiteralNode extends Node {
-  type: "TemplateLiteral";
-  quasis: Array<{
-    value: {
-      raw: string;
-      cooked: string;
-    };
-  }>;
-}
