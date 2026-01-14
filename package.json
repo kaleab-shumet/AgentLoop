@@ -43,7 +43,7 @@
     "type-check": "tsc --noEmit",
     "check": "npm run type-check && npm run lint",
     "prepublish": "npm run check && npm run clean && npm run build:npm",
-    "demo:codeeditor": "npm run build:examples && node dist/demo.js"
+    "demo:codeeditor": "npm run build:examples && node dist/console.js"
   },
   "keywords": [],
   "author": "",
